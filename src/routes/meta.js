@@ -34,6 +34,7 @@ module.exports = function metaRoutes(ctx) {
       lastPoll,
       store: stats,
       uptimeSeconds: Math.round(process.uptime()),
+      build: buildInfo(),
     });
   }));
 
@@ -139,3 +140,22 @@ module.exports = function metaRoutes(ctx) {
 
   return router;
 };
+
+/**
+ * Which build is actually serving this request.
+ *
+ * Deployment platforms hand out an immutable URL per build alongside the moving
+ * production alias, so it is easy to keep reloading a stale deployment and conclude a
+ * fix did not work. Reporting the commit removes the guesswork: compare it with the
+ * repository and the question answers itself.
+ */
+function buildInfo() {
+  const commit = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || null;
+  return {
+    commit: commit ? commit.slice(0, 7) : null,
+    commitMessage: process.env.VERCEL_GIT_COMMIT_MESSAGE || null,
+    branch: process.env.VERCEL_GIT_COMMIT_REF || null,
+    environment: process.env.VERCEL_ENV || null,
+    entryPoint: require.main ? require.main.filename : null,
+  };
+}
