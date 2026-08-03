@@ -1,0 +1,106 @@
+'use strict';
+
+const express = require('express');
+const { listStations, getStation, UNGAUGED_INFLOW } = require('../config/stations');
+const { parseRange } = require('../lib/params');
+const { withMeta } = require('./balance');
+
+module.exports = function stationRoutes(ctx) {
+  const router = express.Router();
+  const { store, config } = ctx;
+
+  /** GET /stations?role=inflow|outflow|interior - registry plus current readings. */
+  router.get('/stations', (req, res) => {
+    const role = req.query.role;
+    if (role && !['inflow', 'outflow', 'interior'].includes(role)) {
+      return res.status(400).json({ error: `Unknown role '${role}'. Use inflow, outflow or interior.` });
+    }
+
+    const readings = store.latestReadings(config.maxReadingAgeMs);
+    const stations = listStations(role).map((station) => decorate(station, readings[station.id]));
+
+    return res.json(
+      withMeta(
+        {
+          count: stations.length,
+          ungaugedInflow: UNGAUGED_INFLOW,
+          stations,
+        },
+        ctx,
+      ),
+    );
+  });
+
+  /** GET /stations/:id */
+  router.get('/stations/:id', (req, res) => {
+    const station = getStation(req.params.id);
+    if (!station) return res.status(404).json({ error: `Unknown station '${req.params.id}'` });
+
+    const readings = store.latestReadings(config.maxReadingAgeMs);
+    return res.json(withMeta(decorate(station, readings[station.id]), ctx));
+  });
+
+  /** GET /stations/:id/timeseries?from=&to=&limit= */
+  router.get('/stations/:id/timeseries', (req, res) => {
+    const station = getStation(req.params.id);
+    if (!station) return res.status(404).json({ error: `Unknown station '${req.params.id}'` });
+
+    const { fromMs, toMs, limit, error } = parseRange(req.query, { defaultDays: 7 });
+    if (error) return res.status(400).json({ error });
+
+    const series = store.stationSeries(station.id, fromMs, toMs, limit);
+    return res.json(
+      withMeta(
+        {
+          station: { id: station.id, name: station.name, river: station.river, role: station.role },
+          from: new Date(fromMs).toISOString(),
+          to: new Date(toMs).toISOString(),
+          count: series.length,
+          series: series.map((r) => ({ timestamp: r.timestamp, flowM3s: r.flowM3s, quality: r.quality })),
+        },
+        ctx,
+      ),
+    );
+  });
+
+  return router;
+};
+
+/**
+ * Merge registry metadata with the latest reading.
+ *
+ * `current` is null rather than a substituted mean when no live reading exists: the
+ * balance endpoint may fall back to climatology to keep its sum whole, but a station
+ * endpoint asked about one specific gauge must say plainly that it has nothing.
+ */
+function decorate(station, reading) {
+  return {
+    id: station.id,
+    name: station.name,
+    river: station.river,
+    role: station.role,
+    countsTowardBalance: station.role === 'inflow' || station.role === 'outflow',
+    redundantWith: station.redundantWith || null,
+    location: { lat: station.lat, lon: station.lon },
+    riverKm: station.riverKm || null,
+    upstreamCountry: station.country || null,
+    longTermMeanM3s: station.meanFlow,
+    travelTimeToBorderHours: station.travelTimeHours ?? null,
+    uncertaintyPct: station.uncertaintyPct,
+    note: station.note || null,
+    current: reading
+      ? {
+          flowM3s: reading.flowM3s,
+          timestamp: reading.timestamp,
+          quality: reading.quality,
+          source: reading.source,
+          ratioToMean: station.meanFlow > 0 ? round(reading.flowM3s / station.meanFlow, 3) : null,
+        }
+      : null,
+  };
+}
+
+function round(v, digits) {
+  const f = 10 ** digits;
+  return Math.round(v * f) / f;
+}

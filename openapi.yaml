@@ -1,0 +1,347 @@
+openapi: 3.0.3
+info:
+  title: HungaryWaterLevel API
+  version: "1.0.0"
+  description: |
+    Hungary's surface water balance and power-sector water use, in near real time.
+
+    Derived from two open data sources: OVF hydrological data (data.vizugy.hu) and
+    MAVIR electricity system data. This is an independent derived product, not an
+    official publication of either organisation.
+
+    ## Reading the numbers
+
+    **The net balance is usually not significant.** It is the difference of two sums
+    near 3600 m3/s, each carrying 5-10% rating-curve uncertainty. `net.uncertaintyM3s`
+    is typically larger than `net.m3s`. The `net.significant` flag tells you whether
+    the difference can be distinguished from zero; when it is `false`, the correct
+    reading is "no measurable net flux", not the number itself.
+
+    **Withdrawal is not consumption.** Once-through cooling returns over 99% of the
+    water it takes, a kilometre downstream and a few degrees warmer. Cooling towers
+    withdraw far less but evaporate most of it. Compare `consumptionM3s` when you mean
+    water lost, and `withdrawalM3s` only when you mean water borrowed.
+
+    **Confidence is per figure.** Only Paks I has a directly readable generation value,
+    because it is Hungary's sole nuclear generator and MAVIR publishes a nuclear
+    aggregate. Every other per-plant figure is allocated by capacity share and marked
+    `confidence: estimated`.
+  license:
+    name: MIT
+servers:
+  - url: /api/v1
+
+tags:
+  - name: balance
+    description: National surface water balance
+  - name: stations
+    description: Gauging station registry and readings
+  - name: powerplants
+    description: Power plant water use
+  - name: meta
+    description: Health, provenance and methodology
+
+paths:
+  /health:
+    get:
+      tags: [meta]
+      summary: Service health and data freshness
+      description: Returns 503 with `status: degraded` when the newest reading is older than the configured limit.
+      responses:
+        "200": { description: Healthy, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
+        "503": { description: Data is stale, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
+
+  /balance:
+    get:
+      tags: [balance]
+      summary: Current national water balance
+      parameters:
+        - name: method
+          in: query
+          schema: { type: string, enum: [instant, lagged], default: instant }
+          description: |
+            `instant` compares same-timestamp readings. `lagged` shifts each inflow gauge
+            back by its travel time to the border exit, which is the physically correct
+            comparison during a flood wave. Falls back to `instant` when history is too
+            short, and says so in `dataQuality.warnings`.
+        - name: ungauged
+          in: query
+          schema: { type: boolean, default: true }
+          description: Include the estimated ungauged inflow term (~260 m3/s at mean flow).
+      responses:
+        "200":
+          description: Balance
+          content: { application/json: { schema: { $ref: "#/components/schemas/Balance" } } }
+
+  /balance/history:
+    get:
+      tags: [balance]
+      summary: Balance time series
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, default: 5000, maximum: 20000 } }
+      responses:
+        "200": { description: Series }
+        "400": { description: Invalid range }
+
+  /snapshot:
+    get:
+      tags: [balance]
+      summary: Balance and power-sector water use in one response
+      description: The endpoint intended for map and dashboard frontends - one request per refresh.
+      parameters:
+        - { name: method, in: query, schema: { type: string, enum: [instant, lagged] } }
+        - { name: model, in: query, schema: { type: string, enum: [linear, thermal] } }
+      responses:
+        "200":
+          description: Snapshot
+          content: { application/json: { schema: { $ref: "#/components/schemas/Snapshot" } } }
+
+  /stations:
+    get:
+      tags: [stations]
+      summary: Station registry with current readings
+      parameters:
+        - name: role
+          in: query
+          schema: { type: string, enum: [inflow, outflow, interior] }
+          description: |
+            `interior` stations are inside the country or redundant with another gauge
+            (Nagymaros carries water already counted at Rajka). They are served for
+            display but never summed - see `countsTowardBalance`.
+      responses:
+        "200": { description: Stations }
+        "400": { description: Unknown role }
+
+  /stations/{id}:
+    get:
+      tags: [stations]
+      summary: One station
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Station }
+        "404": { description: Unknown station }
+
+  /stations/{id}/timeseries:
+    get:
+      tags: [stations]
+      summary: Discharge history for one station
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        "200": { description: Series }
+        "404": { description: Unknown station }
+
+  /powerplants:
+    get:
+      tags: [powerplants]
+      summary: All plants with modelled water use
+      parameters:
+        - name: model
+          in: query
+          schema: { type: string, enum: [linear, thermal], default: linear }
+          description: |
+            `linear` scales a published nominal cooling flow by load. `thermal` derives
+            the flow from condenser heat duty. They agree within ~5% for Paks, which is
+            a useful cross-check rather than a coincidence.
+      responses:
+        "200": { description: Plants }
+
+  /powerplants/{id}:
+    get:
+      tags: [powerplants]
+      summary: One plant, including thermal load on its receiving river
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: model, in: query, schema: { type: string, enum: [linear, thermal] } }
+      responses:
+        "200": { description: Plant }
+        "404": { description: Unknown plant }
+
+  /powerplants/{id}/history:
+    get:
+      tags: [powerplants]
+      summary: Modelled water use over time
+      description: Replays stored generation through the cooling model, so a corrected coefficient fixes the whole history.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        "200": { description: Series }
+        "404": { description: Unknown plant }
+
+  /water-use:
+    get:
+      tags: [powerplants]
+      summary: Power sector totals, ranked by withdrawal
+      responses:
+        "200": { description: Totals }
+
+  /geojson:
+    get:
+      tags: [meta]
+      summary: Map-ready FeatureCollection
+      description: |
+        Gauges and plants as points. `weight` in [0,1] is scaled by the square root of
+        flow and is intended for symbol size - a linear scale renders everything except
+        the Danube invisible.
+      responses:
+        "200": { description: GeoJSON FeatureCollection }
+
+  /meta/sources:
+    get:
+      tags: [meta]
+      summary: Provenance, licensing and known limitations
+      responses:
+        "200": { description: Source documentation }
+
+  /meta/stations:
+    get:
+      tags: [meta]
+      summary: Station registry without readings
+      responses:
+        "200": { description: Registry }
+
+components:
+  schemas:
+    Meta:
+      type: object
+      description: Attached to every response so a consumer always knows what they are holding.
+      properties:
+        provider: { type: string, enum: [live, fixture] }
+        synthetic:
+          type: boolean
+          description: True when the data is generated, not measured. Never ignore this.
+        lastPollAt: { type: string, format: date-time, nullable: true }
+        lastPollOk: { type: boolean, nullable: true }
+        apiVersion: { type: string }
+
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        provider: { type: string }
+        synthetic: { type: boolean }
+        dataAgeSeconds: { type: integer, nullable: true }
+        lastPoll: { type: object, nullable: true }
+        store: { type: object }
+
+    BalanceSide:
+      type: object
+      properties:
+        totalM3s: { type: number }
+        gaugedM3s: { type: number, description: Sum of live gauge readings only (inflow side). }
+        ungaugedM3s: { type: number, description: Estimated inflow through minor watercourses (inflow side). }
+        uncertaintyM3s: { type: number, description: 1-sigma, combined in quadrature across stations. }
+        dailyM3: { type: integer }
+        stationCount: { type: integer }
+        measuredCount: { type: integer }
+        estimatedCount: { type: integer, description: Stations that fell back to their long-term mean. }
+        stations:
+          type: array
+          items: { $ref: "#/components/schemas/StationContribution" }
+
+    StationContribution:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        river: { type: string }
+        flowM3s: { type: number }
+        uncertaintyM3s: { type: number }
+        quality: { type: string, enum: [measured, climatology] }
+        lagHours: { type: number, description: Travel-time shift applied (0 for instant method). }
+        shareOfSide: { type: number }
+        timestamp: { type: string, format: date-time, nullable: true }
+
+    Balance:
+      type: object
+      properties:
+        timestamp: { type: string, format: date-time }
+        method: { type: string, enum: [instant, lagged] }
+        requestedMethod: { type: string, description: Differs from `method` when lagged was requested but unavailable. }
+        inflow: { $ref: "#/components/schemas/BalanceSide" }
+        outflow: { $ref: "#/components/schemas/BalanceSide" }
+        net:
+          type: object
+          properties:
+            m3s: { type: number }
+            uncertaintyM3s: { type: number }
+            dailyM3: { type: integer }
+            significant:
+              type: boolean
+              description: True only when |net| exceeds 2 sigma. Usually false - that is the honest answer.
+            direction: { type: string, enum: [accumulating, draining] }
+            interpretation: { type: string }
+        dataQuality:
+          type: object
+          properties:
+            measuredShare: { type: number }
+            ungaugedShareOfInflow: { type: number }
+            warnings: { type: array, items: { type: string } }
+        _meta: { $ref: "#/components/schemas/Meta" }
+
+    PlantWater:
+      type: object
+      properties:
+        coolingType: { type: string, enum: [once_through, cooling_tower, hybrid, closed_loop] }
+        model: { type: string, enum: [linear, thermal] }
+        withdrawalM3s: { type: number, description: Water taken from the river. }
+        dischargeM3s: { type: number, description: Water returned, warmer. }
+        consumptionM3s: { type: number, description: Water actually lost to evaporation. }
+        dailyM3: { type: integer }
+        annualM3: { type: integer }
+        notes: { type: array, items: { type: string } }
+
+    Plant:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string }
+        status: { type: string, enum: [operating, under_construction, planned] }
+        capacityMw: { type: number }
+        generation:
+          type: object
+          properties:
+            powerMw: { type: number, nullable: true }
+            loadFactor: { type: number, nullable: true }
+            confidence: { type: string, enum: [measured, estimated, unavailable, not_applicable] }
+            method: { type: string }
+            caveat: { type: string, nullable: true }
+        water: { $ref: "#/components/schemas/PlantWater" }
+        thermalLoad:
+          type: object
+          nullable: true
+          properties:
+            riverFlowM3s: { type: number }
+            abstractionShareOfRiver: { type: number }
+            condenserRiseK: { type: number }
+            mixedRiverRiseK: { type: number, description: Temperature rise of the whole river once fully mixed. }
+        permit: { type: object }
+
+    Snapshot:
+      type: object
+      properties:
+        generatedAt: { type: string, format: date-time }
+        balance: { $ref: "#/components/schemas/Balance" }
+        power:
+          type: object
+          properties:
+            timestamp: { type: string, format: date-time, nullable: true }
+            generationMix: { type: object, additionalProperties: { type: number } }
+            totals: { type: object }
+            quality: { type: object }
+            plants: { type: array, items: { $ref: "#/components/schemas/Plant" } }
+        context:
+          type: object
+          nullable: true
+          properties:
+            powerWithdrawalShareOfInflow: { type: number }
+            powerConsumptionShareOfInflow: { type: number }
+            note: { type: string }
+        _meta: { $ref: "#/components/schemas/Meta" }

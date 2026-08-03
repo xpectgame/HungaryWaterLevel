@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magyarország vízmérlege – élő</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --bg: #0e1621;
+    --panel: #16222f;
+    --panel-2: #1d2c3c;
+    --line: #26384b;
+    --text: #e8f0f7;
+    --muted: #8ba3ba;
+    --in: #3fbf8f;
+    --out: #4a9fe0;
+    --warn: #e0a33f;
+    --plant: #e05f5f;
+    --nuclear: #d94f8c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    display: grid; grid-template-columns: 380px 1fr; height: 100vh;
+  }
+  @media (max-width: 860px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; }
+    #map { height: 60vh; }
+  }
+
+  aside { overflow-y: auto; border-right: 1px solid var(--line); padding: 20px; }
+  h1 { font-size: 17px; margin: 0 0 2px; letter-spacing: -0.2px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+
+  .banner {
+    background: #4a3410; border: 1px solid #7a5518; color: #f0c675;
+    padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 16px;
+  }
+  .banner.hidden { display: none; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  .card h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+
+  .row { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; }
+  .row + .row { border-top: 1px solid var(--line); }
+  .label { color: var(--muted); font-size: 12px; }
+  .val { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .val small { font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 3px; }
+
+  .net { text-align: center; padding: 6px 0 10px; }
+  .net .big { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+  .net .pm { color: var(--muted); font-size: 15px; font-weight: 400; }
+  .net .verdict { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+  .net.insignificant .big { color: var(--muted); }
+
+  .bar { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; margin: 8px 0 4px; }
+  .bar span { display: block; height: 100%; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 0; font-size: 11px; }
+  td { padding: 4px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  td.num { text-align: right; }
+  .tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--panel-2); color: var(--muted); }
+  .tag.measured { background: #14392c; color: var(--in); }
+  .tag.estimated { background: #40320f; color: var(--warn); }
+
+  .foot { color: var(--muted); font-size: 11px; line-height: 1.6; margin-top: 14px; }
+  .foot a { color: var(--out); }
+
+  #map { height: 100%; background: #0b1219; }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--text); }
+  .leaflet-popup-content { margin: 12px 14px; font-size: 12px; }
+  .leaflet-popup-content b { display: block; margin-bottom: 4px; font-size: 13px; }
+  .leaflet-container { background: #0b1219; }
+  .legend {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; font-size: 11px; color: var(--muted); line-height: 1.9;
+  }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<aside>
+  <h1>Magyarország vízmérlege</h1>
+  <div class="sub" id="updated">Betöltés…</div>
+
+  <div class="banner hidden" id="synthetic">
+    <b>Szintetikus adat.</b> Az API fixture szolgáltatóval fut – ezek modellezett, nem mért értékek.
+  </div>
+
+  <div class="card">
+    <h2>Nettó vízforgalom (ΔQ)</h2>
+    <div class="net" id="net">
+      <div><span class="big" id="netVal">–</span> <span class="pm" id="netUnc"></span></div>
+      <div class="verdict" id="netVerdict"></div>
+    </div>
+    <div class="bar"><span id="netBar" style="width:0%; background:var(--in)"></span></div>
+    <div class="row"><span class="label">Beáramlás</span><span class="val" id="inflow">–</span></div>
+    <div class="row"><span class="label">— ebből mért</span><span class="val" id="inflowGauged">–</span></div>
+    <div class="row"><span class="label">— ebből becsült (nem mért vízfolyások)</span><span class="val" id="inflowUngauged">–</span></div>
+    <div class="row"><span class="label">Kiáramlás</span><span class="val" id="outflow">–</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Erőművi vízhasználat</h2>
+    <div class="row"><span class="label">Vízkivétel</span><span class="val" id="withdrawal">–</span></div>
+    <div class="row"><span class="label">Visszavezetés</span><span class="val" id="discharge">–</span></div>
+    <div class="row"><span class="label">Tényleges fogyasztás</span><span class="val" id="consumption">–</span></div>
+    <div class="row"><span class="label">Visszavezetett arány</span><span class="val" id="returned">–</span></div>
+    <table id="plants"><thead><tr><th>Erőmű</th><th class="num">MW</th><th class="num">m³/s</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="foot" id="foot"></div>
+</aside>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const API = '/api/v1';
+const fmt = (v, d = 0) => v == null ? '–' : v.toLocaleString('hu-HU', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+const COLOR = { inflow: '#3fbf8f', outflow: '#4a9fe0', interior: '#5a6b7d' };
+
+/**
+ * Leaflet comes from a CDN, so it can simply fail to arrive - an outage, an offline
+ * client, a strict CSP. The numbers panel needs none of it, so the map is initialised
+ * behind a guard and its absence degrades to a message instead of taking the page down.
+ */
+let map = null;
+let layer = null;
+
+function initMap() {
+  if (typeof L === 'undefined') {
+    document.getElementById('map').innerHTML =
+      '<div style="padding:24px;color:#8ba3ba;font-size:13px">' +
+      'A térképkönyvtár nem töltődött be (CDN nem elérhető). Az adatok ettől függetlenül frissülnek.' +
+      '</div>';
+    return false;
+  }
+
+  map = L.map('map', { zoomControl: true }).setView([47.1, 19.5], 7);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap, &copy; CARTO | Adat: OVF, MAVIR',
+    maxZoom: 18,
+  }).addTo(map);
+
+  layer = L.layerGroup().addTo(map);
+
+  const legend = L.control({ position: 'bottomright' });
+  legend.onAdd = () => {
+    const div = L.DomUtil.create('div', 'legend');
+    div.innerHTML =
+      '<i style="background:#3fbf8f"></i>Belépő szelvény<br>' +
+      '<i style="background:#4a9fe0"></i>Kilépő szelvény<br>' +
+      '<i style="background:#5a6b7d"></i>Belső mérőállomás<br>' +
+      '<i style="background:#e05f5f"></i>Erőmű (vízkivétel)<br>' +
+      '<span style="opacity:.7">A jel mérete a vízhozammal arányos</span>';
+    return div;
+  };
+  legend.addTo(map);
+  return true;
+}
+
+const hasMap = initMap();
+
+async function refresh() {
+  // Fetched and rendered independently: a failure on one side must not blank the other.
+  try {
+    const snapshot = await fetch(`${API}/snapshot`).then((r) => r.json());
+    renderSidebar(snapshot);
+  } catch (err) {
+    document.getElementById('updated').textContent = 'Az API nem érhető el: ' + err.message;
+  }
+
+  if (!hasMap) return;
+  try {
+    const geo = await fetch(`${API}/geojson`).then((r) => r.json());
+    renderMap(geo);
+  } catch (err) {
+    console.error('geojson:', err);
+  }
+}
+
+function renderSidebar(s) {
+  const b = s.balance, p = s.power;
+
+  document.getElementById('synthetic').classList.toggle('hidden', !s._meta.synthetic);
+  document.getElementById('updated').textContent =
+    'Frissítve: ' + new Date(s.generatedAt).toLocaleString('hu-HU') +
+    ' · módszer: ' + (b.method === 'lagged' ? 'futásidő-korrigált' : 'pillanatnyi');
+
+  // The uncertainty is rendered at the same visual weight as the value itself - the
+  // net figure is meaningless without it, and usually smaller than it.
+  document.getElementById('netVal').textContent = (b.net.m3s > 0 ? '+' : '') + fmt(b.net.m3s, 0);
+  document.getElementById('netUnc').textContent = '± ' + fmt(b.net.uncertaintyM3s, 0) + ' m³/s';
+  // The API speaks English by contract; the UI localises from the flag rather than
+  // displaying the API's prose, so the two never drift out of sync.
+  document.getElementById('netVerdict').textContent = !b.net.significant
+    ? 'A különbség a mérési bizonytalanságon belül van — nem különböztethető meg nullától.'
+    : b.net.m3s > 0
+      ? 'Jelenleg több víz lép be az országba, mint amennyi kilép.'
+      : 'Jelenleg több víz lép ki az országból, mint amennyi belép.';
+  document.getElementById('net').classList.toggle('insignificant', !b.net.significant);
+
+  const ratio = Math.min(100, Math.abs(b.net.m3s) / Math.max(1, b.net.uncertaintyM3s * 2) * 100);
+  const bar = document.getElementById('netBar');
+  bar.style.width = ratio + '%';
+  bar.style.background = b.net.significant ? (b.net.m3s > 0 ? 'var(--in)' : 'var(--out)') : 'var(--muted)';
+
+  set('inflow', fmt(b.inflow.totalM3s) + ' <small>m³/s</small>');
+  set('inflowGauged', fmt(b.inflow.gaugedM3s) + ' <small>m³/s</small>');
+  set('inflowUngauged', fmt(b.inflow.ungaugedM3s) + ' <small>m³/s</small>');
+  set('outflow', fmt(b.outflow.totalM3s) + ' <small>m³/s</small>');
+
+  set('withdrawal', fmt(p.totals.withdrawalM3s, 1) + ' <small>m³/s</small>');
+  set('discharge', fmt(p.totals.dischargeM3s, 1) + ' <small>m³/s</small>');
+  set('consumption', fmt(p.totals.consumptionM3s, 2) + ' <small>m³/s</small>');
+  set('returned', p.totals.returnedShare == null ? '–' : (p.totals.returnedShare * 100).toFixed(1) + '%');
+
+  const tbody = document.querySelector('#plants tbody');
+  tbody.innerHTML = '';
+  p.plants
+    .filter((x) => x.status === 'operating')
+    .sort((a, b2) => b2.water.withdrawalM3s - a.water.withdrawalM3s)
+    .forEach((plant) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td>${plant.name.replace(/\s*\(.*\)/, '')}</td>` +
+        `<td class="num">${fmt(plant.generation.powerMw)}</td>` +
+        `<td class="num">${fmt(plant.water.withdrawalM3s, 1)}</td>` +
+        `<td><span class="tag ${plant.generation.confidence}">${plant.generation.confidence === 'measured' ? 'mért' : 'becsült'}</span></td>`;
+      tbody.appendChild(tr);
+    });
+
+  document.getElementById('foot').innerHTML =
+    `A vízkivétel a beáramlás <b>${(s.context.powerWithdrawalShareOfInflow * 100).toFixed(2)}%</b>-a, ` +
+    `de a tényleges fogyasztás csak <b>${(s.context.powerConsumptionShareOfInflow * 100).toFixed(3)}%</b>-a — ` +
+    `a frissvízhűtés a vizet kölcsönveszi, nem elhasználja.<br><br>` +
+    `Adatforrás: OVF (vízrajz), MAVIR (villamosenergia). ` +
+    `<a href="${API}/meta/sources">Módszertan és korlátok →</a>`;
+}
+
+function set(id, html) { document.getElementById(id).innerHTML = html; }
+
+function renderMap(geo) {
+  layer.clearLayers();
+
+  geo.features.forEach((f) => {
+    const p = f.properties;
+    const [lon, lat] = f.geometry.coordinates;
+    const isPlant = p.kind === 'powerplant';
+
+    const radius = 4 + p.weight * (isPlant ? 16 : 20);
+    const color = isPlant ? (p.type === 'nuclear' ? '#d94f8c' : '#e05f5f') : COLOR[p.role];
+
+    L.circleMarker([lat, lon], {
+      radius,
+      color,
+      weight: p.countsTowardBalance === false ? 1 : 2,
+      opacity: p.countsTowardBalance === false ? 0.45 : 0.9,
+      fillColor: color,
+      fillOpacity: p.hasLiveReading === false ? 0.1 : 0.35,
+      dashArray: p.status && p.status !== 'operating' ? '3,3' : null,
+    })
+      .bindPopup(isPlant ? plantPopup(p) : gaugePopup(p))
+      .addTo(layer);
+  });
+}
+
+function gaugePopup(p) {
+  const role = { inflow: 'belépő', outflow: 'kilépő', interior: 'belső' }[p.role];
+  return `<b>${p.name}</b>` +
+    `${p.flowM3s == null ? 'Nincs élő adat' : fmt(p.flowM3s, 1) + ' m³/s'}` +
+    `${p.ratioToMean ? ` · a sokéves átlag ${(p.ratioToMean * 100).toFixed(0)}%-a` : ''}<br>` +
+    `<span style="color:#8ba3ba">Szelvény: ${role}` +
+    `${p.countsTowardBalance ? '' : ' — nem számít bele a mérlegbe'}</span>` +
+    `${p.note ? `<br><span style="color:#8ba3ba;font-size:11px">${p.note}</span>` : ''}`;
+}
+
+function plantPopup(p) {
+  if (p.status !== 'operating') {
+    return `<b>${p.name}</b><span style="color:#8ba3ba">${p.capacityMw} MW · ${p.status}</span>`;
+  }
+  return `<b>${p.name}</b>` +
+    `${fmt(p.powerMw)} MW / ${p.capacityMw} MW<br>` +
+    `Vízkivétel: <b>${fmt(p.withdrawalM3s, 1)} m³/s</b><br>` +
+    `Visszavezetés: ${fmt(p.dischargeM3s, 1)} m³/s<br>` +
+    `Fogyasztás: ${fmt(p.consumptionM3s, 2)} m³/s<br>` +
+    `<span style="color:#8ba3ba">${p.receivingWater} · ${p.confidence === 'measured' ? 'mért' : 'becsült'} termelés</span>`;
+}
+
+refresh();
+setInterval(refresh, 60000);
+</script>
+</body>
+</html>
