@@ -3,8 +3,10 @@
 const { loadConfig } = require('../config');
 const { createProvider, fetchAll } = require('../sources');
 const { validateBatch } = require('../lib/validate');
-const { TimeseriesStore } = require('../store/timeseries');
 const { computeBalance } = require('../domain/balance');
+// The store is required lazily inside the CLI block: importing it here would pull in
+// node:sqlite (and its experimental warning) even for serverless runs that never
+// touch a database.
 
 /**
  * The 15-minute ingest cycle: fetch both upstreams, screen the readings, store them,
@@ -147,8 +149,9 @@ async function backfill(store, config, days = 30, logger = console) {
 }
 
 if (require.main === module) {
+  const { createStore } = require('../store');
   const config = loadConfig();
-  const store = new TimeseriesStore(config.dbPath);
+  const store = createStore(config);
   const args = process.argv.slice(2);
 
   const main = async () => {

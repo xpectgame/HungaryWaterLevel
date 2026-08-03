@@ -265,16 +265,56 @@ plauzibilitás-szűrést és a teljes HTTP réteget.
 
 ## Üzemeltetés
 
-Hosszan futó folyamat kell (poller + SQLite), tehát **serverless platformra így nem
-illeszkedik**. Railway, Fly.io, Render vagy egy egyszerű VPS megfelelő.
+Két üzemmód van, ugyanabból a kódból.
 
-Ha mindenképp serverless kell: a `jobs/poll.js` külön cron-ként fut (Vercel Cron, GitHub
-Actions), a `store/timeseries.js` helyére Postgres kerül, a route-ok pedig stateless
-függvényekké válnak.
+### Szerver mód (teljes funkcionalitás)
+
+Hosszan futó folyamat: 15 perces poller + SQLite lemezen. Ez tudja az idősorokat és a
+futásidő-korrigált mérleget. Railway, Fly.io, Render vagy egy VPS.
 
 ```bash
 DATA_PROVIDER=live NODE_ENV=production npm start
 ```
+
+### Stateless mód (serverless, pl. Vercel)
+
+Serverlessen nincs perzisztens lemez és nincs folyamat két kérés között, tehát nincs
+háttér-poller sem. Ilyenkor a tároló memóriában van, és a frissességet az első olyan
+kérés hozza be, amelyik észreveszi, hogy elavult az adat (`src/lib/refresh.js` — az
+egyidejű kérések egy közös lekérésen osztoznak, nem indítanak sajátot).
+
+**A Vercelt automatikusan felismeri** (`VERCEL=1`), nem kell hozzá konfiguráció.
+Lokálisan: `STATELESS=true npm start`.
+
+Amit ez a mód **nem** tud, szerkezeti okból:
+
+| | Szerver | Stateless |
+|---|---|---|
+| `/snapshot`, `/balance`, `/stations`, `/powerplants`, `/geojson` | ✅ | ✅ |
+| `/balance/history`, `/stations/:id/timeseries` | hónapok | csak az instance rövid ablaka |
+| `?method=lagged` | ✅ | visszaesik `instant`-ra |
+
+Mindkét korlátot maga a válasz jelenti: a `method` mező azt írja, ami *történt*, nem azt,
+amit kértek, és a `dataQuality.warnings`-ban megjelenik az ok. Az `inflow.laggedCount`
+megmondja, hány állomást sikerült ténylegesen eltolni.
+
+#### Vercel deploy
+
+A repót importálva a `vercel.json` mindent beállít. Környezeti változók a Vercel UI-ban:
+
+```
+DATA_PROVIDER=fixture
+ALLOW_FIXTURE_IN_PRODUCTION=true
+```
+
+`fixture`-rel szintetikus adatot szolgál ki — a felületen sárga sáv jelzi, és minden
+válaszban ott van a `_meta.synthetic: true`. Ez a helyes beállítás addig, amíg az
+upstream végpontok nincsenek bekötve (lásd [Éles üzem előtt](#éles-üzem-előtt)).
+Utána `DATA_PROVIDER=live`, és a két opt-in sor törölhető.
+
+Miért nem működne a naiv Vercel-deploy a szerver móddal: a Hobby tier cronja **napi
+egyszer** fut, nem 15 percenként, és a serverless függvényeknek nincs perzisztens
+fájlrendszerük, tehát a SQLite minden hívás után elveszne.
 
 ## Licenc és hivatkozás
 

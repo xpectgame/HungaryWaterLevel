@@ -4,7 +4,7 @@ const express = require('express');
 const path = require('node:path');
 
 const { loadConfig, assertProviderSafe } = require('./config');
-const { TimeseriesStore } = require('./store/timeseries');
+const { createStore } = require('./store');
 const { TtlCache } = require('./lib/cache');
 const { createRouter } = require('./routes');
 const { startPolling } = require('./jobs/poll');
@@ -53,30 +53,47 @@ function createApp(ctx) {
   return app;
 }
 
-function start() {
-  const config = loadConfig();
+/**
+ * Build the app and its dependencies without binding a port.
+ * Shared by the standalone server and the serverless entry point.
+ */
+function createContext(env = process.env) {
+  const config = loadConfig(env);
   assertProviderSafe(config);
 
-  const store = new TimeseriesStore(config.dbPath);
+  const store = createStore(config);
   const cache = new TtlCache(config.cacheTtlMs);
-  const ctx = { config, store, cache };
+
+  return { config, store, cache };
+}
+
+function start() {
+  const ctx = createContext();
+  const { config, store, cache } = ctx;
 
   const app = createApp(ctx);
 
-  const stopPolling = startPolling(store, config, {
-    log: (...args) => {
-      console.log(...args);
-      // New data invalidates every derived response.
-      cache.clear();
-    },
-    warn: console.warn,
-    error: console.error,
-  });
+  const stopPolling = config.backgroundPolling
+    ? startPolling(store, config, {
+        log: (...args) => {
+          console.log(...args);
+          // New data invalidates every derived response.
+          cache.clear();
+        },
+        warn: console.warn,
+        error: console.error,
+      })
+    : () => {};
 
   const server = app.listen(config.port, config.host, () => {
     console.log(`[api] HungaryWaterLevel listening on http://${config.host}:${config.port}`);
     console.log(`[api] provider=${config.provider}${config.provider === 'fixture' ? ' (SYNTHETIC DATA)' : ''}`);
-    console.log(`[api] store=${config.dbPath}, poll every ${Math.round(config.pollIntervalMs / 60000)} min`);
+    console.log(
+      `[api] store=${config.store === 'memory' ? 'memory (no persistence)' : config.dbPath}, ` +
+        (config.backgroundPolling
+          ? `poll every ${Math.round(config.pollIntervalMs / 60000)} min`
+          : 'on-demand refresh'),
+    );
   });
 
   const shutdown = (signal) => {
@@ -100,4 +117,4 @@ if (require.main === module) {
   start();
 }
 
-module.exports = { createApp, start };
+module.exports = { createApp, createContext, start };

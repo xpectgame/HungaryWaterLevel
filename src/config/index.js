@@ -10,6 +10,11 @@ function loadConfig(env = process.env) {
   const nodeEnv = env.NODE_ENV || 'development';
   const provider = env.DATA_PROVIDER || (nodeEnv === 'production' ? 'live' : 'fixture');
 
+  // Serverless platforms give no persistent disk and no long-running process, so the
+  // store goes in memory and freshness is pulled in by the first request that notices
+  // the data is old. Vercel sets VERCEL=1, so the common case needs no configuration.
+  const stateless = env.STATELESS === 'true' || (!!env.VERCEL && env.STATELESS !== 'false');
+
   return {
     nodeEnv,
     port: Number(env.PORT) || 3000,
@@ -19,6 +24,17 @@ function loadConfig(env = process.env) {
     // 'fixture' - synthetic, for development and tests
     provider,
     allowFixtureInProduction: env.ALLOW_FIXTURE_IN_PRODUCTION === 'true',
+
+    stateless,
+    // 'sqlite' persists to disk and keeps months of history; 'memory' holds a short
+    // window and loses it when the instance recycles.
+    store: env.STORE || (stateless ? 'memory' : 'sqlite'),
+    memoryMaxSamples: Number(env.MEMORY_MAX_SAMPLES) || 500,
+
+    // Run the poller as a background interval (server) or on demand (serverless).
+    backgroundPolling: env.BACKGROUND_POLLING ? env.BACKGROUND_POLLING === 'true' : !stateless,
+    lazyRefresh: env.LAZY_REFRESH ? env.LAZY_REFRESH === 'true' : stateless,
+    refreshRetryMs: Number(env.REFRESH_RETRY_MS) || 60 * 1000,
 
     dbPath: env.DB_PATH || path.join(process.cwd(), 'data', 'hungarywaterlevel.db'),
 

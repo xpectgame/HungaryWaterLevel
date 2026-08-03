@@ -68,6 +68,24 @@ function computeBalance(readings, opts = {}) {
     historyLookup: opts.historyLookup,
   });
 
+  // Asking for lagged and getting nothing lagged is the case that matters: a store with
+  // no history hands back null for every lookup, each station quietly falls back to its
+  // current reading, and the result is an instant comparison wearing a lagged label.
+  // Report what actually happened rather than what was requested.
+  if (effectiveMethod === 'lagged') {
+    if (inflow.laggedCount === 0) {
+      effectiveMethod = 'instant';
+      warnings.push(
+        'method=lagged requested but no station had history at its travel time; this is an instant comparison.',
+      );
+    } else if (inflow.laggedCount < inflow.stationCount) {
+      warnings.push(
+        `Only ${inflow.laggedCount} of ${inflow.stationCount} inflow stations had history at their travel time; ` +
+          'the rest used their current reading.',
+      );
+    }
+  }
+
   // --- ungauged inflow ------------------------------------------------------
   // Scaled with how wet the gauged network currently is, so it grows in flood and
   // shrinks in drought instead of sitting at a constant.
@@ -104,6 +122,7 @@ function computeBalance(readings, opts = {}) {
       stationCount: inflow.stationCount,
       measuredCount: inflow.measuredCount,
       estimatedCount: inflow.estimatedCount,
+      laggedCount: inflow.laggedCount,
       stations: inflow.stations,
     },
     outflow: {
@@ -145,6 +164,7 @@ function sumSide(stations, { get, now, method, historyLookup }) {
   let climatologyTotal = 0;
   let measuredCount = 0;
   let estimatedCount = 0;
+  let laggedCount = 0;
   const warnings = [];
   const detail = [];
 
@@ -155,7 +175,9 @@ function sumSide(stations, { get, now, method, historyLookup }) {
     if (method === 'lagged' && station.travelTimeHours) {
       lagHours = station.travelTimeHours;
       reading = historyLookup(station.id, now - lagHours * 3600 * 1000);
-      if (!reading) {
+      if (reading) {
+        laggedCount += 1;
+      } else {
         // History does not reach back far enough for this station yet.
         reading = get(station.id);
         lagHours = 0;
@@ -210,6 +232,7 @@ function sumSide(stations, { get, now, method, historyLookup }) {
     stationCount: stations.length,
     measuredCount,
     estimatedCount,
+    laggedCount,
     warnings,
     stations: detail,
   };

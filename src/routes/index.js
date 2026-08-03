@@ -7,6 +7,7 @@ const stationRoutes = require('./stations');
 const plantRoutes = require('./powerplants');
 const geoRoutes = require('./geo');
 const metaRoutes = require('./meta');
+const { refreshMiddleware } = require('../lib/refresh');
 
 /**
  * Mounts the v1 API.
@@ -17,6 +18,12 @@ const metaRoutes = require('./meta');
  */
 function createRouter(ctx) {
   const router = express.Router();
+
+  // No-op when a background poller is keeping the store warm; on serverless this is
+  // what actually fetches the data.
+  if (ctx.config.lazyRefresh) {
+    router.use(refreshMiddleware(ctx));
+  }
 
   router.use(balanceRoutes(ctx));
   router.use(stationRoutes(ctx));
