@@ -4,22 +4,20 @@
  * Serverless entry point (Vercel).
  *
  * The context is built once at module load, which on a serverless platform means once
- * per cold start. Warm invocations reuse it, so the in-memory store keeps whatever it
- * fetched during the instance's lifetime and most requests are served without touching
- * the upstream at all.
+ * per cold start. Warm invocations reuse it, so the in-memory or pooled connection
+ * survives between requests.
  *
- * Freshness comes from the on-demand refresh middleware rather than a background timer,
- * because there is no process alive between requests to run one. See src/lib/refresh.js.
+ * If that build throws - a missing environment variable, a malformed connection string -
+ * the failure is caught and served as a readable JSON error rather than escaping as an
+ * opaque FUNCTION_INVOCATION_FAILED. See src/lib/serverless-entry.js.
  *
- * What this deployment cannot do, by construction:
- *   - long history (the store dies with the instance), so /balance/history and
- *     /stations/:id/timeseries return only this instance's short window
- *   - method=lagged, which needs days of history and therefore degrades to instant
- * Both already report their own degradation in the response, so nothing here lies.
+ * Freshness comes from the cron in vercel.json when shared storage is configured, or
+ * from the on-demand refresh middleware when it is not.
  */
 
 const { createApp, createContext } = require('../src/server');
+const { bootstrap } = require('../src/lib/serverless-entry');
 
-const ctx = createContext();
+const { handler, value: ctx } = bootstrap(() => createContext());
 
-module.exports = createApp(ctx);
+module.exports = handler || createApp(ctx);

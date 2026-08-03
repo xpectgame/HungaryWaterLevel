@@ -15,5 +15,8 @@
 
 const { createContext } = require('../src/server');
 const { createCronHandler } = require('../src/jobs/cron-handler');
+const { bootstrap } = require('../src/lib/serverless-entry');
 
-module.exports = createCronHandler(createContext());
+const { handler, value: ctx } = bootstrap(() => createContext());
+
+module.exports = handler || createCronHandler(ctx);
