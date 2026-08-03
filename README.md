@@ -193,11 +193,29 @@ policy), így a pontos útvonalak és válaszformátumok nem voltak lemérhetők
 Ezért az adapterek nem tartalmaznak találgatott végpontot beégetve — a kérés és a
 válasz-leképezés is konfiguráció. A hiányzó darab pótlása:
 
+### Hol futtasd a probe-ot
+
+Bárhol, ahonnan elérhető a két szolgáltatás. Növekvő sorrendben, amennyi telepítést igényel:
+
+**1. GitHub Actions — semmit nem kell telepíteni.** Actions fül → *Probe upstream
+endpoints* → *Run workflow*. A kimenet a job logjában olvasható. Ez a legegyszerűbb, és
+egy futó ingyenes.
+
+**2. Saját gép** — Node 22+ kell hozzá:
+
 ```bash
+npm ci
 npm run probe               # mindkét szolgáltatás
 npm run probe -- --mavir    # csak MAVIR
 npm run probe -- --url=https://data.vizugy.hu/valami/utvonal
 ```
+
+Magyar IP-ről ez a legvalószínűbben működő út: ha egy szolgáltatás adatközponti
+IP-ket tilt, a runner elbukik, a laptopod nem.
+
+**3. Böngésző, kézzel.** Nyisd meg a portált, F12 → Network fül, tölts be egy
+állomásgrafikont, és nézd meg, milyen URL-t hív. Utána azt add a `--url=` kapcsolónak.
+Ez a legbiztosabb, ha a portál JavaScriptből tölti az adatot.
 
 A `probe` kiírja a válasz alakját pontozott útvonalakként, amik közvetlenül
 ráilleszthetők a `VIZUGY_ARRAY_PATH` / `VIZUGY_VALUE_FIELD` / `MAVIR_ARRAY_PATH`
@@ -304,10 +322,15 @@ A `vercel.json` mindent beállít, beleértve a 15 perces cront. **A `*/15 * * *
 Pro-t igényel** — Hobby tieren a cron csak napi egyszer fut.
 
 1. Importáld a repót Vercelen.
-2. Köss be egy Postgrest (Marketplace → Neon vagy Supabase, mindkettőnek van ingyenes
-   szintje). A **poololt** connection stringet használd — Neonnál a `-pooler` hostot,
-   Supabase-nél a 6543-as portot. A serverless vízszintesen skálázódik, és pool nélkül
-   elfogynak a kapcsolatok.
+2. Köss be egy Postgrest. Supabase-nél: *Project Settings → Database → Connection
+   string → **Transaction pooler***. Ez a `...pooler.supabase.com:6543` végpont — **ne**
+   a közvetlen 5432-est. A serverless vízszintesen skálázódik, és pool nélkül elfogynak
+   a kapcsolatok.
+
+   A store ehhez igazodik: a táblaneveket explicit módon minősíti séma-előtaggal, nem
+   `search_path`-ra épít, mert a transaction mode pooler nem garantáltan továbbítja azt
+   — és `SET search_path` sem élné túl a tranzakciók közti váltást. Ha ez nem így lenne,
+   a store csendben a `public` sémába írna.
 3. Környezeti változók:
 
 ```

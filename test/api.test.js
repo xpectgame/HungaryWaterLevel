@@ -36,7 +36,12 @@ async function withServer(fn, configOverrides = {}) {
   const store = createStore(config);
   if (usePostgres) {
     await store.init();
-    await store.query('TRUNCATE station_readings, generation, balance_snapshots, poll_log');
+    await store.query(
+      ['station_readings', 'generation', 'balance_snapshots', 'poll_log']
+        .map((t) => store.t(t))
+        .join(', ')
+        .replace(/^/, 'TRUNCATE '),
+    );
   }
   const cache = new TtlCache(config.cacheTtlMs);
   const silent = { log() {}, warn() {}, error() {} };

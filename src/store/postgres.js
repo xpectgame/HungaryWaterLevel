@@ -24,8 +24,20 @@ const { Pool } = require('pg');
  * pgbouncer port 6543). The pooled URL is the one that matters.
  */
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS station_readings (
+/**
+ * Table names are qualified explicitly rather than relying on search_path.
+ *
+ * Connection poolers in transaction mode - Supabase's Supavisor, PgBouncer - do not
+ * reliably forward the `options=-c search_path=...` startup parameter, and `SET
+ * search_path` does not survive between transactions either. Either way the store would
+ * silently read and write `public` instead of the configured schema. Qualifying the
+ * names in the SQL is the only approach that holds under every pooler.
+ */
+function buildSchemaDdl(t, schema) {
+  return `
+${schema ? `CREATE SCHEMA IF NOT EXISTS ${schema};` : ''}
+
+CREATE TABLE IF NOT EXISTS ${t('station_readings')} (
   station_id     TEXT NOT NULL,
   ts             BIGINT NOT NULL,
   flow_m3s       DOUBLE PRECISION,
@@ -35,16 +47,16 @@ CREATE TABLE IF NOT EXISTS station_readings (
   quality        TEXT,
   PRIMARY KEY (station_id, ts)
 );
-CREATE INDEX IF NOT EXISTS idx_station_readings_ts ON station_readings (ts);
-CREATE INDEX IF NOT EXISTS idx_station_readings_station_ts ON station_readings (station_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_station_readings_ts ON ${t('station_readings')} (ts);
+CREATE INDEX IF NOT EXISTS idx_station_readings_station_ts ON ${t('station_readings')} (station_id, ts DESC);
 
-CREATE TABLE IF NOT EXISTS generation (
+CREATE TABLE IF NOT EXISTS ${t('generation')} (
   ts      BIGINT PRIMARY KEY,
   payload JSONB NOT NULL,
   source  TEXT
 );
 
-CREATE TABLE IF NOT EXISTS balance_snapshots (
+CREATE TABLE IF NOT EXISTS ${t('balance_snapshots')} (
   ts          BIGINT PRIMARY KEY,
   net_m3s     DOUBLE PRECISION,
   inflow_m3s  DOUBLE PRECISION,
@@ -52,12 +64,23 @@ CREATE TABLE IF NOT EXISTS balance_snapshots (
   payload     JSONB NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS poll_log (
+CREATE TABLE IF NOT EXISTS ${t('poll_log')} (
   ts     BIGINT PRIMARY KEY,
   ok     BOOLEAN NOT NULL,
   detail JSONB
 );
 `;
+}
+
+/** Schema names come from configuration, never user input, but validate anyway. */
+function validateSchema(schema) {
+  if (!schema) return null;
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schema)) {
+    throw new Error(`Invalid DATABASE_SCHEMA '${schema}': must be a plain SQL identifier`);
+  }
+  return schema;
+}
+
 
 class PostgresStore {
   constructor(connectionString, { max = 1, ssl, schema } = {}) {
@@ -65,16 +88,15 @@ class PostgresStore {
 
     // A named schema lets this project share a database with others - a free-tier
     // Postgres is usually the only one you get - and gives parallel test files their
-    // own isolated tables. search_path is set per connection via libpq options rather
-    // than a query, so pooled connections cannot leak the wrong path to each other.
-    this.schema = schema || null;
+    // own isolated tables.
+    this.schema = validateSchema(schema);
+    this.t = (name) => (this.schema ? `${this.schema}.${name}` : name);
 
     this.pool = new Pool({
       connectionString,
       max,
       idleTimeoutMillis: 10000,
       connectionTimeoutMillis: 10000,
-      ...(this.schema ? { options: `-c search_path=${this.schema}` } : {}),
       // Managed providers terminate TLS with their own chain; local development does
       // not use TLS at all.
       ssl: ssl ?? (/\blocalhost\b|\b127\.0\.0\.1\b|sslmode=disable/.test(connectionString)
@@ -95,10 +117,7 @@ class PostgresStore {
    */
   async init() {
     if (!this.ready) {
-      const ddl = this.schema
-        ? `CREATE SCHEMA IF NOT EXISTS ${this.schema};\n${SCHEMA}`
-        : SCHEMA;
-      this.ready = this.pool.query(ddl).catch((err) => {
+      this.ready = this.pool.query(buildSchemaDdl(this.t, this.schema)).catch((err) => {
         // Let the next call retry rather than caching a failure forever.
         this.ready = null;
         throw err;
@@ -136,7 +155,7 @@ class PostgresStore {
       .join(',');
 
     await this.query(
-      `INSERT INTO station_readings
+      `INSERT INTO ${this.t('station_readings')}
          (station_id, ts, flow_m3s, water_level_cm, water_temp_c, source, quality)
        VALUES ${values}
        ON CONFLICT (station_id, ts) DO UPDATE SET
@@ -155,7 +174,7 @@ class PostgresStore {
     const cutoff = maxAgeMs ? Date.now() - maxAgeMs : null;
     const { rows } = await this.query(
       `SELECT DISTINCT ON (station_id) *
-         FROM station_readings
+         FROM ${this.t('station_readings')}
         WHERE ($1::bigint IS NULL OR ts >= $1)
         ORDER BY station_id, ts DESC`,
       [cutoff],
@@ -168,7 +187,7 @@ class PostgresStore {
 
   async readingAt(stationId, atMs, toleranceMs = 3 * 3600 * 1000) {
     const { rows } = await this.query(
-      `SELECT * FROM station_readings
+      `SELECT * FROM ${this.t('station_readings')}
         WHERE station_id = $1 AND ts BETWEEN $2 AND $3
         ORDER BY ABS(ts - $4) ASC
         LIMIT 1`,
@@ -179,7 +198,7 @@ class PostgresStore {
 
   async stationSeries(stationId, fromMs, toMs, limit = 5000) {
     const { rows } = await this.query(
-      `SELECT * FROM station_readings
+      `SELECT * FROM ${this.t('station_readings')}
         WHERE station_id = $1 AND ts BETWEEN $2 AND $3
         ORDER BY ts ASC LIMIT $4`,
       [stationId, fromMs, toMs, limit],
@@ -194,7 +213,7 @@ class PostgresStore {
     if (!Number.isFinite(ts)) return false;
 
     await this.query(
-      `INSERT INTO generation (ts, payload, source) VALUES ($1, $2, $3)
+      `INSERT INTO ${this.t('generation')} (ts, payload, source) VALUES ($1, $2, $3)
        ON CONFLICT (ts) DO UPDATE SET payload = EXCLUDED.payload, source = EXCLUDED.source`,
       [ts, JSON.stringify(gen.generationMw || {}), gen.source || null],
     );
@@ -204,7 +223,7 @@ class PostgresStore {
   async latestGeneration(maxAgeMs = null) {
     const cutoff = maxAgeMs ? Date.now() - maxAgeMs : null;
     const { rows } = await this.query(
-      `SELECT * FROM generation
+      `SELECT * FROM ${this.t('generation')}
         WHERE ($1::bigint IS NULL OR ts >= $1)
         ORDER BY ts DESC LIMIT 1`,
       [cutoff],
@@ -219,7 +238,7 @@ class PostgresStore {
 
   async generationSeries(fromMs, toMs, limit = 5000) {
     const { rows } = await this.query(
-      'SELECT * FROM generation WHERE ts BETWEEN $1 AND $2 ORDER BY ts ASC LIMIT $3',
+      `SELECT * FROM ${this.t('generation')} WHERE ts BETWEEN $1 AND $2 ORDER BY ts ASC LIMIT $3`,
       [fromMs, toMs, limit],
     );
     return rows.map((row) => ({
@@ -236,7 +255,7 @@ class PostgresStore {
     if (!Number.isFinite(ts)) return false;
 
     await this.query(
-      `INSERT INTO balance_snapshots (ts, net_m3s, inflow_m3s, outflow_m3s, payload)
+      `INSERT INTO ${this.t('balance_snapshots')} (ts, net_m3s, inflow_m3s, outflow_m3s, payload)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (ts) DO UPDATE SET
          net_m3s = EXCLUDED.net_m3s,
@@ -249,13 +268,13 @@ class PostgresStore {
   }
 
   async latestBalance() {
-    const { rows } = await this.query('SELECT payload FROM balance_snapshots ORDER BY ts DESC LIMIT 1');
+    const { rows } = await this.query(`SELECT payload FROM ${this.t('balance_snapshots')} ORDER BY ts DESC LIMIT 1`);
     return rows[0] ? rows[0].payload : null;
   }
 
   async balanceSeries(fromMs, toMs, limit = 5000) {
     const { rows } = await this.query(
-      `SELECT ts, net_m3s, inflow_m3s, outflow_m3s FROM balance_snapshots
+      `SELECT ts, net_m3s, inflow_m3s, outflow_m3s FROM ${this.t('balance_snapshots')}
         WHERE ts BETWEEN $1 AND $2 ORDER BY ts ASC LIMIT $3`,
       [fromMs, toMs, limit],
     );
@@ -271,13 +290,13 @@ class PostgresStore {
 
   async logPoll(ok, detail) {
     await this.query(
-      'INSERT INTO poll_log (ts, ok, detail) VALUES ($1, $2, $3) ON CONFLICT (ts) DO NOTHING',
+      `INSERT INTO ${this.t('poll_log')} (ts, ok, detail) VALUES ($1, $2, $3) ON CONFLICT (ts) DO NOTHING`,
       [Date.now(), !!ok, detail ? JSON.stringify(detail) : null],
     );
   }
 
   async lastPoll() {
-    const { rows } = await this.query('SELECT * FROM poll_log ORDER BY ts DESC LIMIT 1');
+    const { rows } = await this.query(`SELECT * FROM ${this.t('poll_log')} ORDER BY ts DESC LIMIT 1`);
     if (!rows[0]) return null;
     return {
       timestamp: new Date(Number(rows[0].ts)).toISOString(),
@@ -289,10 +308,10 @@ class PostgresStore {
   async prune(retentionDays = 400) {
     const cutoff = Date.now() - retentionDays * 86400000;
     const results = await Promise.all([
-      this.query('DELETE FROM station_readings WHERE ts < $1', [cutoff]),
-      this.query('DELETE FROM generation WHERE ts < $1', [cutoff]),
-      this.query('DELETE FROM balance_snapshots WHERE ts < $1', [cutoff]),
-      this.query('DELETE FROM poll_log WHERE ts < $1', [Date.now() - 30 * 86400000]),
+      this.query(`DELETE FROM ${this.t('station_readings')} WHERE ts < $1`, [cutoff]),
+      this.query(`DELETE FROM ${this.t('generation')} WHERE ts < $1`, [cutoff]),
+      this.query(`DELETE FROM ${this.t('balance_snapshots')} WHERE ts < $1`, [cutoff]),
+      this.query(`DELETE FROM ${this.t('poll_log')} WHERE ts < $1`, [Date.now() - 30 * 86400000]),
     ]);
     return results.slice(0, 3).reduce((sum, r) => sum + r.rowCount, 0);
   }
@@ -300,11 +319,11 @@ class PostgresStore {
   async stats() {
     const { rows } = await this.query(`
       SELECT
-        (SELECT COUNT(*) FROM station_readings)   AS station_readings,
-        (SELECT COUNT(*) FROM generation)         AS generation_rows,
-        (SELECT COUNT(*) FROM balance_snapshots)  AS balance_snapshots,
-        (SELECT MIN(ts) FROM station_readings)    AS oldest,
-        (SELECT MAX(ts) FROM station_readings)    AS newest
+        (SELECT COUNT(*) FROM ${this.t('station_readings')})   AS station_readings,
+        (SELECT COUNT(*) FROM ${this.t('generation')})         AS generation_rows,
+        (SELECT COUNT(*) FROM ${this.t('balance_snapshots')})  AS balance_snapshots,
+        (SELECT MIN(ts) FROM ${this.t('station_readings')})    AS oldest,
+        (SELECT MAX(ts) FROM ${this.t('station_readings')})    AS newest
     `);
     const row = rows[0];
     return {

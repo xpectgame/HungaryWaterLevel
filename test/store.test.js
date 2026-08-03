@@ -28,13 +28,27 @@ if (process.env.TEST_DATABASE_URL) {
       const store = new PostgresStore(process.env.TEST_DATABASE_URL, { schema: 'test_store' });
       await store.init();
       // Each case starts from a clean slate; these tests own the database.
-      await store.query('TRUNCATE station_readings, generation, balance_snapshots, poll_log');
+      await truncateAll(store);
       return store;
     },
   ]);
 }
 
 const HOUR = 3600 * 1000;
+
+/**
+ * Qualify table names the same way the store does.
+ *
+ * An unqualified TRUNCATE here would clear `public` while the store reads and writes its
+ * own schema - which is precisely the production failure mode that made the store stop
+ * relying on search_path in the first place.
+ */
+async function truncateAll(store) {
+  const tables = ['station_readings', 'generation', 'balance_snapshots', 'poll_log']
+    .map((t) => store.t(t))
+    .join(', ');
+  await store.query(`TRUNCATE ${tables}`);
+}
 
 function reading(stationId, ts, flow) {
   return { stationId, timestamp: new Date(ts).toISOString(), flowM3s: flow, source: 'test', quality: 'measured' };
@@ -217,3 +231,44 @@ test('partial history stays lagged but says how much was actually shifted', () =
   assert.strictEqual(balance.inflow.laggedCount, 1);
   assert.ok(balance.dataQuality.warnings.some((w) => w.includes('1 of 20 inflow stations')));
 });
+
+if (process.env.TEST_DATABASE_URL) {
+  const { PostgresStore } = require('../src/store/postgres');
+
+  test('PostgresStore: a schema actually isolates the tables', async () => {
+    // The bug this guards against: relying on search_path, which connection poolers in
+    // transaction mode (Supabase's Supavisor, PgBouncer) may not forward. The store
+    // would then read and write `public` while believing it was using the schema -
+    // silently, and only in production, because a direct connection works fine.
+    const a = new PostgresStore(process.env.TEST_DATABASE_URL, { schema: 'iso_a' });
+    const b = new PostgresStore(process.env.TEST_DATABASE_URL, { schema: 'iso_b' });
+
+    await a.init();
+    await b.init();
+    await truncateAll(a);
+    await truncateAll(b);
+
+    await a.putStationReadings({ x: reading('duna-rajka', Date.now(), 1111) });
+
+    assert.strictEqual((await a.stats()).stationReadings, 1);
+    assert.strictEqual((await b.stats()).stationReadings, 0, 'schema b must not see schema a rows');
+
+    // And the qualified name is what actually reached the server.
+    const { rows } = await b.query(
+      `SELECT table_schema FROM information_schema.tables
+        WHERE table_name = 'station_readings' AND table_schema IN ('iso_a','iso_b')
+        ORDER BY table_schema`,
+    );
+    assert.deepStrictEqual(rows.map((r) => r.table_schema), ['iso_a', 'iso_b']);
+
+    await a.close();
+    await b.close();
+  });
+
+  test('PostgresStore: rejects a schema name that is not a plain identifier', () => {
+    assert.throws(
+      () => new PostgresStore(process.env.TEST_DATABASE_URL, { schema: 'a; DROP TABLE x' }),
+      /must be a plain SQL identifier/,
+    );
+  });
+}

@@ -1,0 +1,64 @@
+name: Probe upstream endpoints
+
+# Discovers the real shape of the data.vizugy.hu and mavir.hu responses, so the
+# adapters can be configured against fact rather than guesswork.
+#
+# Run this from the Actions tab (Run workflow) - it needs nothing installed locally,
+# and a GitHub runner reaches both services directly. Read the output in the job log,
+# then set the matching variables in Vercel.
+#
+# If a runner cannot reach a host (geo-blocking, or the service refusing datacentre
+# IPs), run the same command from your own machine instead:
+#     npm ci && npm run probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which upstream to probe
+        required: true
+        default: both
+        type: choice
+        options: [both, vizugy, mavir]
+      url:
+        description: Optional single URL to probe instead (overrides target)
+        required: false
+        type: string
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Probe
+        run: |
+          if [ -n "${{ inputs.url }}" ]; then
+            npm run probe -- --url="${{ inputs.url }}"
+          elif [ "${{ inputs.target }}" = "both" ]; then
+            npm run probe
+          else
+            npm run probe -- --${{ inputs.target }}
+          fi
+
+      - name: What to do with the output
+        if: always()
+        run: |
+          echo "Read the 'Probe' step above."
+          echo
+          echo "Each dotted path shown maps onto one setting:"
+          echo "  the path ending in [] that holds the samples -> VIZUGY_ARRAY_PATH / MAVIR_ARRAY_PATH"
+          echo "  the field holding discharge in m3/s          -> VIZUGY_VALUE_FIELD"
+          echo "  the field holding the sample timestamp       -> VIZUGY_TIME_FIELD"
+          echo
+          echo "Also record the portal's own station identifiers in EXTERNAL_IDS"
+          echo "(src/sources/vizugy.js) - without them the API cannot map a response to a river."
