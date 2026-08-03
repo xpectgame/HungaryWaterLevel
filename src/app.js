@@ -1,5 +1,16 @@
 'use strict';
 
+/**
+ * Application factories.
+ *
+ * Deliberately exports named factories and never a ready-made app, so tests can build
+ * isolated instances with their own stores. That also means this file must never be a
+ * deployment entry point: a host that loads it and looks for a default request handler
+ * finds an object and refuses to boot. The entry point is server.js at the repository
+ * root, and the standalone server is src/cli.js - nothing here is named `server` so
+ * neither `main` nor a `start` script can accidentally aim at it.
+ */
+
 const express = require('express');
 const path = require('node:path');
 
@@ -7,7 +18,6 @@ const { loadConfig, assertProviderSafe } = require('./config');
 const { createStore } = require('./store');
 const { TtlCache } = require('./lib/cache');
 const { createRouter } = require('./routes');
-const { startPolling } = require('./jobs/poll');
 const { createCronHandler } = require('./jobs/cron-handler');
 
 function createApp(ctx) {
@@ -76,62 +86,4 @@ function createContext(env = process.env) {
   return { config, store, cache };
 }
 
-/** The one line an operator reads to know where data lives and what keeps it fresh. */
-function describeStore(config, store) {
-  if (config.store === 'memory') return 'memory (no persistence)';
-  if (config.store === 'postgres') return store.path;
-  return config.dbPath;
-}
-
-function describeIngest(config) {
-  if (config.backgroundPolling) return `background poll every ${Math.round(config.pollIntervalMs / 60000)} min`;
-  if (config.lazyRefresh) return 'on demand, driven by requests';
-  return 'external cron (nothing in this process fetches)';
-}
-
-function start() {
-  const ctx = createContext();
-  const { config, store, cache } = ctx;
-
-  const app = createApp(ctx);
-
-  const stopPolling = config.backgroundPolling
-    ? startPolling(store, config, {
-        log: (...args) => {
-          console.log(...args);
-          // New data invalidates every derived response.
-          cache.clear();
-        },
-        warn: console.warn,
-        error: console.error,
-      })
-    : () => {};
-
-  const server = app.listen(config.port, config.host, () => {
-    console.log(`[api] HungaryWaterLevel listening on http://${config.host}:${config.port}`);
-    console.log(`[api] provider=${config.provider}${config.provider === 'fixture' ? ' (SYNTHETIC DATA)' : ''}`);
-    console.log(`[api] store=${describeStore(config, store)}, ingest=${describeIngest(config)}`);
-  });
-
-  const shutdown = (signal) => {
-    console.log(`[api] ${signal} received, shutting down`);
-    stopPolling();
-    server.close(() => {
-      store.close();
-      process.exit(0);
-    });
-    // Do not let a hung connection keep the process alive forever.
-    setTimeout(() => process.exit(1), 10000).unref();
-  };
-
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
-
-  return { app, server, store, config };
-}
-
-if (require.main === module) {
-  start();
-}
-
-module.exports = { createApp, createContext, start };
+module.exports = { createApp, createContext };

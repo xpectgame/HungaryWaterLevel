@@ -8,8 +8,8 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "start": "node server.js",
+    "dev": "node --watch server.js",
     "poll": "node src/jobs/poll.js --once",
     "backfill": "node src/jobs/poll.js --backfill",
     "test": "node --test \"test/*.test.js\"",

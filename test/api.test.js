@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { createApp } = require('../src/server');
+const { createApp } = require('../src/app');
 const { createStore } = require('../src/store');
 const { TtlCache } = require('../src/lib/cache');
 const { loadConfig, assertProviderSafe } = require('../src/config');
