@@ -15,6 +15,11 @@ function loadConfig(env = process.env) {
   // the data is old. Vercel sets VERCEL=1, so the common case needs no configuration.
   const stateless = env.STATELESS === 'true' || (!!env.VERCEL && env.STATELESS !== 'false');
 
+  // Vercel's Postgres integrations export POSTGRES_URL; Neon and Supabase use
+  // DATABASE_URL. Prefer the pooled variant when the provider offers one.
+  const databaseUrl =
+    env.DATABASE_URL || env.POSTGRES_URL_NON_POOLING_OVERRIDE || env.POSTGRES_URL || null;
+
   return {
     nodeEnv,
     port: Number(env.PORT) || 3000,
@@ -26,14 +31,22 @@ function loadConfig(env = process.env) {
     allowFixtureInProduction: env.ALLOW_FIXTURE_IN_PRODUCTION === 'true',
 
     stateless,
-    // 'sqlite' persists to disk and keeps months of history; 'memory' holds a short
-    // window and loses it when the instance recycles.
-    store: env.STORE || (stateless ? 'memory' : 'sqlite'),
+    // 'sqlite'   - local file, months of history, needs a disk
+    // 'memory'   - per-instance, short window, loses everything on recycle
+    // 'postgres' - shared across instances; the only option that gives a serverless
+    //              deployment real history AND keeps the upstream to one fetch per
+    //              cron tick regardless of traffic.
+    // A DATABASE_URL is taken as an explicit intent to use it.
+    store: env.STORE || (databaseUrl ? 'postgres' : stateless ? 'memory' : 'sqlite'),
+    databaseUrl,
+    databaseSchema: env.DATABASE_SCHEMA || null,
     memoryMaxSamples: Number(env.MEMORY_MAX_SAMPLES) || 500,
 
     // Run the poller as a background interval (server) or on demand (serverless).
     backgroundPolling: env.BACKGROUND_POLLING ? env.BACKGROUND_POLLING === 'true' : !stateless,
-    lazyRefresh: env.LAZY_REFRESH ? env.LAZY_REFRESH === 'true' : stateless,
+    // With shared storage a cron keeps the data fresh for everyone, so requests should
+    // not each try to refresh it. Without it, the request path is the only thing alive.
+    lazyRefresh: env.LAZY_REFRESH ? env.LAZY_REFRESH === 'true' : stateless && !databaseUrl,
     refreshRetryMs: Number(env.REFRESH_RETRY_MS) || 60 * 1000,
 
     dbPath: env.DB_PATH || path.join(process.cwd(), 'data', 'hungarywaterlevel.db'),
@@ -52,6 +65,9 @@ function loadConfig(env = process.env) {
 
     defaultBalanceMethod: env.DEFAULT_BALANCE_METHOD === 'lagged' ? 'lagged' : 'instant',
     defaultCoolingModel: env.DEFAULT_COOLING_MODEL === 'thermal' ? 'thermal' : 'linear',
+
+    // Shared secret for the cron endpoint. Vercel sends it as `Authorization: Bearer`.
+    cronSecret: env.CRON_SECRET || null,
 
     cacheTtlMs: Number(env.CACHE_TTL_MS) || 60 * 1000,
     corsOrigin: env.CORS_ORIGIN || '*',

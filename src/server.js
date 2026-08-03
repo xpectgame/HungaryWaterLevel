@@ -67,6 +67,19 @@ function createContext(env = process.env) {
   return { config, store, cache };
 }
 
+/** The one line an operator reads to know where data lives and what keeps it fresh. */
+function describeStore(config, store) {
+  if (config.store === 'memory') return 'memory (no persistence)';
+  if (config.store === 'postgres') return store.path;
+  return config.dbPath;
+}
+
+function describeIngest(config) {
+  if (config.backgroundPolling) return `background poll every ${Math.round(config.pollIntervalMs / 60000)} min`;
+  if (config.lazyRefresh) return 'on demand, driven by requests';
+  return 'external cron (nothing in this process fetches)';
+}
+
 function start() {
   const ctx = createContext();
   const { config, store, cache } = ctx;
@@ -88,12 +101,7 @@ function start() {
   const server = app.listen(config.port, config.host, () => {
     console.log(`[api] HungaryWaterLevel listening on http://${config.host}:${config.port}`);
     console.log(`[api] provider=${config.provider}${config.provider === 'fixture' ? ' (SYNTHETIC DATA)' : ''}`);
-    console.log(
-      `[api] store=${config.store === 'memory' ? 'memory (no persistence)' : config.dbPath}, ` +
-        (config.backgroundPolling
-          ? `poll every ${Math.round(config.pollIntervalMs / 60000)} min`
-          : 'on-demand refresh'),
-    );
+    console.log(`[api] store=${describeStore(config, store)}, ingest=${describeIngest(config)}`);
   });
 
   const shutdown = (signal) => {

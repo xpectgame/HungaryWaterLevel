@@ -3,6 +3,7 @@
 const express = require('express');
 const { listStations, getStation, UNGAUGED_INFLOW } = require('../config/stations');
 const { parseRange } = require('../lib/params');
+const { asyncRoute } = require('../lib/async-route');
 const { withMeta } = require('./balance');
 
 module.exports = function stationRoutes(ctx) {
@@ -10,17 +11,17 @@ module.exports = function stationRoutes(ctx) {
   const { store, config } = ctx;
 
   /** GET /stations?role=inflow|outflow|interior - registry plus current readings. */
-  router.get('/stations', (req, res) => {
+  router.get('/stations', asyncRoute(async (req, res) => {
     const role = req.query.role;
     if (role && !['inflow', 'outflow', 'interior'].includes(role)) {
       return res.status(400).json({ error: `Unknown role '${role}'. Use inflow, outflow or interior.` });
     }
 
-    const readings = store.latestReadings(config.maxReadingAgeMs);
+    const readings = await store.latestReadings(config.maxReadingAgeMs);
     const stations = listStations(role).map((station) => decorate(station, readings[station.id]));
 
     return res.json(
-      withMeta(
+      await withMeta(
         {
           count: stations.length,
           ungaugedInflow: UNGAUGED_INFLOW,
@@ -29,28 +30,28 @@ module.exports = function stationRoutes(ctx) {
         ctx,
       ),
     );
-  });
+  }));
 
   /** GET /stations/:id */
-  router.get('/stations/:id', (req, res) => {
+  router.get('/stations/:id', asyncRoute(async (req, res) => {
     const station = getStation(req.params.id);
     if (!station) return res.status(404).json({ error: `Unknown station '${req.params.id}'` });
 
-    const readings = store.latestReadings(config.maxReadingAgeMs);
-    return res.json(withMeta(decorate(station, readings[station.id]), ctx));
-  });
+    const readings = await store.latestReadings(config.maxReadingAgeMs);
+    return res.json(await withMeta(decorate(station, readings[station.id]), ctx));
+  }));
 
   /** GET /stations/:id/timeseries?from=&to=&limit= */
-  router.get('/stations/:id/timeseries', (req, res) => {
+  router.get('/stations/:id/timeseries', asyncRoute(async (req, res) => {
     const station = getStation(req.params.id);
     if (!station) return res.status(404).json({ error: `Unknown station '${req.params.id}'` });
 
     const { fromMs, toMs, limit, error } = parseRange(req.query, { defaultDays: 7 });
     if (error) return res.status(400).json({ error });
 
-    const series = store.stationSeries(station.id, fromMs, toMs, limit);
+    const series = await store.stationSeries(station.id, fromMs, toMs, limit);
     return res.json(
-      withMeta(
+      await withMeta(
         {
           station: { id: station.id, name: station.name, river: station.river, role: station.role },
           from: new Date(fromMs).toISOString(),
@@ -61,7 +62,7 @@ module.exports = function stationRoutes(ctx) {
         ctx,
       ),
     );
-  });
+  }));
 
   return router;
 };

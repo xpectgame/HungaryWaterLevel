@@ -12,15 +12,13 @@ const { getStation } = require('../config/stations');
  * number.
  */
 
-function buildSnapshot({ readings, generation, store, config, options = {} }) {
+function buildSnapshot({ readings, generation, historyLookup, config, options = {} }) {
   const method = options.method || config.defaultBalanceMethod;
   const coolingModel = options.coolingModel || config.defaultCoolingModel;
 
-  const historyLookup = store ? (stationId, atMs) => store.readingAt(stationId, atMs) : undefined;
-
   const balance = computeBalance(readings, {
     method,
-    historyLookup,
+    historyLookup: historyLookup || undefined,
     includeUngauged: options.includeUngauged !== false,
   });
 

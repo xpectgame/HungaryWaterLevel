@@ -4,6 +4,7 @@ const express = require('express');
 const path = require('node:path');
 const { listStations } = require('../config/stations');
 const { vizugy, mavir } = require('../sources');
+const { asyncRoute } = require('../lib/async-route');
 
 module.exports = function metaRoutes(ctx) {
   const router = express.Router();
@@ -16,9 +17,9 @@ module.exports = function metaRoutes(ctx) {
    * while serving a four-day-old river is worse than one that admits it - the numbers
    * still look perfectly plausible.
    */
-  router.get('/health', (req, res) => {
-    const lastPoll = store.lastPoll();
-    const stats = store.stats();
+  router.get('/health', asyncRoute(async (req, res) => {
+    const lastPoll = await store.lastPoll();
+    const stats = await store.stats();
     const newest = stats.newestReading ? Date.parse(stats.newestReading) : null;
     const ageMs = newest ? Date.now() - newest : null;
     const stale = ageMs == null || ageMs > config.maxReadingAgeMs;
@@ -34,7 +35,7 @@ module.exports = function metaRoutes(ctx) {
       store: stats,
       uptimeSeconds: Math.round(process.uptime()),
     });
-  });
+  }));
 
   /**
    * GET /meta/sources - provenance, licensing and, importantly, what is modelled

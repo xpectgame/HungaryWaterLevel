@@ -276,45 +276,78 @@ futásidő-korrigált mérleget. Railway, Fly.io, Render vagy egy VPS.
 DATA_PROVIDER=live NODE_ENV=production npm start
 ```
 
-### Stateless mód (serverless, pl. Vercel)
+### Serverless mód (Vercel)
 
-Serverlessen nincs perzisztens lemez és nincs folyamat két kérés között, tehát nincs
-háttér-poller sem. Ilyenkor a tároló memóriában van, és a frissességet az első olyan
-kérés hozza be, amelyik észreveszi, hogy elavult az adat (`src/lib/refresh.js` — az
-egyidejű kérések egy közös lekérésen osztoznak, nem indítanak sajátot).
+Serverlessen nincs perzisztens lemez és nincs folyamat két kérés között. Két változat van,
+és a különbség nem elsősorban a történeti adat:
 
-**A Vercelt automatikusan felismeri** (`VERCEL=1`), nem kell hozzá konfiguráció.
-Lokálisan: `STATELESS=true npm start`.
+**A hálózati udvariasság a fő szempont.** Megosztott tároló nélkül minden hidegindított
+instance maga kéri le az upstreamet — kb. 30 kérés a `data.vizugy.hu`-ra hidegindításonként.
+Forgalom mellett ez óránként több száz kérés egy ingyenes állami szolgáltatás felé. Cronnal
++ megosztott tárolóval az upstream **pontosan egy ciklust lát ütemenként**, függetlenül
+attól, hányan nézik.
 
-Amit ez a mód **nem** tud, szerkezeti okból:
-
-| | Szerver | Stateless |
+| | memória | Postgres + cron |
 |---|---|---|
+| Upstream terhelés | forgalommal skálázódik | fix, 96 ciklus/nap |
 | `/snapshot`, `/balance`, `/stations`, `/powerplants`, `/geojson` | ✅ | ✅ |
-| `/balance/history`, `/stations/:id/timeseries` | hónapok | csak az instance rövid ablaka |
-| `?method=lagged` | ✅ | visszaesik `instant`-ra |
+| `/balance/history`, `/stations/:id/timeseries` | az instance rövid ablaka | teljes |
+| `?method=lagged` | visszaesik `instant`-ra | ✅ |
+| Kell hozzá | semmi | egy Postgres URL |
 
-Mindkét korlátot maga a válasz jelenti: a `method` mező azt írja, ami *történt*, nem azt,
-amit kértek, és a `dataQuality.warnings`-ban megjelenik az ok. Az `inflow.laggedCount`
-megmondja, hány állomást sikerült ténylegesen eltolni.
+A `DATABASE_URL` jelenléte automatikusan a Postgres útra vált (`STORE`-ral felülbírálható).
+A `VERCEL=1`-et magától felismeri.
 
-#### Vercel deploy
+#### Vercel deploy (Pro)
 
-A repót importálva a `vercel.json` mindent beállít. Környezeti változók a Vercel UI-ban:
+A `vercel.json` mindent beállít, beleértve a 15 perces cront. **A `*/15 * * * *` ütemezés
+Pro-t igényel** — Hobby tieren a cron csak napi egyszer fut.
+
+1. Importáld a repót Vercelen.
+2. Köss be egy Postgrest (Marketplace → Neon vagy Supabase, mindkettőnek van ingyenes
+   szintje). A **poololt** connection stringet használd — Neonnál a `-pooler` hostot,
+   Supabase-nél a 6543-as portot. A serverless vízszintesen skálázódik, és pool nélkül
+   elfogynak a kapcsolatok.
+3. Környezeti változók:
 
 ```
-DATA_PROVIDER=fixture
-ALLOW_FIXTURE_IN_PRODUCTION=true
+DATABASE_URL=postgres://...            # a poololt URL
+CRON_SECRET=<hosszú véletlen string>   # e nélkül a cron production-ben nem indul el
+DATA_PROVIDER=fixture                  # amíg az upstream nincs bekötve
+ALLOW_FIXTURE_IN_PRODUCTION=true       # ugyanezért
 ```
 
-`fixture`-rel szintetikus adatot szolgál ki — a felületen sárga sáv jelzi, és minden
-válaszban ott van a `_meta.synthetic: true`. Ez a helyes beállítás addig, amíg az
-upstream végpontok nincsenek bekötve (lásd [Éles üzem előtt](#éles-üzem-előtt)).
-Utána `DATA_PROVIDER=live`, és a két opt-in sor törölhető.
+`fixture`-rel szintetikus adatot szolgál ki — sárga sáv jelzi a felületen, és minden
+válaszban ott a `_meta.synthetic: true`. Ha az upstream bekötve, `DATA_PROVIDER=live`, és
+az alsó két sor törölhető.
 
-Miért nem működne a naiv Vercel-deploy a szerver móddal: a Hobby tier cronja **napi
-egyszer** fut, nem 15 percenként, és a serverless függvényeknek nincs perzisztens
-fájlrendszerük, tehát a SQLite minden hívás után elveszne.
+A `DATABASE_SCHEMA` opcionális: saját sémába teszi a táblákat, így egy ingyenes Postgres
+megosztható más projektekkel.
+
+#### Miért nem működne a naiv deploy
+
+A `jobs/poll.js` háttér-intervalluma serverlessen soha nem fut le, mert a folyamat nem él
+két kérés között. A `vercel.json`-beli cron az, ami ezt kiváltja — és a cron végpont
+kifejezetten **hibát dob**, ha memóriás tárolóval hívják meg, mert olyankor egy olyan
+instance memóriájába írna, amelyik utána egyetlen kérést sem szolgál ki. A 200-as válasz
+és a semmittevés a legrosszabb kombináció.
+
+### Lokálisan
+
+```bash
+STATELESS=true npm start                          # memóriás, on-demand
+DATABASE_URL=postgres://... npm start             # Postgres
+npm start                                         # SQLite + háttér-poller
+```
+
+Tesztek Postgres ellen is:
+
+```bash
+TEST_DATABASE_URL=postgres://... npm test         # 82 teszt
+```
+
+Ez azért számít: SQLite-tal egy elfelejtett `await` észrevétlenül működik, mert az érték
+már ott van. Csak valódi async adatbázison bukik meg.
 
 ## Licenc és hivatkozás
 

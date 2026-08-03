@@ -17,6 +17,23 @@ const implementations = [
   ['TimeseriesStore', () => new TimeseriesStore(':memory:')],
 ];
 
+// The Postgres store joins the same contract when a database is available. Without one
+// the suite still passes - but then the serverless deployment path is untested, so CI
+// for that path must set TEST_DATABASE_URL.
+if (process.env.TEST_DATABASE_URL) {
+  const { PostgresStore } = require('../src/store/postgres');
+  implementations.push([
+    'PostgresStore',
+    async () => {
+      const store = new PostgresStore(process.env.TEST_DATABASE_URL, { schema: 'test_store' });
+      await store.init();
+      // Each case starts from a clean slate; these tests own the database.
+      await store.query('TRUNCATE station_readings, generation, balance_snapshots, poll_log');
+      return store;
+    },
+  ]);
+}
+
 const HOUR = 3600 * 1000;
 
 function reading(stationId, ts, flow) {
@@ -24,98 +41,98 @@ function reading(stationId, ts, flow) {
 }
 
 for (const [name, create] of implementations) {
-  test(`${name}: stores and returns the latest reading per station`, () => {
-    const store = create();
+  test(`${name}: stores and returns the latest reading per station`, async () => {
+    const store = await create();
     const now = Date.now();
 
-    store.putStationReadings({
+    await store.putStationReadings({
       a: reading('duna-rajka', now - HOUR, 1900),
       b: reading('tisza-tiszabecs', now - HOUR, 140),
     });
-    store.putStationReadings({ a: reading('duna-rajka', now, 2100) });
+    await store.putStationReadings({ a: reading('duna-rajka', now, 2100) });
 
-    const latest = store.latestReadings();
+    const latest = await store.latestReadings();
     assert.strictEqual(latest['duna-rajka'].flowM3s, 2100);
     assert.strictEqual(latest['tisza-tiszabecs'].flowM3s, 140);
-    store.close();
+    await store.close();
   });
 
-  test(`${name}: drops readings older than the freshness window`, () => {
-    const store = create();
-    store.putStationReadings({ a: reading('duna-rajka', Date.now() - 10 * HOUR, 2000) });
+  test(`${name}: drops readings older than the freshness window`, async () => {
+    const store = await create();
+    await store.putStationReadings({ a: reading('duna-rajka', Date.now() - 10 * HOUR, 2000) });
 
-    assert.strictEqual(Object.keys(store.latestReadings()).length, 1);
-    assert.strictEqual(Object.keys(store.latestReadings(6 * HOUR)).length, 0);
-    store.close();
+    assert.strictEqual(Object.keys(await store.latestReadings()).length, 1);
+    assert.strictEqual(Object.keys(await store.latestReadings(6 * HOUR)).length, 0);
+    await store.close();
   });
 
-  test(`${name}: upserts rather than duplicating the same timestamp`, () => {
-    const store = create();
+  test(`${name}: upserts rather than duplicating the same timestamp`, async () => {
+    const store = await create();
     const ts = Date.now();
 
-    store.putStationReadings({ a: reading('duna-rajka', ts, 2000) });
-    store.putStationReadings({ a: reading('duna-rajka', ts, 2500) });
+    await store.putStationReadings({ a: reading('duna-rajka', ts, 2000) });
+    await store.putStationReadings({ a: reading('duna-rajka', ts, 2500) });
 
-    assert.strictEqual(store.stats().stationReadings, 1);
-    assert.strictEqual(store.latestReadings()['duna-rajka'].flowM3s, 2500);
-    store.close();
+    assert.strictEqual((await store.stats()).stationReadings, 1);
+    assert.strictEqual((await store.latestReadings())['duna-rajka'].flowM3s, 2500);
+    await store.close();
   });
 
-  test(`${name}: readingAt finds the nearest sample inside the tolerance`, () => {
-    const store = create();
+  test(`${name}: readingAt finds the nearest sample inside the tolerance`, async () => {
+    const store = await create();
     const now = Date.now();
 
-    store.putStationReadings({ a: reading('duna-rajka', now - 90 * HOUR, 1800) });
-    store.putStationReadings({ b: reading('duna-rajka', now, 2400) });
+    await store.putStationReadings({ a: reading('duna-rajka', now - 90 * HOUR, 1800) });
+    await store.putStationReadings({ b: reading('duna-rajka', now, 2400) });
 
-    const lagged = store.readingAt('duna-rajka', now - 90 * HOUR);
+    const lagged = await store.readingAt('duna-rajka', now - 90 * HOUR);
     assert.strictEqual(lagged.flowM3s, 1800);
 
     // Nothing within tolerance of a gap in the record.
-    assert.strictEqual(store.readingAt('duna-rajka', now - 40 * HOUR), null);
-    store.close();
+    assert.strictEqual(await store.readingAt('duna-rajka', now - 40 * HOUR), null);
+    await store.close();
   });
 
-  test(`${name}: stationSeries returns an ascending window`, () => {
-    const store = create();
+  test(`${name}: stationSeries returns an ascending window`, async () => {
+    const store = await create();
     const now = Date.now();
 
     for (let i = 5; i >= 0; i -= 1) {
-      store.putStationReadings({ a: reading('duna-rajka', now - i * HOUR, 2000 + i) });
+      await store.putStationReadings({ a: reading('duna-rajka', now - i * HOUR, 2000 + i) });
     }
 
-    const series = store.stationSeries('duna-rajka', now - 3 * HOUR, now);
+    const series = await store.stationSeries('duna-rajka', now - 3 * HOUR, now);
     assert.strictEqual(series.length, 4);
     const times = series.map((r) => Date.parse(r.timestamp));
     assert.deepStrictEqual(times, [...times].sort((a, b) => a - b));
-    store.close();
+    await store.close();
   });
 
-  test(`${name}: round-trips generation and balance snapshots`, () => {
-    const store = create();
+  test(`${name}: round-trips generation and balance snapshots`, async () => {
+    const store = await create();
     const now = new Date().toISOString();
 
-    store.putGeneration({ timestamp: now, source: 'test', generationMw: { nuclear: 1980, naturalGas: 900 } });
-    assert.strictEqual(store.latestGeneration().generationMw.nuclear, 1980);
+    await store.putGeneration({ timestamp: now, source: 'test', generationMw: { nuclear: 1980, naturalGas: 900 } });
+    assert.strictEqual((await store.latestGeneration()).generationMw.nuclear, 1980);
 
     const balance = computeBalance({}, { now: Date.now() });
-    store.putBalance(balance);
+    await store.putBalance(balance);
 
-    const stored = store.latestBalance();
+    const stored = await store.latestBalance();
     assert.strictEqual(stored.net.m3s, balance.net.m3s);
-    assert.strictEqual(store.balanceSeries(Date.now() - HOUR, Date.now() + HOUR).length, 1);
-    store.close();
+    assert.strictEqual((await store.balanceSeries(Date.now() - HOUR, Date.now() + HOUR)).length, 1);
+    await store.close();
   });
 
-  test(`${name}: reports poll status`, () => {
-    const store = create();
-    assert.strictEqual(store.lastPoll(), null);
+  test(`${name}: reports poll status`, async () => {
+    const store = await create();
+    assert.strictEqual(await store.lastPoll(), null);
 
-    store.logPoll(true, { stationsStored: 29 });
-    const last = store.lastPoll();
+    await store.logPoll(true, { stationsStored: 29 });
+    const last = await store.lastPoll();
     assert.strictEqual(last.ok, true);
     assert.strictEqual(last.detail.stationsStored, 29);
-    store.close();
+    await store.close();
   });
 }
 

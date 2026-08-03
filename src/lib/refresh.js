@@ -25,7 +25,7 @@ function createRefresher(ctx, { runOnce } = {}) {
   return async function ensureFresh() {
     if (!ctx.config.lazyRefresh) return;
 
-    const lastPoll = ctx.store.lastPoll();
+    const lastPoll = await ctx.store.lastPoll();
     const lastPollMs = lastPoll ? Date.parse(lastPoll.timestamp) : 0;
     const age = Date.now() - lastPollMs;
 

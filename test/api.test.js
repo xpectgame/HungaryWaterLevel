@@ -4,23 +4,40 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const { createApp } = require('../src/server');
-const { TimeseriesStore } = require('../src/store/timeseries');
+const { createStore } = require('../src/store');
 const { TtlCache } = require('../src/lib/cache');
 const { loadConfig, assertProviderSafe } = require('../src/config');
 const { runOnce } = require('../src/jobs/poll');
 
-/** Spin up the full app against an in-memory store seeded with one fixture poll. */
+/**
+ * Spin up the full app against a store seeded with one fixture poll.
+ *
+ * When TEST_DATABASE_URL is set the whole HTTP stack runs against real Postgres, which
+ * is the only way to catch a route that forgot to await an async store - against SQLite
+ * a missing await silently works, because the value is already there.
+ */
 async function withServer(fn, configOverrides = {}) {
+  const usePostgres = !!process.env.TEST_DATABASE_URL;
+
   const config = {
     ...loadConfig({ DATA_PROVIDER: 'fixture', DB_PATH: ':memory:' }),
     dbPath: ':memory:',
     provider: 'fixture',
     pollOnStart: false,
     cacheTtlMs: 0,
+    store: usePostgres ? 'postgres' : 'sqlite',
+    databaseUrl: process.env.TEST_DATABASE_URL || null,
+    // Own schema so this file cannot collide with store.test.js running in parallel.
+    databaseSchema: 'test_api',
+    lazyRefresh: false,
     ...configOverrides,
   };
 
-  const store = new TimeseriesStore(':memory:');
+  const store = createStore(config);
+  if (usePostgres) {
+    await store.init();
+    await store.query('TRUNCATE station_readings, generation, balance_snapshots, poll_log');
+  }
   const cache = new TtlCache(config.cacheTtlMs);
   const silent = { log() {}, warn() {}, error() {} };
 
@@ -39,7 +56,7 @@ async function withServer(fn, configOverrides = {}) {
     await fn({ get, store, config });
   } finally {
     server.close();
-    store.close();
+    await store.close();
   }
 }
 

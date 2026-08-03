@@ -5,6 +5,7 @@ const { listStations } = require('../config/stations');
 const { listPlants } = require('../config/powerplants');
 const { buildPowerWater } = require('../domain/snapshot');
 const { parseCoolingModel } = require('../lib/params');
+const { asyncRoute } = require('../lib/async-route');
 
 module.exports = function geoRoutes(ctx) {
   const router = express.Router();
@@ -21,12 +22,12 @@ module.exports = function geoRoutes(ctx) {
    * It is scaled by the square root of flow: the Danube carries ~600x the Túr, and a
    * linear scale would render everything except the Danube as an invisible hairline.
    */
-  router.get('/geojson', (req, res) => {
+  router.get('/geojson', asyncRoute(async (req, res) => {
     const coolingModel = parseCoolingModel(req.query.model, config.defaultCoolingModel);
 
-    const payload = cache.wrap(`geojson:${coolingModel}`, () => {
-      const readings = store.latestReadings(config.maxReadingAgeMs);
-      const generation = store.latestGeneration(config.maxReadingAgeMs);
+    const payload = await cache.wrapAsync(`geojson:${coolingModel}`, async () => {
+      const readings = await store.latestReadings(config.maxReadingAgeMs);
+      const generation = await store.latestGeneration(config.maxReadingAgeMs);
       const power = buildPowerWater({ readings, generation, coolingModel });
       const powerById = new Map(power.plants.map((p) => [p.id, p]));
 
@@ -95,7 +96,7 @@ module.exports = function geoRoutes(ctx) {
     });
 
     res.json(payload);
-  });
+  }));
 
   return router;
 };

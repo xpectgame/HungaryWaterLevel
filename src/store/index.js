@@ -10,6 +10,11 @@ const { MemoryStore } = require('./memory');
  * and never emits its warning.
  */
 function createStore(config) {
+  if (config.store === 'postgres') {
+    const { PostgresStore } = require('./postgres');
+    return new PostgresStore(config.databaseUrl, { schema: config.databaseSchema });
+  }
+
   if (config.store === 'memory') {
     return new MemoryStore({ maxSamplesPerStation: config.memoryMaxSamples });
   }

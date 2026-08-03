@@ -4,6 +4,7 @@ const { loadConfig } = require('../config');
 const { createProvider, fetchAll } = require('../sources');
 const { validateBatch } = require('../lib/validate');
 const { computeBalance } = require('../domain/balance');
+const { loadLagHistory } = require('../lib/lag-history');
 // The store is required lazily inside the CLI block: importing it here would pull in
 // node:sqlite (and its experimental warning) even for serverless runs that never
 // touch a database.
@@ -35,7 +36,7 @@ async function runOnce(store, config, logger = console) {
 
   if (result.hydrology && result.hydrology.readings) {
     const { accepted, rejected } = validateBatch(result.hydrology.readings);
-    summary.stationsStored = store.putStationReadings(accepted);
+    summary.stationsStored = await store.putStationReadings(accepted);
     summary.stationsRejected = rejected.length;
     if (rejected.length > 0) {
       summary.rejected = rejected;
@@ -44,24 +45,25 @@ async function runOnce(store, config, logger = console) {
   }
 
   if (result.generation) {
-    summary.generationStored = store.putGeneration(result.generation);
+    summary.generationStored = await store.putGeneration(result.generation);
   }
 
   // The balance is computed from what is now in the store rather than from the fetch
   // result, so a station that failed this cycle but succeeded recently still counts.
-  const readings = store.latestReadings(config.maxReadingAgeMs);
+  const readings = await store.latestReadings(config.maxReadingAgeMs);
   if (Object.keys(readings).length > 0) {
     const balance = computeBalance(readings, {
       method: config.defaultBalanceMethod,
-      historyLookup: (stationId, atMs) => store.readingAt(stationId, atMs),
+      historyLookup:
+        config.defaultBalanceMethod === 'lagged' ? await loadLagHistory(store) : undefined,
     });
-    summary.balanceStored = store.putBalance(balance);
+    summary.balanceStored = await store.putBalance(balance);
     summary.netM3s = balance.net.m3s;
     summary.significant = balance.net.significant;
   }
 
   summary.durationMs = Date.now() - startedAt;
-  store.logPoll(result.errors.length === 0, summary);
+  await store.logPoll(result.errors.length === 0, summary);
 
   logger.log(
     `[poll] ${provider.name}: ${summary.stationsStored} readings, ` +
@@ -88,7 +90,7 @@ function startPolling(store, config, logger = console) {
       // A poll failure must never take the server down - the API keeps serving the
       // last good snapshot and reports its age.
       logger.error('[poll] cycle failed:', err.message);
-      store.logPoll(false, { error: err.message });
+      await store.logPoll(false, { error: err.message });
     } finally {
       running = false;
     }
@@ -101,9 +103,13 @@ function startPolling(store, config, logger = console) {
   if (timer.unref) timer.unref();
 
   // Daily housekeeping so the database does not grow without bound.
-  const pruneTimer = setInterval(() => {
-    const removed = store.prune(config.retentionDays);
-    if (removed > 0) logger.log(`[poll] pruned ${removed} row(s) older than ${config.retentionDays} days`);
+  const pruneTimer = setInterval(async () => {
+    try {
+      const removed = await store.prune(config.retentionDays);
+      if (removed > 0) logger.log(`[poll] pruned ${removed} row(s) older than ${config.retentionDays} days`);
+    } catch (err) {
+      logger.error('[poll] prune failed:', err.message);
+    }
   }, 24 * 3600 * 1000);
   if (pruneTimer.unref) pruneTimer.unref();
 
@@ -135,13 +141,13 @@ async function backfill(store, config, days = 30, logger = console) {
   for (let t = start; t <= end; t += stepMs) {
     const at = new Date(t);
     const hydrology = await fixture.fetchAll(process.env, at);
-    stored += store.putStationReadings(hydrology.readings);
+    stored += await store.putStationReadings(hydrology.readings);
 
     const generation = await fixture.fetchGeneration(process.env, at);
-    store.putGeneration(generation);
+    await store.putGeneration(generation);
 
     const balance = computeBalance(hydrology.readings, { method: 'instant', now: t });
-    store.putBalance(balance);
+    await store.putBalance(balance);
   }
 
   logger.log(`[backfill] wrote ${stored} synthetic readings across ${days} days`);
@@ -165,13 +171,13 @@ if (require.main === module) {
   };
 
   main()
-    .then(() => {
-      store.close();
+    .then(async () => {
+      await store.close();
       process.exit(0);
     })
-    .catch((err) => {
+    .catch(async (err) => {
       console.error('[poll] failed:', err);
-      store.close();
+      await store.close();
       process.exit(1);
     });
 }
