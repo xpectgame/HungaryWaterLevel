@@ -8,6 +8,7 @@ const { createStore } = require('./store');
 const { TtlCache } = require('./lib/cache');
 const { createRouter } = require('./routes');
 const { startPolling } = require('./jobs/poll');
+const { createCronHandler } = require('./jobs/cron-handler');
 
 function createApp(ctx) {
   const app = express();
@@ -26,6 +27,14 @@ function createApp(ctx) {
   });
 
   app.use('/api/v1', createRouter(ctx));
+
+  // The scheduled ingest lives inside the app rather than in a separate serverless
+  // function, so it is reachable no matter how the host decides to run this project -
+  // as one Node server, or as individual functions. It authenticates itself; see
+  // jobs/cron-handler.js. Vercel's scheduler issues a GET.
+  const cron = createCronHandler(ctx);
+  app.get('/api/cron', cron);
+  app.post('/api/cron', cron);
 
   if (config.serveFrontend) {
     app.use(express.static(path.join(__dirname, '..', 'public')));

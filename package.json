@@ -2,7 +2,7 @@
   "name": "hungary-water-level",
   "version": "0.1.0",
   "description": "REST API for Hungary's real-time surface water balance and power-sector cooling water use",
-  "main": "src/server.js",
+  "main": "server.js",
   "type": "commonjs",
   "engines": {
     "node": ">=22.5.0"
