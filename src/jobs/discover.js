@@ -119,6 +119,36 @@ function extractCandidates(source, pageUrl) {
   return resolved;
 }
 
+
+/**
+ * Print the code around a string literal.
+ *
+ * A candidate like `https://vmservice.vizugy.hu/vraquery/` is only the base - the rest
+ * of the path is concatenated at runtime, so it never appears as a literal and probing
+ * the base alone returns 404. The surrounding source shows how the full URL is built:
+ * the method names, the parameters, the query string. Minified code is unreadable in
+ * bulk but perfectly readable in a 600-character window around the interesting string.
+ */
+function dumpContext(sources, needle, { radius = 320, maxHits = 4 } = {}) {
+  let hits = 0;
+
+  for (const [url, source] of sources) {
+    let index = source.indexOf(needle);
+    while (index !== -1 && hits < maxHits) {
+      const from = Math.max(0, index - radius);
+      const to = Math.min(source.length, index + needle.length + radius);
+      console.log(`\n  --- ${needle} in ${url.split('/').pop()} @${index} ---`);
+      console.log(`  ${source.slice(from, to).replace(/\s+/g, ' ')}`);
+      hits += 1;
+      index = source.indexOf(needle, index + needle.length);
+    }
+    if (hits >= maxHits) break;
+  }
+
+  if (hits === 0) console.log(`\n  (${needle} not found as a literal)`);
+  return hits;
+}
+
 /** Call a candidate and report what came back. */
 async function testCandidate(url) {
   try {
@@ -160,6 +190,8 @@ async function discover(pageUrl, { probe = true, depth = 1 } = {}) {
   for (const s of scripts) console.log(`  ${s}`);
 
   const candidates = new Map();
+  const sources = new Map();
+
   for (const scriptUrl of scripts) {
     try {
       const { body } = await fetchText(scriptUrl, { timeoutMs: 30000, retries: 0 });
@@ -167,6 +199,7 @@ async function discover(pageUrl, { probe = true, depth = 1 } = {}) {
         console.log(`  (skipped ${scriptUrl} - ${body.length} bytes)`);
         continue;
       }
+      sources.set(scriptUrl, body);
       for (const [url, count] of extractCandidates(body, pageUrl)) {
         candidates.set(url, (candidates.get(url) || 0) + count);
       }
@@ -188,6 +221,16 @@ async function discover(pageUrl, { probe = true, depth = 1 } = {}) {
 
   console.log(`\n${ranked.length} endpoint candidate(s) found in the bundles:`);
   for (const url of ranked.slice(0, 40)) console.log(`  ${url}`);
+
+  // Show how each candidate's URL is assembled. A base path that 404s on its own is
+  // completed somewhere in this code, and the window around it says how.
+  if (ranked.length > 0) {
+    console.log('\nHow these URLs are built:');
+    for (const url of ranked.slice(0, 6)) {
+      const segment = url.replace(/\/+$/, '').split('/').filter(Boolean).pop();
+      if (segment && segment.length >= 4) dumpContext(sources, segment);
+    }
+  }
 
   // A framed application is a separate app with its own bundles - follow it once.
   if (depth > 0) {
@@ -230,4 +273,4 @@ async function discover(pageUrl, { probe = true, depth = 1 } = {}) {
   return ranked;
 }
 
-module.exports = { discover, extractScriptUrls, extractFrameUrls, extractCandidates, decodeHtml };
+module.exports = { discover, extractScriptUrls, extractFrameUrls, extractCandidates, decodeHtml, dumpContext };

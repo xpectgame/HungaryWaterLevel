@@ -128,3 +128,64 @@ test('documentation is flattened to readable text, keeping link targets', () => 
   assert.doesNotMatch(text, /x\(\)/, 'script contents must be stripped');
   assert.doesNotMatch(text, /a\{\}/, 'style contents must be stripped');
 });
+
+// ---------------------------------------------------------------------------
+// Diagnosing what actually failed
+// ---------------------------------------------------------------------------
+
+const { describeCause } = require('../src/lib/http');
+const { dumpContext } = require('../src/jobs/discover');
+
+test('a transport failure names its real cause, not "fetch failed"', () => {
+  // fetch reports every transport problem with the same three words and hides the
+  // reason in `cause`. A TLS rejection and a DNS miss need different responses.
+  const tls = Object.assign(new Error('unable to verify the first certificate'), {
+    code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  });
+  const outer = Object.assign(new TypeError('fetch failed'), { cause: tls });
+
+  const described = describeCause(outer);
+  assert.match(described, /fetch failed/);
+  assert.match(described, /unable to verify the first certificate/);
+  assert.match(described, /UNABLE_TO_VERIFY_LEAF_SIGNATURE/);
+});
+
+test('cause unwrapping terminates on a cycle', () => {
+  const a = new Error('a');
+  const b = new Error('b');
+  a.cause = b;
+  b.cause = a;
+  assert.match(describeCause(a), /a.*b/s);
+});
+
+test('source context shows how a base URL is completed at runtime', () => {
+  // The reason a discovered base 404s: the rest of the path is concatenated in code,
+  // so it never appears as a literal. The window around it is where the answer is.
+  const sources = new Map([
+    ['https://x/main.js', 'const b="https://vmservice.vizugy.hu/vraquery/";f(b+t+"/list?stationId="+id)'],
+  ]);
+
+  const logged = [];
+  const original = console.log;
+  console.log = (...args) => logged.push(args.join(' '));
+  try {
+    const hits = dumpContext(sources, 'vraquery');
+    assert.strictEqual(hits, 1);
+  } finally {
+    console.log = original;
+  }
+
+  assert.ok(logged.join('\n').includes('stationId'), 'the surrounding call must be shown');
+});
+
+test('a missing needle is reported rather than silently printing nothing', () => {
+  const logged = [];
+  const original = console.log;
+  console.log = (...args) => logged.push(args.join(' '));
+  try {
+    assert.strictEqual(dumpContext(new Map([['u', 'nothing here']]), 'vraquery'), 0);
+  } finally {
+    console.log = original;
+  }
+  assert.match(logged.join('\n'), /not found as a literal/);
+});
