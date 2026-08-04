@@ -230,3 +230,33 @@ test('the frontend is served from the app root', async () => {
     await store.close();
   }
 });
+
+test('a missing frontend asset degrades to a working page, not a 500', async () => {
+  // Bundlers trace imports, not filesystem reads, so a deployment can arrive with every
+  // module present and the HTML absent. The API is the product; that must not read as a
+  // dead site.
+  const config = {
+    ...loadConfig({ DATA_PROVIDER: 'fixture' }),
+    store: 'memory',
+    lazyRefresh: false,
+    backgroundPolling: false,
+    publicDir: path.join(__dirname, 'no-such-directory'),
+  };
+  const store = createStore(config);
+  const app = createApp({ config, store, cache: new TtlCache(0) });
+  const server = app.listen(0);
+  const port = server.address().port;
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`);
+    assert.strictEqual(res.status, 200);
+
+    const html = await res.text();
+    assert.match(html, /Magyarország vízmérlege/);
+    // It must fetch live figures rather than show a static apology.
+    assert.match(html, /\/api\/v1\/snapshot/);
+  } finally {
+    server.close();
+    await store.close();
+  }
+});

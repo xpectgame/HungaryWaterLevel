@@ -77,6 +77,8 @@ function loadConfig(env = process.env) {
     cacheTtlMs: numEnv(env.CACHE_TTL_MS, 60 * 1000),
     corsOrigin: strEnv(env.CORS_ORIGIN, '*'),
     serveFrontend: boolEnv(env.SERVE_FRONTEND, true),
+    // Overridable so tests can exercise the missing-asset path.
+    publicDir: strEnv(env.PUBLIC_DIR),
   };
 }
 
