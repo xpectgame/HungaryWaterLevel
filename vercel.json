@@ -6,6 +6,9 @@
       "schedule": "*/15 * * * *"
     }
   ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" }
+  ],
   "headers": [
     {
       "source": "/api/v1/(.*)",

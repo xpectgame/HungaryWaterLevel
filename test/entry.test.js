@@ -54,7 +54,7 @@ test('every filename a framework detector scans for exports a request handler', 
     ALLOW_FIXTURE_IN_PRODUCTION: 'true',
   });
 
-  const candidates = ['server.js', 'src/app.js', 'src/index.js', 'app.js', 'index.js'];
+  const candidates = ['server.js', 'src/app.js', 'api/index.js', 'src/index.js', 'app.js', 'index.js'];
 
   try {
     for (const candidate of candidates) {
