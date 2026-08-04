@@ -48,6 +48,11 @@ async function runOnce(store, config, logger = console) {
     summary.generationStored = await store.putGeneration(result.generation);
   }
 
+  if (result.availability && result.availability.configured) {
+    await store.putAvailability(result.availability.availability);
+    summary.unitsKnownFor = Object.keys(result.availability.availability).length;
+  }
+
   // The balance is computed from what is now in the store rather than from the fetch
   // result, so a station that failed this cycle but succeeded recently still counts.
   const readings = await store.latestReadings(config.maxReadingAgeMs);

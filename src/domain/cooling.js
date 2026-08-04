@@ -16,9 +16,16 @@
  *                         useful as a cross-check and for plants where no flow figure
  *                         is published.
  *
- * Both are approximations of a plant that in reality runs discrete pumps. A four-unit
- * station at 50% load is usually two units at full cooling flow, not four units at half
- * flow, so the true curve is a staircase and these models are its smooth envelope.
+ *   'units'             - a step function of how many units are running. Cooling pumps
+ *                         belong to a unit, not to its output: a unit that is online
+ *                         runs its pumps at full flow whether it is at 100% or 40%.
+ *
+ * The first two are smooth envelopes of what is really a staircase, and they agree with
+ * it at full load and at exact unit multiples. They diverge in between, always
+ * downwards - at a quarter load on a four-unit station the linear model reports half
+ * the water that is actually moving. That is precisely the regime a plant sits in when
+ * it has been throttled back or has units out, which is when someone is most likely to
+ * be looking.
  */
 
 const WATER_DENSITY = 1000; // kg/m3
@@ -75,16 +82,33 @@ function closedLoopMakeupM3s(cooling) {
 }
 
 /**
+ * How many units must be running to produce this output.
+ *
+ * A lower bound, not a measurement: four units at 30% and two units at 60% deliver the
+ * same megawatts and move very different amounts of water. Without per-unit data this
+ * is the fewest that could explain the reading, so the resulting flow is a floor.
+ * Pass `unitsOnline` when outage data says how many are actually available.
+ */
+function inferUnitsOnline(powerMw, plant) {
+  const unitCount = plant.unitCount || 1;
+  if (!(powerMw > 0)) return 0;
+  const perUnitCapacity = plant.capacityMw / unitCount;
+  if (!(perUnitCapacity > 0)) return unitCount;
+  return Math.min(unitCount, Math.ceil(powerMw / perUnitCapacity - 1e-9));
+}
+
+/**
  * Compute water flows for one plant at one instant.
  *
  * @param {object} plant   entry from config/powerplants
  * @param {number|null} powerMw  current electrical output, or null if unknown
  * @param {object} [opts]
- * @param {'linear'|'thermal'} [opts.model='linear']
+ * @param {'linear'|'thermal'|'units'} [opts.model='linear']
+ * @param {number} [opts.unitsOnline] known units running, from outage data
  * @returns {object} withdrawal / discharge / consumption in m3/s plus provenance
  */
 function computePlantWater(plant, powerMw, opts = {}) {
-  const model = opts.model === 'thermal' ? 'thermal' : 'linear';
+  const model = ['thermal', 'units'].includes(opts.model) ? opts.model : 'linear';
   const cooling = plant.cooling;
   const capacity = plant.capacityMw;
 
@@ -122,7 +146,25 @@ function computePlantWater(plant, powerMw, opts = {}) {
 
   let withdrawal;
 
-  if (model === 'thermal') {
+  if (model === 'units') {
+    const unitCount = plant.unitCount || 1;
+    const known = Number.isFinite(opts.unitsOnline);
+    const unitsOnline = known
+      ? Math.max(0, Math.min(unitCount, Math.round(opts.unitsOnline)))
+      : inferUnitsOnline(powerMw, plant);
+
+    const perUnitFlow = (cooling.nominalWithdrawalM3s || 0) / unitCount;
+    withdrawal = unitsOnline * perUnitFlow;
+
+    result.unitsOnline = unitsOnline;
+    result.unitCount = unitCount;
+    result.unitsKnown = known;
+    result.notes.push(
+      known
+        ? `${unitsOnline} of ${unitCount} units running, from availability data.`
+        : `${unitsOnline} of ${unitCount} units inferred from output - the fewest that explain it, so this flow is a lower bound.`,
+    );
+  } else if (model === 'thermal') {
     const duty = condenserDutyMw(powerMw, cooling);
     result.condenserDutyMw = round(duty, 1);
 
@@ -214,6 +256,7 @@ function round(v, digits) {
 
 module.exports = {
   computePlantWater,
+  inferUnitsOnline,
   computeThermalLoad,
   flowToVolumes,
   condenserDutyMw,

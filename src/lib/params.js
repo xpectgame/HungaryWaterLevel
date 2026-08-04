@@ -11,7 +11,7 @@ function parseMethod(raw, fallback = 'instant') {
 }
 
 function parseCoolingModel(raw, fallback = 'linear') {
-  if (raw === 'thermal' || raw === 'linear') return raw;
+  if (raw === 'thermal' || raw === 'linear' || raw === 'units') return raw;
   return fallback;
 }
 

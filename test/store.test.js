@@ -138,6 +138,21 @@ for (const [name, create] of implementations) {
     await store.close();
   });
 
+  test(`${name}: round-trips unit availability`, async () => {
+    const store = await create();
+    assert.strictEqual(await store.latestAvailability(), null);
+
+    await store.putAvailability({ 'paks-1': { unitsOnline: 3, unitCount: 4 } });
+    const stored = await store.latestAvailability();
+    assert.strictEqual(stored['paks-1'].unitsOnline, 3);
+
+    // The freshness window still applies. Wait first: a record written in this same
+    // millisecond is genuinely fresh, so asserting otherwise tests the clock, not the store.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.strictEqual(await store.latestAvailability(1), null);
+    await store.close();
+  });
+
   test(`${name}: reports poll status`, async () => {
     const store = await create();
     assert.strictEqual(await store.lastPoll(), null);

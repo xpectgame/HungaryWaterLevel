@@ -69,7 +69,9 @@ function loadConfig(env = process.env) {
     retentionDays: numEnv(env.RETENTION_DAYS, 400),
 
     defaultBalanceMethod: strEnv(env.DEFAULT_BALANCE_METHOD) === 'lagged' ? 'lagged' : 'instant',
-    defaultCoolingModel: strEnv(env.DEFAULT_COOLING_MODEL) === 'thermal' ? 'thermal' : 'linear',
+    defaultCoolingModel: ['thermal', 'units'].includes(strEnv(env.DEFAULT_COOLING_MODEL))
+      ? strEnv(env.DEFAULT_COOLING_MODEL)
+      : 'linear',
 
     // Shared secret for the cron endpoint. Vercel sends it as `Authorization: Bearer`.
     cronSecret: strEnv(env.CRON_SECRET),

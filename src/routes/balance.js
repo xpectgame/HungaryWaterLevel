@@ -84,8 +84,17 @@ module.exports = function balanceRoutes(ctx) {
         const readings = await store.latestReadings(config.maxReadingAgeMs);
         const generation = await store.latestGeneration(config.maxReadingAgeMs);
         const history = method === 'lagged' ? await loadLagHistory(store) : null;
+        // Outages last days, so a stale availability record is still informative.
+        const availability = await store.latestAvailability(7 * 86400000);
 
-        return buildSnapshot({ readings, generation, historyLookup: history, config, options: { method, coolingModel } });
+        return buildSnapshot({
+          readings,
+          generation,
+          historyLookup: history,
+          availability,
+          config,
+          options: { method, coolingModel },
+        });
       });
 
       res.json(await withMeta(payload, ctx));

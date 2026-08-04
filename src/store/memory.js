@@ -22,6 +22,7 @@ class MemoryStore {
     this.generation = []; // [{ts, generationMw, source}] ascending
     this.balances = []; // [{ts, payload}] ascending
     this.polls = [];
+    this.availability = null;
     this.path = ':memory:';
   }
 
@@ -128,6 +129,19 @@ class MemoryStore {
         source: g.source,
         generationMw: g.generationMw,
       }));
+  }
+
+  // --- unit availability ---------------------------------------------------
+
+  putAvailability(record) {
+    this.availability = { ts: Date.now(), record };
+    return true;
+  }
+
+  latestAvailability(maxAgeMs = null) {
+    if (!this.availability) return null;
+    if (maxAgeMs && this.availability.ts < Date.now() - maxAgeMs) return null;
+    return this.availability.record;
   }
 
   // --- balance snapshots ---------------------------------------------------

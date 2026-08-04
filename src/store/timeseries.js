@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS balance_snapshots (
   payload TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS availability (
+  ts      INTEGER PRIMARY KEY,
+  payload TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS poll_log (
   ts       INTEGER PRIMARY KEY,
   ok       INTEGER NOT NULL,
@@ -216,6 +221,22 @@ class TimeseriesStore {
         inflowM3s: row.inflow_m3s,
         outflowM3s: row.outflow_m3s,
       }));
+  }
+
+  // --- unit availability ---------------------------------------------------
+
+  putAvailability(record) {
+    this.db
+      .prepare('INSERT INTO availability (ts, payload) VALUES (?, ?) ON CONFLICT (ts) DO UPDATE SET payload = excluded.payload')
+      .run(Date.now(), JSON.stringify(record));
+    return true;
+  }
+
+  latestAvailability(maxAgeMs = null) {
+    const row = this.db.prepare('SELECT * FROM availability ORDER BY ts DESC LIMIT 1').get();
+    if (!row) return null;
+    if (maxAgeMs && row.ts < Date.now() - maxAgeMs) return null;
+    return JSON.parse(row.payload);
   }
 
   // --- housekeeping --------------------------------------------------------

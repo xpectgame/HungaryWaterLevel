@@ -64,6 +64,11 @@ CREATE TABLE IF NOT EXISTS ${t('balance_snapshots')} (
   payload     JSONB NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ${t('availability')} (
+  ts      BIGINT PRIMARY KEY,
+  payload JSONB NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ${t('poll_log')} (
   ts     BIGINT PRIMARY KEY,
   ok     BOOLEAN NOT NULL,
@@ -284,6 +289,28 @@ class PostgresStore {
       inflowM3s: row.inflow_m3s,
       outflowM3s: row.outflow_m3s,
     }));
+  }
+
+  // --- unit availability ---------------------------------------------------
+
+  async putAvailability(record) {
+    await this.query(
+      `INSERT INTO ${this.t('availability')} (ts, payload) VALUES ($1, $2)
+       ON CONFLICT (ts) DO UPDATE SET payload = EXCLUDED.payload`,
+      [Date.now(), JSON.stringify(record)],
+    );
+    return true;
+  }
+
+  async latestAvailability(maxAgeMs = null) {
+    const cutoff = maxAgeMs ? Date.now() - maxAgeMs : null;
+    const { rows } = await this.query(
+      `SELECT * FROM ${this.t('availability')}
+        WHERE ($1::bigint IS NULL OR ts >= $1)
+        ORDER BY ts DESC LIMIT 1`,
+      [cutoff],
+    );
+    return rows[0] ? rows[0].payload : null;
   }
 
   // --- housekeeping --------------------------------------------------------

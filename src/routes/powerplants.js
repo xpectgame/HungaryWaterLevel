@@ -14,6 +14,8 @@ module.exports = function powerplantRoutes(ctx) {
   const currentInputs = async () => ({
     readings: await store.latestReadings(config.maxReadingAgeMs),
     generation: await store.latestGeneration(config.maxReadingAgeMs),
+    // Outages last days, so a stale availability record is still informative.
+    availability: await store.latestAvailability(7 * 86400000),
   });
 
   /** GET /powerplants?model=linear|thermal */

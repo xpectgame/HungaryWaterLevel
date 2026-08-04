@@ -12,7 +12,7 @@ const { getStation } = require('../config/stations');
  * number.
  */
 
-function buildSnapshot({ readings, generation, historyLookup, config, options = {} }) {
+function buildSnapshot({ readings, generation, historyLookup, availability, config, options = {} }) {
   const method = options.method || config.defaultBalanceMethod;
   const coolingModel = options.coolingModel || config.defaultCoolingModel;
 
@@ -22,7 +22,7 @@ function buildSnapshot({ readings, generation, historyLookup, config, options = 
     includeUngauged: options.includeUngauged !== false,
   });
 
-  const power = buildPowerWater({ readings, generation, coolingModel });
+  const power = buildPowerWater({ readings, generation, coolingModel, availability });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -32,7 +32,7 @@ function buildSnapshot({ readings, generation, historyLookup, config, options = 
   };
 }
 
-function buildPowerWater({ readings, generation, coolingModel }) {
+function buildPowerWater({ readings, generation, coolingModel, availability }) {
   const generationMw = (generation && generation.generationMw) || {};
   const allocations = allocateGeneration(generationMw);
   const allocationById = new Map(allocations.map((a) => [a.plantId, a]));
@@ -47,7 +47,11 @@ function buildPowerWater({ readings, generation, coolingModel }) {
       method: plant.status === 'operating' ? 'no live figure' : `plant status: ${plant.status}`,
     };
 
-    const water = computePlantWater(plant, allocation.powerMw, { model: coolingModel });
+    // Outage data, when present, replaces the inference the units model would make.
+    const unitsOnline = availability && availability[plant.id]
+      ? availability[plant.id].unitsOnline
+      : undefined;
+    const water = computePlantWater(plant, allocation.powerMw, { model: coolingModel, unitsOnline });
     waterByPlant[plant.id] = water;
 
     // Thermal load needs the flow of the river actually receiving the discharge.
@@ -77,6 +81,9 @@ function buildPowerWater({ readings, generation, coolingModel }) {
         method: allocation.method,
         caveat: allocation.caveat || null,
       },
+      units: water.unitCount
+        ? { online: water.unitsOnline, total: water.unitCount, known: water.unitsKnown }
+        : null,
       water: {
         coolingType: water.coolingType,
         model: water.model,
@@ -133,10 +140,10 @@ function buildContext(balance, power) {
   };
 }
 
-function buildPlantDetail(plantId, { readings, generation, coolingModel }) {
+function buildPlantDetail(plantId, { readings, generation, coolingModel, availability }) {
   const plant = getPlant(plantId);
   if (!plant) return null;
-  const power = buildPowerWater({ readings, generation, coolingModel });
+  const power = buildPowerWater({ readings, generation, coolingModel, availability });
   return power.plants.find((p) => p.id === plantId) || null;
 }
 

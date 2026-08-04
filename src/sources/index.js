@@ -3,6 +3,8 @@
 const vizugy = require('./vizugy');
 const mavir = require('./mavir');
 const fixture = require('./fixture');
+const entsoe = require('./entsoe');
+const { listPlants } = require('../config/powerplants');
 
 /**
  * Picks the data provider and gives the rest of the app one shape to code against.
@@ -22,6 +24,10 @@ function createProvider(config) {
       async fetchGeneration() {
         return fixture.fetchGeneration();
       },
+      async fetchAvailability() {
+        // Synthetic mode has no outage feed; the units model infers instead.
+        return { source: 'fixture', configured: false, availability: {} };
+      },
     };
   }
 
@@ -34,14 +40,18 @@ function createProvider(config) {
     async fetchGeneration() {
       return mavir.fetchGeneration();
     },
+    async fetchAvailability() {
+      return entsoe.fetchAvailability(listPlants('operating'));
+    },
   };
 }
 
 /** Fetch both sides, isolating failures so one dead upstream cannot take out the other. */
 async function fetchAll(provider) {
-  const [hydrologyResult, generationResult] = await Promise.allSettled([
+  const [hydrologyResult, generationResult, availabilityResult] = await Promise.allSettled([
     provider.fetchHydrology(),
     provider.fetchGeneration(),
+    provider.fetchAvailability(),
   ]);
 
   const errors = [];
@@ -63,7 +73,16 @@ async function fetchAll(provider) {
     errors.push({ upstream: 'mavir', error: errorMessage(generationResult.reason) });
   }
 
-  return { hydrology, generation, errors, provider: provider.name, synthetic: provider.synthetic };
+  // Availability is an enhancement, never a requirement: without it the units model
+  // infers a lower bound and says so. A failure here must not cost us the poll.
+  let availability = null;
+  if (availabilityResult.status === 'fulfilled') {
+    availability = availabilityResult.value;
+  } else {
+    errors.push({ upstream: 'entsoe', error: errorMessage(availabilityResult.reason) });
+  }
+
+  return { hydrology, generation, availability, errors, provider: provider.name, synthetic: provider.synthetic };
 }
 
 function errorMessage(reason) {
@@ -71,4 +90,4 @@ function errorMessage(reason) {
   return String(reason.message || reason);
 }
 
-module.exports = { createProvider, fetchAll, vizugy, mavir, fixture };
+module.exports = { createProvider, fetchAll, vizugy, mavir, fixture, entsoe };

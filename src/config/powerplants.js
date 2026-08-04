@@ -47,6 +47,9 @@ const PLANTS = [
     lon: 18.8547,
     capacityMw: 2000,
     unitCount: 4,
+    // Matches how the units are named in ENTSO-E outage messages, so per-unit
+    // availability can replace the guess the units model would otherwise make.
+    entsoeUnitPattern: '^paks',
     receivingWater: 'Duna',
     receivingWaterStationId: 'duna-paks',
     intakeRiverKm: 1527,

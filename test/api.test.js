@@ -274,3 +274,36 @@ test('production refuses to serve synthetic data without an explicit opt-in', ()
   const live = loadConfig({ NODE_ENV: 'production', DATA_PROVIDER: 'live' });
   assert.doesNotThrow(() => assertProviderSafe(live));
 });
+
+test('GET /api/v1/powerplants/:id returns a single plant', async () => {
+  // The list route and the detail route take different paths through the domain layer;
+  // covering only the list left a reference error in the detail one invisible.
+  await withServer(async ({ get }) => {
+    const { status, body } = await get('/api/v1/powerplants/paks-1');
+    assert.strictEqual(status, 200);
+    assert.strictEqual(body.id, 'paks-1');
+    assert.ok(body.water.withdrawalM3s > 0);
+    assert.ok(body.thermalLoad, 'a once-through plant must report its thermal load');
+  });
+});
+
+test('the units model reports how many units it assumed', async () => {
+  await withServer(async ({ get }) => {
+    const { body } = await get('/api/v1/powerplants/paks-1?model=units');
+    assert.strictEqual(body.water.model, 'units');
+    assert.ok(body.units, 'unit accounting must be exposed');
+    assert.strictEqual(body.units.total, 4);
+    assert.strictEqual(body.units.known, false, 'inferred, not measured');
+    assert.ok(body.water.notes.some((n) => /lower bound/.test(n)));
+  });
+});
+
+test('at part load the units model reports more water than the linear one', async () => {
+  // Pumps belong to a unit, not to its output. This is the gap that matters when a
+  // plant has been throttled back - exactly when someone looks.
+  await withServer(async ({ get }) => {
+    const linear = await get('/api/v1/powerplants/paks-1?model=linear');
+    const units = await get('/api/v1/powerplants/paks-1?model=units');
+    assert.ok(units.body.water.withdrawalM3s >= linear.body.water.withdrawalM3s);
+  });
+});
