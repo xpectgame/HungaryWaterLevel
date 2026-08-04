@@ -5,7 +5,7 @@ const assert = require('node:assert');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const { createApp } = require('../src/app');
+const { createApp } = require('../src/create-app');
 const { createStore } = require('../src/store');
 const { TtlCache } = require('../src/lib/cache');
 const { loadConfig } = require('../src/config');
@@ -39,6 +39,50 @@ test('main and the start script name the same entry point', () => {
     path.normalize(main),
     `start runs ${fromStart} but main is ${main}; a host picking the other one gets a different module`,
   );
+});
+
+test('every filename a framework detector scans for exports a request handler', () => {
+  // Vercel's Express preset - and equivalents elsewhere - import the first conventional
+  // entry filename they find and require a handler as the default export. Three
+  // deployments failed because the file it picked exported factories. Whatever it lands
+  // on must be serviceable, so all of them are checked here rather than the one this
+  // project happens to consider canonical.
+  const previous = { ...process.env };
+  Object.assign(process.env, {
+    DATA_PROVIDER: 'fixture',
+    STORE: 'memory',
+    ALLOW_FIXTURE_IN_PRODUCTION: 'true',
+  });
+
+  const candidates = ['server.js', 'src/app.js', 'src/index.js', 'app.js', 'index.js'];
+
+  try {
+    for (const candidate of candidates) {
+      const full = path.join(__dirname, '..', candidate);
+      if (!fs.existsSync(full)) continue;
+
+      delete require.cache[require.resolve(full)];
+      const exported = require(full);
+      assert.strictEqual(typeof exported, 'function', `${candidate} must default-export a handler`);
+      assert.ok(
+        typeof exported.listen === 'function' || exported.length >= 2,
+        `${candidate} must look like a server or a (req, res) handler`,
+      );
+      delete require.cache[require.resolve(full)];
+    }
+  } finally {
+    for (const key of Object.keys(process.env)) delete process.env[key];
+    Object.assign(process.env, previous);
+  }
+});
+
+test('the factories live under a name no detector scans for', () => {
+  // If they moved back to app.js or server.js, a detector would import them and the
+  // deployment would fail at boot again.
+  assert.ok(fs.existsSync(path.join(__dirname, '..', 'src', 'create-app.js')));
+  const factories = require('../src/create-app');
+  assert.strictEqual(typeof factories.createApp, 'function');
+  assert.strictEqual(typeof factories.createContext, 'function');
 });
 
 test('no module outside the entry is named server, so none can be mistaken for one', () => {

@@ -1,89 +1,30 @@
 'use strict';
 
 /**
- * Application factories.
+ * Deployment entry point.
  *
- * Deliberately exports named factories and never a ready-made app, so tests can build
- * isolated instances with their own stores. That also means this file must never be a
- * deployment entry point: a host that loads it and looks for a default request handler
- * finds an object and refuses to boot. The entry point is server.js at the repository
- * root, and the standalone server is src/cli.js - nothing here is named `server` so
- * neither `main` nor a `start` script can accidentally aim at it.
+ * A host's framework detection - Vercel's Express preset among them - scans for
+ * conventional entry filenames and imports the first match, requiring a request handler
+ * as the default export. It found this path and rejected the module three deployments
+ * running, because what lived here exported factories instead.
+ *
+ * So both names a detector can land on now export a built app: this file and server.js
+ * at the repository root, which simply re-exports it. The factories moved to
+ * src/create-app.js, a name nothing scans for.
+ *
+ * Nothing here binds a port - the host owns the socket. `npm start` runs server.js
+ * directly, which does listen.
  */
 
-const express = require('express');
-const path = require('node:path');
+const { createApp, createContext } = require('./create-app');
+const { bootstrap } = require('./lib/serverless-entry');
 
-const { loadConfig, assertProviderSafe } = require('./config');
-const { createStore } = require('./store');
-const { TtlCache } = require('./lib/cache');
-const { createRouter } = require('./routes');
-const { createCronHandler } = require('./jobs/cron-handler');
+const { handler, value: ctx } = bootstrap(() => createContext());
+const app = handler || createApp(ctx);
 
-function createApp(ctx) {
-  const app = express();
-  const { config } = ctx;
+module.exports = app;
 
-  app.disable('x-powered-by');
-  app.set('json spaces', 0);
-
-  // Open data, read-only, no credentials - a permissive CORS header is the whole point.
-  app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', config.corsOrigin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') return res.sendStatus(204);
-    return next();
-  });
-
-  app.use('/api/v1', createRouter(ctx));
-
-  // The scheduled ingest lives inside the app rather than in a separate serverless
-  // function, so it is reachable no matter how the host decides to run this project -
-  // as one Node server, or as individual functions. It authenticates itself; see
-  // jobs/cron-handler.js. Vercel's scheduler issues a GET.
-  const cron = createCronHandler(ctx);
-  app.get('/api/cron', cron);
-  app.post('/api/cron', cron);
-
-  if (config.serveFrontend) {
-    app.use(express.static(path.join(__dirname, '..', 'public')));
-  }
-
-  app.get('/', (req, res) => {
-    if (config.serveFrontend) return res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
-    return res.redirect('/api/v1/health');
-  });
-
-  app.use((req, res) => {
-    res.status(404).json({
-      error: 'Not found',
-      hint: 'See /api/v1/health, /api/v1/snapshot, /api/v1/balance, /api/v1/stations, /api/v1/powerplants, /api/v1/meta/sources',
-    });
-  });
-
-  // Anything thrown in a route lands here. The message goes to the log, not to the
-  // client, since it can contain upstream URLs and internal paths.
-  app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
-    console.error('[api] unhandled error on', req.method, req.originalUrl, '-', err.message);
-    res.status(500).json({ error: 'Internal error' });
-  });
-
-  return app;
-}
-
-/**
- * Build the app and its dependencies without binding a port.
- * Shared by the standalone server and the serverless entry point.
- */
-function createContext(env = process.env) {
-  const config = loadConfig(env);
-  assertProviderSafe(config);
-
-  const store = createStore(config);
-  const cache = new TtlCache(config.cacheTtlMs);
-
-  return { config, store, cache };
-}
-
-module.exports = { createApp, createContext };
+// Carried on the export so the standalone entry can reuse this exact instance rather
+// than building a second context - and a second database pool - of its own.
+// Null when construction failed; `app` is then the handler that reports why.
+module.exports.context = ctx;

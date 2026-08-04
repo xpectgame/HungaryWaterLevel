@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { createApp } = require('../src/app');
+const { createApp } = require('../src/create-app');
 const { createStore } = require('../src/store');
 const { TtlCache } = require('../src/lib/cache');
 const { loadConfig, assertProviderSafe } = require('../src/config');
@@ -94,9 +94,13 @@ test('GET /api/v1/balance returns a complete, self-describing balance', async ()
 
     assert.ok(body.inflow.totalM3s > 3000);
     assert.ok(body.outflow.totalM3s > 3000);
-    assert.strictEqual(
-      Math.round((body.inflow.gaugedM3s + body.inflow.ungaugedM3s) * 10) / 10,
-      body.inflow.totalM3s,
+    // The three figures are each rounded to one decimal independently, so the parts can
+    // legitimately miss their total by one step. Asserting exact equality here passed by
+    // luck for a while - the fixture data is time-dependent - and then did not.
+    const parts = body.inflow.gaugedM3s + body.inflow.ungaugedM3s;
+    assert.ok(
+      Math.abs(parts - body.inflow.totalM3s) <= 0.11,
+      `inflow parts ${parts} do not add up to ${body.inflow.totalM3s}`,
     );
 
     // Net must equal inflow minus outflow, within rounding.

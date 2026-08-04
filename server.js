@@ -1,43 +1,30 @@
 'use strict';
 
 /**
- * The single entry point, for every deployment model.
+ * Standalone entry point - `npm start`, and the file `main` names.
  *
- * Hosts disagree about how to start a Node project. Some import the file named by
- * package.json `main` and require its default export to be a request handler. Some
- * derive the entry from the `start` script and import that instead. Some just run
- * `npm start` as a real process and expect it to listen on $PORT.
+ * Hosts disagree about how to start a Node project: some import the file named by
+ * `main`, some derive it from the `start` script, some let a framework preset scan for
+ * a conventional filename like app.js or server.js. Guessing which applies cost this
+ * project three failed deployments.
  *
- * Guessing which one applies cost this project two failed deployments, both reported as
- * "Invalid export found in module - the default export must be a function or server"
- * because the file the host picked exported named factories instead of a handler.
+ * The answer is to stop guessing: every name a detector can land on exports a built app.
+ * This file re-exports src/app.js rather than constructing its own, so however the host
+ * arrives, it gets the same instance - one context, one database pool.
  *
- * So this file satisfies all three at once, and `main` and `start` both point here:
- *
- *   - imported -> the default export is the Express app, a valid handler
- *   - executed -> it also binds a port and starts the background poller
- *
- * Nothing else in the tree can be mistaken for an entry point: the factories live in
- * src/app.js and the standalone-server behaviour in src/cli.js, neither of which is
- * named `server`.
- *
- * A configuration error during construction is caught and served as a readable JSON
- * response rather than escaping as an opaque platform crash.
+ * Run directly, it additionally binds a port and starts the background poller.
  */
 
-const { createApp, createContext } = require('./src/app');
-const { bootstrap } = require('./src/lib/serverless-entry');
-
-const { handler, value: ctx } = bootstrap(() => createContext());
-const app = handler || createApp(ctx);
+const app = require('./src/app');
 
 module.exports = app;
 
-// Only when run directly - an imported entry must not seize a port from its host.
+// Only when executed - an imported entry must not seize a port from its host.
 if (require.main === module) {
-  if (!ctx) {
-    // The bootstrap already logged the reason; there is nothing to serve.
+  if (!app.context) {
+    // Construction failed; bootstrap already logged the reason and there is nothing
+    // to serve. The exported handler still reports it to any host that imports us.
     process.exit(1);
   }
-  require('./src/cli').serve(ctx, app);
+  require('./src/cli').serve(app.context, app);
 }
