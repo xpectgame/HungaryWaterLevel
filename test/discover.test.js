@@ -88,3 +88,43 @@ test('templated paths survive extraction', () => {
 
   assert.ok(found.some((u) => u.includes('${id}') || u.includes('%7BstationId%7D') || u.includes('{stationId}')));
 });
+
+// ---------------------------------------------------------------------------
+// Frames and documentation
+// ---------------------------------------------------------------------------
+
+const { extractFrameUrls, decodeHtml } = require('../src/jobs/discover');
+const { htmlToText } = require('../src/jobs/docs');
+
+test('embedded frames are found and their URLs unescaped', () => {
+  // Portal software composes pages out of portlets, and a chart is often an iframe
+  // pointing at a separate app - which is where the data endpoint actually lives.
+  const html = '<iframe src="/rtdwweb/webuser/chart?id=7678&amp;lang=hu"></iframe>';
+  const frames = extractFrameUrls(html, 'https://www.mavir.hu/web/mavir/rendszerterheles');
+
+  assert.deepStrictEqual(frames, ['https://www.mavir.hu/rtdwweb/webuser/chart?id=7678&lang=hu']);
+});
+
+test('HTML entities in a src do not corrupt the query string', () => {
+  // An &amp; left in place turns two parameters into one named "amp;lang".
+  assert.strictEqual(decodeHtml('a=1&amp;b=2'), 'a=1&b=2');
+  assert.strictEqual(decodeHtml('&quot;x&quot;'), '"x"');
+});
+
+test('script sources are unescaped too', () => {
+  const html = '<script src="/main.js?a=1&amp;b=2"></script>';
+  const [url] = extractScriptUrls(html, 'https://example.hu/');
+  assert.strictEqual(url, 'https://example.hu/main.js?a=1&b=2');
+});
+
+test('documentation is flattened to readable text, keeping link targets', () => {
+  // On an API help page the URL in a link often is the answer.
+  const html = '<html><head><style>a{}</style></head><body><h1>Query</h1>' +
+    '<p>See <a href="/vraquery/list">the list call</a>.</p><script>x()</script></body></html>';
+  const text = htmlToText(html);
+
+  assert.match(text, /Query/);
+  assert.match(text, /\[\/vraquery\/list\]/, 'link target must survive');
+  assert.doesNotMatch(text, /x\(\)/, 'script contents must be stripped');
+  assert.doesNotMatch(text, /a\{\}/, 'style contents must be stripped');
+});

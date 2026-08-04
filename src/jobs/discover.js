@@ -22,6 +22,43 @@ const MAX_PROBES = 30;
 
 const ENDPOINT_HINT = /(api|rest|service|adat|data|station|allomas|measure|meres|hidro|vizrajz|graphql|v1|v2)/i;
 
+/**
+ * Frames embedded by an HTML document.
+ *
+ * Portal software - MAVIR runs Liferay - composes a page out of portlets, and a chart
+ * is often an iframe pointing at a separate application. Its own bundles are where the
+ * data endpoint lives; the outer page only ever mentions the portal's own plumbing.
+ */
+function extractFrameUrls(html, pageUrl) {
+  const urls = new Set();
+  const patterns = [
+    /<iframe[^>]+src=["']([^"']+)["']/gi,
+    /<embed[^>]+src=["']([^"']+)["']/gi,
+    /<object[^>]+data=["']([^"']+)["']/gi,
+  ];
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      try {
+        urls.add(new URL(decodeHtml(match[1]), pageUrl).toString());
+      } catch {
+        /* malformed src, skip */
+      }
+    }
+  }
+  return [...urls];
+}
+
+/** Attribute values arrive HTML-escaped; &amp; in a query string breaks the request. */
+function decodeHtml(value) {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#3[59];/g, "'");
+}
+
 /** Script and module URLs referenced by an HTML document, resolved against its base. */
 function extractScriptUrls(html, pageUrl) {
   const base = (html.match(/<base[^>]+href=["']([^"']+)["']/i) || [])[1] || '/';
@@ -38,7 +75,7 @@ function extractScriptUrls(html, pageUrl) {
     let match;
     while ((match = pattern.exec(html)) !== null) {
       try {
-        urls.add(new URL(match[1], origin).toString());
+        urls.add(new URL(decodeHtml(match[1]), origin).toString());
       } catch {
         /* malformed src, skip */
       }
@@ -101,7 +138,7 @@ async function testCandidate(url) {
   }
 }
 
-async function discover(pageUrl, { probe = true } = {}) {
+async function discover(pageUrl, { probe = true, depth = 1 } = {}) {
   console.log(`\n########## discovering ${pageUrl} ##########`);
 
   let html;
@@ -110,6 +147,12 @@ async function discover(pageUrl, { probe = true } = {}) {
   } catch (err) {
     console.log(`Could not load the page: ${err.message}`);
     return [];
+  }
+
+  const frames = extractFrameUrls(html, pageUrl);
+  if (frames.length > 0) {
+    console.log(`${frames.length} embedded frame(s):`);
+    for (const f of frames) console.log(`  ${f}`);
   }
 
   const scripts = extractScriptUrls(html, pageUrl);
@@ -146,6 +189,13 @@ async function discover(pageUrl, { probe = true } = {}) {
   console.log(`\n${ranked.length} endpoint candidate(s) found in the bundles:`);
   for (const url of ranked.slice(0, 40)) console.log(`  ${url}`);
 
+  // A framed application is a separate app with its own bundles - follow it once.
+  if (depth > 0) {
+    for (const frame of frames) {
+      await discover(frame, { probe, depth: depth - 1 });
+    }
+  }
+
   if (!probe || ranked.length === 0) return ranked;
 
   console.log(`\nCalling the top ${Math.min(MAX_PROBES, ranked.length)}...\n`);
@@ -180,4 +230,4 @@ async function discover(pageUrl, { probe = true } = {}) {
   return ranked;
 }
 
-module.exports = { discover, extractScriptUrls, extractCandidates };
+module.exports = { discover, extractScriptUrls, extractFrameUrls, extractCandidates, decodeHtml };

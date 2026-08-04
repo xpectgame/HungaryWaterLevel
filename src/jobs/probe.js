@@ -5,6 +5,7 @@ const { describeShape } = require('../lib/jsonpath');
 const vizugy = require('../sources/vizugy');
 const mavir = require('../sources/mavir');
 const { discover } = require('./discover');
+const { fetchDocs } = require('./docs');
 
 /**
  * Endpoint discovery tool.
@@ -83,6 +84,16 @@ async function main() {
     console.log('\n########## data.vizugy.hu ##########');
     console.log(`Currently configured: ${cfg.baseUrl}${cfg.path}`);
     await discover(cfg.baseUrl);
+
+    // The portal's bundles point at vmservice.vizugy.hu/vraquery - the hydrological
+    // database's own query service, which publishes documentation next to itself. The
+    // contract is written down; reading it beats probing paths blind.
+    await fetchDocs([
+      'https://vmservice.vizugy.hu/vmhelp/',
+      'https://vmservice.vizugy.hu/vmhelp/Funkcioleiras.html',
+      'https://vmservice.vizugy.hu/vmhelp/Katalogustaroltnapiadatoklekerde.html',
+      'https://vmservice.vizugy.hu/vmhelp/Hidrometeorologiaiadatok.html',
+    ]);
   }
 
   if (doAll || args.includes('--mavir')) {
@@ -95,7 +106,6 @@ async function main() {
     for (const page of [
       'https://www.mavir.hu/web/mavir/rendszerterheles',
       'https://www.mavir.hu/web/mavir/valos-ideju-aggregalt-termeles',
-      cfg.baseUrl,
     ]) {
       await discover(page);
     }
