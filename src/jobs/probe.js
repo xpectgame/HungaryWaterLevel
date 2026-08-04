@@ -83,7 +83,21 @@ async function main() {
     const cfg = vizugy.config();
     console.log('\n########## data.vizugy.hu ##########');
     console.log(`Currently configured: ${cfg.baseUrl}${cfg.path}`);
-    await discover(cfg.baseUrl);
+    // The bundle showed the shape: an anonymous JWT from AuthApi, then vraquery calls
+    // carrying it. loadStations is where the path after the base is assembled, so ask
+    // for a wide window around it rather than around the base URL.
+    await discover(cfg.baseUrl, {
+      keywords: ['loadStations', '_apiRootUrl', 'getStationData', 'stationData', 'timeSeries'],
+    });
+
+    console.log('\n########## vizugy auth ##########');
+    for (const url of [
+      'https://data.vizugy.hu/AuthApi/auth/token',
+      'https://vmservice.vizugy.hu/vraquery/swagger/index.html',
+      'https://vmservice.vizugy.hu/vraquery/swagger/v1/swagger.json',
+    ]) {
+      await probeUrl(url, url.replace(/^https:\/\/[^/]+/, ''));
+    }
 
     // The portal's bundles point at vmservice.vizugy.hu/vraquery - the hydrological
     // database's own query service, which publishes documentation next to itself. The
@@ -114,15 +128,12 @@ async function main() {
     // host. tab4402 is the real-time generation mix - the series this project needs -
     // and tab7679 is system load. Probed directly so a transport failure is reported
     // with its cause rather than as a bare "fetch failed" inside the recursion.
-    console.log('\n########## mavir chart application ##########');
-    for (const url of [
-      'https://rtdwweb.mavir.hu/rtdwweb/webuser/GenerateChartsServlet?hunLang=hu-hu&tabId=tab4402',
-      'https://rtdwweb.mavir.hu/rtdwweb/webuser/GenerateChartsServlet?hunLang=hu-hu&tabId=tab7679',
-      'https://rtdwweb.mavir.hu/rtdwweb/webuser/',
-      'https://rtdwweb.mavir.hu/',
-    ]) {
-      await probeUrl(url, url.replace('https://rtdwweb.mavir.hu', ''));
-    }
+    // The publication app itself answers - only the chart servlet timed out - so mine
+    // its own scripts. That is the application that actually holds the data endpoints.
+    console.log('\n########## mavir publication app ##########');
+    await discover('https://rtdwweb.mavir.hu/rtdwweb/webuser/', {
+      keywords: ['getData', 'DataServlet', 'tabId', 'ajax', 'json'],
+    });
   }
 
   console.log('\nRecord what returned JSON in .env, then run `npm run poll` to verify the ingest.');

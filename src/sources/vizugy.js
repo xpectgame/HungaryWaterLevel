@@ -3,9 +3,21 @@
 const { pollableStations, getStation } = require('../config/stations');
 const { extract, firstArray } = require('../lib/jsonpath');
 const { fetchJson } = require('../lib/http');
+const { createTokenProvider } = require('./vizugy-auth');
 
 /**
  * Adapter for OVF's hydrological open data (data.vizugy.hu).
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT THE PORTAL ACTUALLY DOES
+ * ---------------------------------------------------------------------------
+ * Read out of the portal's own Angular bundle:
+ *
+ *   authApiBaseUrl = "https://data.vizugy.hu/AuthApi/auth"
+ *   vraQueryApiBaseUrl = "https://vmservice.vizugy.hu/vraquery/"
+ *
+ * It asks AuthApi for an anonymous JWT - no credentials - and sends it as a bearer
+ * token on every vraquery call. That much is settled and implemented here.
  *
  * ---------------------------------------------------------------------------
  * READ THIS BEFORE POINTING IT AT PRODUCTION
@@ -32,8 +44,10 @@ const { fetchJson } = require('../lib/http');
  */
 
 const DEFAULTS = {
-  baseUrl: 'https://data.vizugy.hu',
-  path: '/api/stations/{externalId}/discharge/latest',
+  // The query service, not the portal that embeds it.
+  baseUrl: 'https://vmservice.vizugy.hu/vraquery',
+  authBaseUrl: 'https://data.vizugy.hu/AuthApi/auth',
+  path: '/{externalId}/discharge/latest',
   arrayPath: 'data',
   valueField: 'value',
   timeField: 'timestamp',
@@ -55,6 +69,7 @@ const EXTERNAL_IDS = Object.freeze({
 function config(env = process.env) {
   return {
     baseUrl: env.VIZUGY_BASE_URL || DEFAULTS.baseUrl,
+    authBaseUrl: env.VIZUGY_AUTH_BASE_URL || DEFAULTS.authBaseUrl,
     path: env.VIZUGY_PATH || DEFAULTS.path,
     arrayPath: env.VIZUGY_ARRAY_PATH || DEFAULTS.arrayPath,
     valueField: env.VIZUGY_VALUE_FIELD || DEFAULTS.valueField,
@@ -69,7 +84,13 @@ function buildUrl(cfg, station) {
   const path = cfg.path
     .replace('{stationId}', encodeURIComponent(station.id))
     .replace('{externalId}', encodeURIComponent(externalId));
-  return new URL(path, cfg.baseUrl).toString();
+
+  // Concatenate rather than resolve. `new URL('/x', 'https://h/vraquery')` resolves the
+  // leading slash against the origin and silently drops `/vraquery` - the base path is
+  // part of the service address here, not a directory to navigate away from.
+  const base = cfg.baseUrl.replace(/\/+$/, '');
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${suffix}`;
 }
 
 /**
@@ -113,6 +134,14 @@ function parseDischarge(payload, cfg) {
   return { flowM3s: latest.flowM3s, timestamp: latest.timestamp };
 }
 
+let tokenProvider = null;
+
+/** One provider per process, so all stations share a single token. */
+function getTokenProvider(cfg) {
+  if (!tokenProvider) tokenProvider = createTokenProvider({ authBaseUrl: cfg.authBaseUrl });
+  return tokenProvider;
+}
+
 /** Fetch one station's current discharge. Resolves to null when unavailable. */
 async function fetchStation(stationId, env = process.env) {
   const station = getStation(stationId);
@@ -120,7 +149,10 @@ async function fetchStation(stationId, env = process.env) {
 
   const cfg = config(env);
   const url = buildUrl(cfg, station);
-  const headers = cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {};
+
+  // An explicit key wins; otherwise mint the anonymous token the portal itself uses.
+  const bearer = cfg.apiKey || (await getTokenProvider(cfg).getToken());
+  const headers = bearer ? { Authorization: `Bearer ${bearer}` } : {};
 
   const payload = await fetchJson(url, { timeoutMs: cfg.timeoutMs, headers });
   const sample = parseDischarge(payload, cfg);

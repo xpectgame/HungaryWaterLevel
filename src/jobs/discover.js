@@ -168,7 +168,7 @@ async function testCandidate(url) {
   }
 }
 
-async function discover(pageUrl, { probe = true, depth = 1 } = {}) {
+async function discover(pageUrl, { probe = true, depth = 1, keywords = [], radius = 320 } = {}) {
   console.log(`\n########## discovering ${pageUrl} ##########`);
 
   let html;
@@ -228,8 +228,15 @@ async function discover(pageUrl, { probe = true, depth = 1 } = {}) {
     console.log('\nHow these URLs are built:');
     for (const url of ranked.slice(0, 6)) {
       const segment = url.replace(/\/+$/, '').split('/').filter(Boolean).pop();
-      if (segment && segment.length >= 4) dumpContext(sources, segment);
+      if (segment && segment.length >= 4) dumpContext(sources, segment, { radius });
     }
+  }
+
+  // Identifiers the caller already knows are interesting - the method that assembles
+  // the request, rather than the base URL it starts from.
+  if (keywords.length > 0) {
+    console.log('\nRequested identifiers:');
+    for (const keyword of keywords) dumpContext(sources, keyword, { radius: radius * 3, maxHits: 2 });
   }
 
   // A framed application is a separate app with its own bundles - follow it once.
