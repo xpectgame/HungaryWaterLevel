@@ -2,6 +2,24 @@
 
 const USER_AGENT = 'HungaryWaterLevel/0.1 (open data aggregator)';
 
+/**
+ * Headers that make a request look like the portal's own.
+ *
+ * data.vizugy.hu answers /AuthApi/auth/token with 403 rather than 404 - the endpoint
+ * exists and is refusing us specifically. A single-page application always sends Origin
+ * and Referer, and a gateway that checks them rejects anything that does not. This is
+ * not evading a restriction: the data is published as open and the token is handed out
+ * anonymously; it is sending the headers the service expects.
+ */
+function browserHeaders(origin) {
+  return {
+    Origin: origin,
+    Referer: `${origin}/`,
+    Accept: 'application/json, text/plain, */*',
+    'Accept-Language': 'hu-HU,hu;q=0.9,en;q=0.8',
+  };
+}
+
 class HttpError extends Error {
   constructor(message, { status, url, body, cause } = {}) {
     super(message);
@@ -118,4 +136,4 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-module.exports = { fetchText, fetchJson, HttpError, describeCause, USER_AGENT };
+module.exports = { fetchText, fetchJson, HttpError, describeCause, browserHeaders, USER_AGENT };

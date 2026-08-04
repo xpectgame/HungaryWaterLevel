@@ -20,7 +20,7 @@ const { fetchText } = require('../lib/http');
 const MAX_SCRIPT_BYTES = 8 * 1024 * 1024;
 const MAX_PROBES = 30;
 
-const ENDPOINT_HINT = /(api|rest|service|adat|data|station|allomas|measure|meres|hidro|vizrajz|graphql|v1|v2)/i;
+const ENDPOINT_HINT = /(api|rest|service|adat|data|station|allomas|measure|meres|hidro|vizrajz|graphql|swagger|openapi|v1|v2)/i;
 
 /**
  * Frames embedded by an HTML document.
@@ -97,7 +97,7 @@ function extractCandidates(source, pageUrl) {
     if (!value || value.length > 200) return;
     if (!ENDPOINT_HINT.test(value)) return;
     // Skip the obvious non-endpoints that still match the hint.
-    if (/\.(js|css|svg|png|jpe?g|woff2?|map|ico)$/i.test(value)) return;
+    if (/\.(js|css|svg|png|jpe?g|woff2?|map|ico)$/i.test(value) && !/swagger|openapi/i.test(value)) return;
     if (/^(data|blob|javascript):/i.test(value)) return;
     found.set(value, (found.get(value) || 0) + 1);
   };

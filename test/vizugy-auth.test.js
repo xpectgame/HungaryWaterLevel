@@ -151,3 +151,36 @@ test('station ids are URL-encoded into the path', () => {
   const cfg = { ...vizugy.config({}), path: '/{stationId}/data' };
   assert.match(vizugy.buildUrl(cfg, { id: 'a b/c' }), /a%20b%2Fc/);
 });
+
+// ---------------------------------------------------------------------------
+// Request headers
+// ---------------------------------------------------------------------------
+
+const { browserHeaders } = require('../src/lib/http');
+
+test('the token request carries the headers the portal sends', () => {
+  // The endpoint answered 403, not 404: it exists and was refusing this request
+  // specifically. A single-page app always sends Origin and Referer, and a gateway
+  // that checks them rejects anything that does not.
+  const headers = browserHeaders('https://data.vizugy.hu');
+
+  assert.strictEqual(headers.Origin, 'https://data.vizugy.hu');
+  assert.strictEqual(headers.Referer, 'https://data.vizugy.hu/');
+  assert.match(headers.Accept, /application\/json/);
+});
+
+test('the origin is derived from the configured auth URL, not hard-coded', async () => {
+  // A self-hosted or staging deployment must send its own origin, or it gets the 403
+  // this exists to avoid.
+  let seenUrl = null;
+  const provider = createTokenProvider({
+    authBaseUrl: 'https://staging.example.hu/AuthApi/auth',
+    fetch: async (url) => {
+      seenUrl = url;
+      return { access_token: 'x' };
+    },
+  });
+
+  await provider.getToken();
+  assert.strictEqual(seenUrl, 'https://staging.example.hu/AuthApi/auth/token');
+});

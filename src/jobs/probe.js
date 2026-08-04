@@ -1,6 +1,6 @@
 'use strict';
 
-const { fetchText } = require('../lib/http');
+const { fetchText, browserHeaders } = require('../lib/http');
 const { describeShape } = require('../lib/jsonpath');
 const vizugy = require('../sources/vizugy');
 const mavir = require('../sources/mavir');
@@ -28,12 +28,12 @@ const { fetchDocs } = require('./docs');
  * VIZUGY_ARRAY_PATH / VIZUGY_VALUE_FIELD / MAVIR_ARRAY_PATH settings.
  */
 
-async function probeUrl(url, label) {
+async function probeUrl(url, label, opts = {}) {
   console.log(`\n=== ${label || url} ===`);
   console.log(`GET ${url}`);
 
   try {
-    const { body, contentType } = await fetchText(url, { timeoutMs: 20000, retries: 0 });
+    const { body, contentType } = await fetchText(url, { timeoutMs: 20000, retries: 0, ...opts });
     console.log(`content-type: ${contentType}`);
     console.log(`length: ${body.length} bytes`);
 
@@ -90,14 +90,33 @@ async function main() {
       keywords: ['loadStations', '_apiRootUrl', 'getStationData', 'stationData', 'timeSeries'],
     });
 
-    console.log('\n########## vizugy auth ##########');
-    for (const url of [
-      'https://data.vizugy.hu/AuthApi/auth/token',
-      'https://vmservice.vizugy.hu/vraquery/swagger/index.html',
-      'https://vmservice.vizugy.hu/vraquery/swagger/v1/swagger.json',
+    // The query service serves Swagger UI, so an OpenAPI document exists somewhere.
+    // That document is the entire contract - every path, parameter and response shape -
+    // which ends the guessing completely. The UI's own script names where it lives.
+    console.log('\n########## vraquery openapi ##########');
+    await discover('https://vmservice.vizugy.hu/vraquery/swagger/index.html', {
+      keywords: ['swagger', 'urls', 'SwaggerUIBundle'],
+    });
+
+    for (const path of [
+      '/swagger/v1/swagger.json',
+      '/swagger/swagger.json',
+      '/swagger/docs/v1',
+      '/swagger/v1/swagger.yaml',
+      '/openapi.json',
+      '/swagger-ui-init.js',
     ]) {
-      await probeUrl(url, url.replace(/^https:\/\/[^/]+/, ''));
+      await probeUrl(`https://vmservice.vizugy.hu/vraquery${path}`, `vraquery${path}`);
     }
+
+    // 403 rather than 404 on the token endpoint means it exists and is refusing this
+    // particular request. The portal sends Origin and Referer; a gateway checking them
+    // rejects anything that does not.
+    console.log('\n########## vizugy auth ##########');
+    await probeUrl('https://data.vizugy.hu/AuthApi/auth/token', 'token (plain)');
+    await probeUrl('https://data.vizugy.hu/AuthApi/auth/token', 'token (portal headers)', {
+      headers: browserHeaders('https://data.vizugy.hu'),
+    });
 
     // The portal's bundles point at vmservice.vizugy.hu/vraquery - the hydrological
     // database's own query service, which publishes documentation next to itself. The
@@ -130,6 +149,9 @@ async function main() {
     // with its cause rather than as a bare "fetch failed" inside the recursion.
     // The publication app itself answers - only the chart servlet timed out - so mine
     // its own scripts. That is the application that actually holds the data endpoints.
+    // rtdwweb.mavir.hu answered once and has since only timed out from this runner,
+    // which reads as datacentre-IP throttling rather than an outage. From a Hungarian
+    // connection it responds - so run `npm run probe -- --mavir` locally if this fails.
     console.log('\n########## mavir publication app ##########');
     await discover('https://rtdwweb.mavir.hu/rtdwweb/webuser/', {
       keywords: ['getData', 'DataServlet', 'tabId', 'ajax', 'json'],

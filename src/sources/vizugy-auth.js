@@ -1,6 +1,6 @@
 'use strict';
 
-const { fetchJson } = require('../lib/http');
+const { fetchJson, browserHeaders } = require('../lib/http');
 
 /**
  * Anonymous token acquisition for the hydrological query service.
@@ -52,7 +52,10 @@ function isTokenUsable(jwt, now = Date.now()) {
  */
 function createTokenProvider(opts = {}) {
   const authBaseUrl = opts.authBaseUrl || DEFAULT_AUTH_BASE_URL;
-  const request = opts.fetch || ((url) => fetchJson(url, { timeoutMs: 15000 }));
+  // The gateway answers 403 to a request without them - see lib/http.
+  const origin = new URL(authBaseUrl).origin;
+  const request =
+    opts.fetch || ((url) => fetchJson(url, { timeoutMs: 15000, headers: browserHeaders(origin) }));
 
   let token = null;
   let inFlight = null;
