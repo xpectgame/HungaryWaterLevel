@@ -4,6 +4,7 @@ const { fetchText } = require('../lib/http');
 const { describeShape } = require('../lib/jsonpath');
 const vizugy = require('../sources/vizugy');
 const mavir = require('../sources/mavir');
+const { discover } = require('./discover');
 
 /**
  * Endpoint discovery tool.
@@ -13,9 +14,14 @@ const mavir = require('../sources/mavir');
  * hard-coded assumptions. This script is how you close that gap: run it from a machine
  * that can reach them, read what it prints, and set the matching environment variables.
  *
- *   node src/jobs/probe.js --vizugy
- *   node src/jobs/probe.js --mavir
- *   node src/jobs/probe.js --url https://data.vizugy.hu/some/path
+ *   node src/jobs/probe.js                 discover both, then probe what turns up
+ *   node src/jobs/probe.js --mavir         one service only
+ *   node src/jobs/probe.js --url=https://data.vizugy.hu/some/path
+ *   node src/jobs/probe.js --page=https://example.hu/  mine one page's bundles
+ *
+ * Both portals are single-page applications: the HTML carries no data and no endpoint,
+ * so there is nothing to guess from. What the bundles do carry is the URL they fetch
+ * from, as a plain string literal - so discovery downloads them and reads it out.
  *
  * It prints the response shape as dotted paths, which map directly onto the
  * VIZUGY_ARRAY_PATH / VIZUGY_VALUE_FIELD / MAVIR_ARRAY_PATH settings.
@@ -64,36 +70,38 @@ async function main() {
     return;
   }
 
-  const doAll = args.length === 0;
+  const pageArg = args.find((a) => a.startsWith('--page='));
+  if (pageArg) {
+    await discover(pageArg.split('=')[1]);
+    return;
+  }
+
+  const doAll = !args.some((a) => a === '--vizugy' || a === '--mavir');
 
   if (doAll || args.includes('--vizugy')) {
     const cfg = vizugy.config();
     console.log('\n########## data.vizugy.hu ##########');
-    console.log(`Configured base: ${cfg.baseUrl}`);
-    console.log(`Configured path: ${cfg.path}`);
-    console.log('\nNOTE: this path is a placeholder. Open the portal in a browser, watch the');
-    console.log('network tab while a station chart loads, and probe the URL it calls.');
-
-    await probeUrl(cfg.baseUrl, 'portal root');
-    const sampleStation = { id: 'duna-rajka' };
-    await probeUrl(vizugy.buildUrl(cfg, sampleStation), 'guessed station endpoint');
+    console.log(`Currently configured: ${cfg.baseUrl}${cfg.path}`);
+    await discover(cfg.baseUrl);
   }
 
   if (doAll || args.includes('--mavir')) {
     const cfg = mavir.config();
     console.log('\n########## mavir.hu ##########');
-    console.log(`Configured base: ${cfg.baseUrl}`);
-    console.log(`Configured path: ${cfg.path} (chartId=${cfg.chartId})`);
+    console.log(`Currently configured: ${cfg.baseUrl}${cfg.path}`);
 
-    const payload = await probeUrl(mavir.buildUrl(cfg), 'guessed chart endpoint');
-    if (payload) {
-      const parsed = mavir.parseGeneration(payload, cfg);
-      console.log('\nParsed generation mix:');
-      console.log(parsed ? JSON.stringify(parsed, null, 2) : '  (no recognisable series - check SERIES_ALIASES)');
+    // The real-time figures live on their own page; its bundles are the ones that know
+    // where the data comes from.
+    for (const page of [
+      'https://www.mavir.hu/web/mavir/rendszerterheles',
+      'https://www.mavir.hu/web/mavir/valos-ideju-aggregalt-termeles',
+      cfg.baseUrl,
+    ]) {
+      await discover(page);
     }
   }
 
-  console.log('\nDone. Record what worked in .env, then run `npm run poll` to verify the ingest.');
+  console.log('\nRecord what returned JSON in .env, then run `npm run poll` to verify the ingest.');
 }
 
 if (require.main === module) {

@@ -1,7 +1,11 @@
 name: Probe upstream endpoints
 
-# Discovers the real shape of the data.vizugy.hu and mavir.hu responses, so the
-# adapters can be configured against fact rather than guesswork.
+# Discovers the real endpoints behind data.vizugy.hu and mavir.hu.
+#
+# Both are single-page applications: their HTML carries no data and no endpoint, so
+# guessing paths only produces 404s. The bundles they load do contain the URLs they
+# fetch from, as plain string literals - so this downloads them, reads the candidates
+# out, calls each one, and reports which returned JSON.
 #
 # Run this from the Actions tab (Run workflow) - it needs nothing installed locally,
 # and a GitHub runner reaches both services directly. Read the output in the job log,
@@ -28,12 +32,12 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
