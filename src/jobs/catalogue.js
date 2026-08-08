@@ -189,10 +189,31 @@ function score(station, record) {
   return { record, km, fkmDelta, place, riverExact, confidence };
 }
 
+/**
+ * Principal gauges carry a short törzsszám; auxiliary structures carry a long one.
+ *
+ * The main hydrological network is numbered in the low thousands - Körösszakál 2736,
+ * Gyula 2747, Sarkad-Malomfok 2745 - while pumping stations, sluice gauges and flood
+ * markers sit in six-digit blocks: 224205 "Malomfoki Szivattyútelep alsó". Around
+ * Sarkad the six-digit gauges are nearer to the registry's coordinates than the real
+ * one, so distance alone picks a pumping station over the river gauge.
+ */
+const PRINCIPAL_TSZ_MAX = 100000;
+
+function isPrincipal(record) {
+  const tsz = Number(record.tsz);
+  return Number.isFinite(tsz) && tsz < PRINCIPAL_TSZ_MAX;
+}
+
 /** Rank candidates: agreement first, then the sharpest positional evidence. */
 function compareCandidates(a, b) {
   const tier = (s) => (s.place.exact ? 0 : 2) + (s.riverExact ? 0 : 1);
   if (tier(a) !== tier(b)) return tier(a) - tier(b);
+
+  // A principal gauge outranks an auxiliary structure even when the structure is nearer.
+  const principal = (s) => (isPrincipal(s.record) ? 0 : 1);
+  if (principal(a) !== principal(b)) return principal(a) - principal(b);
+
   if (a.fkmDelta !== null && b.fkmDelta !== null && a.fkmDelta !== b.fkmDelta) return a.fkmDelta - b.fkmDelta;
   return (a.km ?? Infinity) - (b.km ?? Infinity);
 }
@@ -279,4 +300,15 @@ function report(matches) {
   return lines;
 }
 
-module.exports = { matchStations, report, normalizeRecord, splitName, fold, riverBase, distanceKm, score, comparePlace };
+module.exports = {
+  matchStations,
+  report,
+  normalizeRecord,
+  splitName,
+  fold,
+  riverBase,
+  distanceKm,
+  score,
+  comparePlace,
+  isPrincipal,
+};

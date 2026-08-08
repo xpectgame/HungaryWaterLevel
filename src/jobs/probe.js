@@ -385,7 +385,7 @@ async function main() {
   if (doAll || args.includes('--vizugy')) {
     const cfg = vizugy.config();
     console.log('\n########## data.vizugy.hu ##########');
-    console.log(`Currently configured: ${cfg.baseUrl}${cfg.path}`);
+    console.log(`Currently configured: ${vizugy.seriesUrl(cfg)} haf=${cfg.hafCode} at=${cfg.atCode}`);
 
     // The endpoints are no longer in question. The portal's bundle gave up the auth
     // flow and the two calls it makes, and the swagger initialiser named the OpenAPI
@@ -422,7 +422,7 @@ async function main() {
   if (doAll || args.includes('--mavir')) {
     const cfg = mavir.config();
     console.log('\n########## mavir.hu ##########');
-    console.log(`Currently configured: ${cfg.baseUrl}${cfg.path}`);
+    console.log(`Currently configured: ${vizugy.seriesUrl(cfg)} haf=${cfg.hafCode} at=${cfg.atCode}`);
 
     // The real-time figures live on their own page; its bundles are the ones that know
     // where the data comes from.

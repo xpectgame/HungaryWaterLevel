@@ -63,14 +63,25 @@ const DEFAULTS = {
  * three agreed are listed here. A wrong törzsszám does not fail; it reports a different
  * river under a station's name and leaves the balance looking entirely plausible.
  *
- * Still unresolved, and deliberately absent rather than guessed:
+ * Three are approximations rather than exact matches, taken deliberately: leaving them
+ * unmapped falls back to the long-term mean, and during the drought these readings were
+ * taken in that mean overstates the real flow several times over. Each substitution is
+ * within a few kilometres on the correct river, and together they are under 1% of the
+ * inflow sum, so the approximation costs far less than the fallback.
  *
- *   fekete-koros-sarkad  three candidates around Sarkad-Malomfok, all pumping stations.
- *   lajta-mosonmagyarovar  only candidate is a barrage tailwater gauge (Tsz 20).
- *   repce-zsira          nearest Répce gauge is at Répcevis, the next village.
+ *   fekete-koros-sarkad  Sarkad-Malomfok (2745), the principal gauge. The nearer
+ *                        candidates are pumping-station gauges in the six-digit block.
+ *   repce-zsira          Répcevis (349), 0.8 km away and the only Répce gauge at the
+ *                        border reach; Zsira is the neighbouring village.
+ *   lajta-mosonmagyarovar  the Lajta barrage tailwater at Mosonmagyaróvár (20), just
+ *                        below the entry section.
  */
 const EXTERNAL_IDS = Object.freeze({
   // Danube system
+  // Komárom is the inflow section: below the Gabcikovo canal rejoining near Szap and
+  // above the Vág. Rajka is 80 km upstream of it and below the Cunovo diversion, so it
+  // is published but never summed - see config/stations.js.
+  'duna-komarom': '5',
   'duna-rajka': '1',
   'duna-nagymaros': '1020',
   'duna-budapest': '1026',
@@ -78,6 +89,8 @@ const EXTERNAL_IDS = Object.freeze({
   'duna-mohacs': '831',
   'raba-szentgotthard': '342',
   'pinka-felsocsatar': '345',
+  'repce-zsira': '349', // Répcevis, 0.8 km
+  'lajta-mosonmagyarovar': '20', // barrage tailwater
   'ipoly-ipolytarnoc': '1040',
 
   // Tisza system
@@ -93,6 +106,7 @@ const EXTERNAL_IDS = Object.freeze({
   'hernad-hidasnemeti': '1732',
   'sebes-koros-korosszakal': '2736',
   'berettyo-pocsaj': '2545',
+  'fekete-koros-sarkad': '2745', // Sarkad-Malomfok
   'feher-koros-gyula': '2747',
   'maros-mako': '2278',
   'tisza-szolnok': '2046',
