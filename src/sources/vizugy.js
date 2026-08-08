@@ -73,8 +73,11 @@ const DEFAULTS = {
  *                        candidates are pumping-station gauges in the six-digit block.
  *   repce-zsira          Répcevis (349), 0.8 km away and the only Répce gauge at the
  *                        border reach; Zsira is the neighbouring village.
- *   lajta-mosonmagyarovar  the Lajta barrage tailwater at Mosonmagyaróvár (20), just
- *                        below the entry section.
+ *   lajta-mosonmagyarovar  Hegyeshalom (19), 7.8 km away. The nearer candidate (20) is
+ *                        the barrage tailwater at Mosonmagyaróvár, and it read exactly
+ *                        0.0 - which on a tailwater gauge means the gate is shut, not
+ *                        that the river stopped. A structure gauge measures the
+ *                        structure; only a river gauge measures the river.
  */
 const EXTERNAL_IDS = Object.freeze({
   // Danube system
@@ -90,7 +93,7 @@ const EXTERNAL_IDS = Object.freeze({
   'raba-szentgotthard': '342',
   'pinka-felsocsatar': '345',
   'repce-zsira': '349', // Répcevis, 0.8 km
-  'lajta-mosonmagyarovar': '20', // barrage tailwater
+  'lajta-mosonmagyarovar': '19', // Hegyeshalom, a river gauge
   'ipoly-ipolytarnoc': '1040',
 
   // Tisza system

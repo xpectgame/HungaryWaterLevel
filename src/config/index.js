@@ -62,7 +62,19 @@ function loadConfig(env = process.env) {
 
     // Beyond this age a gauge reading stops counting as live and the balance falls
     // back to climatology for that station, flagged in the response.
-    maxReadingAgeMs: numEnv(env.MAX_READING_AGE_MS, 6 * 3600 * 1000),
+    //
+    // 24 hours, matching the window the adapter asks for. This was 6 hours, and that is
+    // not a conservative choice - it is a destructive one. The network reports unevenly:
+    // on 2026-08-08 at 14:00 UTC, nine of twenty-eight gauges had last reported between
+    // 04:00 and 05:00, and Szeged - carrying the entire Tisza outflow term - was one of
+    // them. Replacing its measured 112 m3/s with its long-term mean of 815 inflated the
+    // outflow from 1056 to 1759 and turned a balance of +96 m3/s into -426, reported as
+    // a significant imbalance. All of it an artefact.
+    //
+    // A stale measurement is a real number from the right river; climatology is a
+    // decade's average, and in a drought it is wrong by a factor of five to twenty. The
+    // age is reported either way, so the caller can still tell how fresh the reading is.
+    maxReadingAgeMs: numEnv(env.MAX_READING_AGE_MS, 24 * 3600 * 1000),
 
     // Must exceed the longest travel time in the station registry (~200 h) for the
     // lagged balance to have anything to look up.

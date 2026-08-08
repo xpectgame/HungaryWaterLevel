@@ -326,3 +326,59 @@ test('validation rejects future timestamps', () => {
   assert.strictEqual(result.ok, false);
   assert.match(result.reason, /future/);
 });
+
+// ---------------------------------------------------------------------------
+// Climatology fallback, at the scale it actually does damage
+// ---------------------------------------------------------------------------
+
+test('climatology substituted for a stale gauge can invent a significant imbalance', () => {
+  // Not hypothetical. On 2026-08-08 at 14:00 UTC, nine of twenty-eight gauges had last
+  // reported between 04:00 and 05:00 - inside a 24 h window, outside a 6 h one. Szeged
+  // carries the whole Tisza outflow term, and its long-term mean is seven times what it
+  // was actually flowing during the drought.
+  const drought = {};
+  for (const station of STATIONS) {
+    if (!station.meanFlow) continue;
+    drought[station.id] = {
+      stationId: station.id,
+      flowM3s: station.meanFlow * 0.32,
+      timestamp: new Date().toISOString(),
+      source: 'test',
+      quality: 'measured',
+    };
+  }
+
+  const honest = computeBalance(drought);
+
+  // Drop Szeged the way an age filter would, leaving the balance to fall back on its mean.
+  const withStale = { ...drought };
+  delete withStale['tisza-szeged'];
+  const distorted = computeBalance(withStale);
+
+  const szeged = getStation('tisza-szeged');
+  const inflated = distorted.outflow.totalM3s - honest.outflow.totalM3s;
+
+  assert.ok(
+    inflated > szeged.meanFlow * 0.6,
+    `climatology should visibly inflate the outflow, got ${inflated.toFixed(0)} m3/s`,
+  );
+  // The whole point: the fabricated term is larger than the error band, so the API would
+  // report it as a real, significant imbalance.
+  assert.ok(inflated > 2 * honest.net.uncertaintyM3s);
+  assert.strictEqual(honest.net.significant, false);
+  assert.strictEqual(distorted.net.significant, true);
+  assert.ok(distorted.dataQuality.warnings.some((w) => w.includes('tisza-szeged')));
+});
+
+test('the staleness window is at least as long as the window the adapter fetches', () => {
+  // A shorter acceptance window than the fetch window discards measurements that were
+  // just retrieved and replaces them with climatology.
+  const { loadConfig } = require('../src/config');
+  const config = loadConfig({});
+  const vizugyConfig = require('../src/sources/vizugy').config({});
+
+  assert.ok(
+    config.maxReadingAgeMs >= vizugyConfig.lookbackHours * 3600 * 1000,
+    `maxReadingAgeMs ${config.maxReadingAgeMs} is shorter than the ${vizugyConfig.lookbackHours} h fetch window`,
+  );
+});
