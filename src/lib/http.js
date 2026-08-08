@@ -11,10 +11,12 @@ const USER_AGENT = 'HungaryWaterLevel/0.1 (open data aggregator)';
  * not evading a restriction: the data is published as open and the token is handed out
  * anonymously; it is sending the headers the service expects.
  */
-function browserHeaders(origin) {
+function browserHeaders(origin, referer) {
   return {
     Origin: origin,
-    Referer: `${origin}/`,
+    // Which page the request came from. Asset servers that check this reject anything
+    // that omits it, so a page can load while every script it references 403s.
+    Referer: referer || `${origin}/`,
     Accept: 'application/json, text/plain, */*',
     'Accept-Language': 'hu-HU,hu;q=0.9,en;q=0.8',
   };

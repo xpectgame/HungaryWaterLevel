@@ -1,6 +1,6 @@
 'use strict';
 
-const { fetchText } = require('../lib/http');
+const { fetchText, browserHeaders } = require('../lib/http');
 
 /**
  * Finds the API a single-page application talks to.
@@ -150,9 +150,9 @@ function dumpContext(sources, needle, { radius = 320, maxHits = 4 } = {}) {
 }
 
 /** Call a candidate and report what came back. */
-async function testCandidate(url) {
+async function testCandidate(url, headers = {}) {
   try {
-    const { body, contentType } = await fetchText(url, { timeoutMs: 12000, retries: 0 });
+    const { body, contentType } = await fetchText(url, { timeoutMs: 12000, retries: 0, headers });
     const trimmed = body.trim();
     const isJson = trimmed.startsWith('{') || trimmed.startsWith('[');
     return {
@@ -171,9 +171,15 @@ async function testCandidate(url) {
 async function discover(pageUrl, { probe = true, depth = 1, keywords = [], radius = 320 } = {}) {
   console.log(`\n########## discovering ${pageUrl} ##########`);
 
+  // MAVIR's publication app serves its page but 403s every script it references - an
+  // asset server checking where the request came from. A browser always says; a bare
+  // fetch does not, so the page loads and the bundles that hold the endpoints do not.
+  const origin = new URL(pageUrl).origin;
+  const headers = browserHeaders(origin, pageUrl);
+
   let html;
   try {
-    ({ body: html } = await fetchText(pageUrl, { timeoutMs: 20000, retries: 0 }));
+    ({ body: html } = await fetchText(pageUrl, { timeoutMs: 20000, retries: 0, headers }));
   } catch (err) {
     console.log(`Could not load the page: ${err.message}`);
     return [];
@@ -194,7 +200,7 @@ async function discover(pageUrl, { probe = true, depth = 1, keywords = [], radiu
 
   for (const scriptUrl of scripts) {
     try {
-      const { body } = await fetchText(scriptUrl, { timeoutMs: 30000, retries: 0 });
+      const { body } = await fetchText(scriptUrl, { timeoutMs: 30000, retries: 0, headers });
       if (body.length > MAX_SCRIPT_BYTES) {
         console.log(`  (skipped ${scriptUrl} - ${body.length} bytes)`);
         continue;
@@ -209,7 +215,6 @@ async function discover(pageUrl, { probe = true, depth = 1, keywords = [], radiu
   }
 
   // Same-origin endpoints first - those are the app's own API.
-  const origin = new URL(pageUrl).origin;
   const ranked = [...candidates.entries()]
     .sort((a, b) => {
       const aSame = a[0].startsWith(origin) ? 1 : 0;
@@ -259,7 +264,7 @@ async function discover(pageUrl, { probe = true, depth = 1, keywords = [], radiu
       continue;
     }
 
-    const result = await testCandidate(url);
+    const result = await testCandidate(url, headers);
     if (!result.ok) {
       console.log(`FAIL      ${url}  (${result.error})`);
     } else if (result.isJson) {

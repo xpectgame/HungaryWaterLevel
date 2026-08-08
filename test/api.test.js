@@ -92,8 +92,16 @@ test('GET /api/v1/balance returns a complete, self-describing balance', async ()
     const { status, body } = await get('/api/v1/balance');
     assert.strictEqual(status, 200);
 
-    assert.ok(body.inflow.totalM3s > 3000);
-    assert.ok(body.outflow.totalM3s > 3000);
+    // A plausibility band, not a threshold. The synthetic generator swings each station
+    // between a quarter of its mean and well above it, so a fixed floor near the
+    // long-term average passes most of the time and fails whenever the seasonal and
+    // weather factors happen to line up low. What must hold is the structure below.
+    for (const side of ['inflow', 'outflow']) {
+      assert.ok(
+        body[side].totalM3s > 500 && body[side].totalM3s < 15000,
+        `${side} ${body[side].totalM3s} m3/s is outside anything physically possible`,
+      );
+    }
     // The three figures are each rounded to one decimal independently, so the parts can
     // legitimately miss their total by one step. Asserting exact equality here passed by
     // luck for a while - the fixture data is time-dependent - and then did not.
