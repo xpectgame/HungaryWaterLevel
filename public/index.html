@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mennyi víz folyik át Magyarországon?</title>
 <meta name="description" content="Magyarország felszíni vízmérlege élőben: mennyi víz lép be a határon, mennyi hagyja el, és mennyit vesz ki az energiaipar hűtésre.">
-<meta name="theme-color" content="#04141c">
+<meta name="theme-color" content="#f4f9fb">
 <meta property="og:title" content="Mennyi víz folyik át Magyarországon?">
 <meta property="og:description" content="Élő vízmérleg 30 határszelvényből, negyedóránként frissítve.">
 <meta property="og:type" content="website">
@@ -26,12 +26,16 @@
    jitter. Prose is not, because the point is to be read.
 --------------------------------------------------------------------------- */
 :root {
-  --abyss:#04141c; --deep:#082430; --shelf:#0d3242; --edge:#16495c;
-  --flow:#3fd0d8; --flow-dim:#1d8f9c; --shallow:#7fe6d2; --silt:#c9b48a;
-  --ember:#ff9d4d; --ember-dim:#b86a2c;      /* the power sector, and nothing else */
-  --alarm:#ff6b7d;
-  --ink:#e8f4f6; --ink-soft:#9fbcc4; --ink-faint:#6d8f99;
-  --card:rgba(13,50,66,.55); --line:rgba(63,208,216,.18);
+  /* Daylight over water. The dark build read as an instrument panel at night; this is
+     the same river seen from the bank. Ink stays a deep petrol rather than black, so
+     the page never goes fully neutral - the subject is water, including in the text. */
+  --paper:#f4f9fb; --paper-2:#ffffff; --sunk:#e6f1f5;
+  --flow:#0e8f9e; --flow-dim:#7fc9d2; --deep:#0b5566; --shallow:#37b7c3;
+  --silt:#a9843f; --silt-dim:#dcc79a;
+  --ember:#c2521c; --ember-dim:#f0b895;   /* the power sector, and nothing else */
+  --alarm:#b3243c;
+  --ink:#0a2c37; --ink-soft:#41707d; --ink-faint:#7b9aa4;
+  --card:#ffffff; --line:#cfe3ea; --shadow:0 1px 2px rgba(10,44,55,.06),0 8px 24px rgba(10,44,55,.06);
   --sans:ui-sans-serif,-apple-system,"Segoe UI",Inter,system-ui,sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 }
@@ -40,9 +44,9 @@ html{-webkit-text-size-adjust:100%}
 body{
   margin:0; font-family:var(--sans); color:var(--ink); line-height:1.55;
   background:
-    radial-gradient(1200px 700px at 15% -10%, #0d3a4a 0%, transparent 60%),
-    radial-gradient(900px 600px at 90% 5%, #0a2c3c 0%, transparent 55%),
-    linear-gradient(180deg,#04141c 0%, #061c26 45%, #04141c 100%);
+    radial-gradient(900px 500px at 12% -8%, #e2f2f6 0%, transparent 62%),
+    radial-gradient(800px 500px at 92% 2%, #eaf4f0 0%, transparent 58%),
+    var(--paper);
   background-attachment:fixed; min-height:100vh;
 }
 .wrap{max-width:1180px;margin:0 auto;padding:clamp(14px,3vw,28px)}
@@ -62,13 +66,13 @@ h1 em{font-style:normal;color:var(--flow)}
 
 /* --- banners --- */
 .banner{border-radius:12px;padding:12px 15px;margin-bottom:18px;font-size:14px;border:1px solid}
-.banner.warn{background:rgba(255,107,125,.09);border-color:rgba(255,107,125,.4);color:#ffd3d9}
-.banner.note{background:rgba(255,157,77,.08);border-color:rgba(255,157,77,.32);color:#ffd9b8}
+.banner.warn{background:#fdeef1;border-color:#eab8c3;color:#8d1329}
+.banner.note{background:#fdf1e8;border-color:#e8c3a6;color:#8a3d12}
 .hidden{display:none !important}
 
 /* --- the three headline figures --- */
 .headline{display:grid;grid-template-columns:1fr auto 1fr;gap:clamp(10px,2vw,26px);align-items:center;
-  background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(16px,3vw,26px);margin-bottom:18px}
+  background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(16px,3vw,26px);margin-bottom:18px;box-shadow:var(--shadow)}
 .side{text-align:center}
 .side .label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
 .big{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:-.03em;
@@ -83,14 +87,14 @@ h1 em{font-style:normal;color:var(--flow)}
 .verdict{font-size:12px;color:var(--ink-soft);margin-top:6px;max-width:22ch;margin-inline:auto}
 
 /* --- map --- */
-.mapcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(10px,2vw,18px);margin-bottom:18px;position:relative}
+.mapcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(10px,2vw,18px);margin-bottom:18px;position:relative;box-shadow:var(--shadow)}
 .maphead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
 .maphead h2{font-size:15px;font-weight:600;letter-spacing:.02em}
 .maphead .hint{font-size:12px;color:var(--ink-faint)}
 svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y}
-.border-outline{fill:url(#basin);stroke:var(--edge);stroke-width:1.1;opacity:.95}
+.border-outline{fill:url(#basin);stroke:var(--flow-dim);stroke-width:1.2;opacity:1}
 .river{fill:none;stroke-linecap:round;stroke-linejoin:round}
-.river-bed{stroke:rgba(63,208,216,.14)}
+.river-bed{stroke:rgba(14,143,158,.16)}
 /* The dash marches along the river. Duration is set per river from its own
    discharge, so a low river visibly crawls and a high one runs. */
 .river-flow{stroke:var(--flow);stroke-dasharray:5 15;animation:drift linear infinite}
@@ -98,12 +102,14 @@ svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y
 .node{cursor:pointer}
 .node circle{transition:r .5s cubic-bezier(.2,.8,.2,1), opacity .4s}
 .node .halo{fill:var(--flow);opacity:.14}
-.node .core{fill:var(--shallow);stroke:var(--abyss);stroke-width:1}
+.node .core{fill:var(--flow);stroke:#fff;stroke-width:1.2}
 .node.outflow .core{fill:var(--silt)} .node.outflow .halo{fill:var(--silt)}
 .node.interior .core{fill:var(--ink-faint)} .node.interior .halo{opacity:.06}
 .node text{font-family:var(--sans);font-size:6.5px;fill:var(--ink-soft);pointer-events:none}
 .plant{cursor:pointer}
-.plant polygon{fill:var(--ember);stroke:var(--abyss);stroke-width:.8}
+.plant polygon,.plant path,.plant circle:not(.heat){fill:var(--ember);stroke:#fff;stroke-width:.9}
+.plant .hub{fill:#fff;stroke:var(--ember);stroke-width:1.1}
+.plant.selected .heat{opacity:.34}
 .plant .heat{fill:var(--ember);opacity:.16}
 .plant text{font-family:var(--sans);font-size:6.5px;fill:var(--ember);pointer-events:none}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);margin-top:8px}
@@ -111,8 +117,8 @@ svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y
 
 /* --- tooltip --- */
 #tip{position:fixed;z-index:50;pointer-events:none;opacity:0;transition:opacity .15s;
-  background:#06202b;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;
-  box-shadow:0 10px 30px rgba(0,0,0,.5);max-width:250px}
+  background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;
+  box-shadow:0 10px 30px rgba(10,44,55,.18);max-width:260px}
 #tip .t-name{font-weight:600;margin-bottom:2px}
 #tip .t-val{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--flow);font-size:16px}
 #tip .t-sub{color:var(--ink-faint);font-size:11.5px;margin-top:3px}
@@ -120,20 +126,20 @@ svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y
 /* --- cards --- */
 .grid{display:grid;gap:12px;margin-bottom:18px}
 .g3{grid-template-columns:repeat(auto-fit,minmax(238px,1fr))}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 16px;box-shadow:var(--shadow)}
 .card h3{font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);font-weight:600;margin-bottom:8px}
 .card .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600;letter-spacing:-.02em}
 .card p{font-size:13px;color:var(--ink-soft);margin:8px 0 0}
-.card.power{border-color:rgba(255,157,77,.3)} .card.power .v{color:var(--ember)}
+.card.power{border-color:var(--ember-dim)} .card.power .v{color:var(--ember)}
 
 /* --- station bars --- */
 .bars{display:flex;flex-direction:column;gap:5px}
 .bar{display:grid;grid-template-columns:minmax(96px,1.3fr) 1fr minmax(74px,auto);gap:10px;align-items:center;font-size:13px}
 .bar .nm{color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bar .track{height:7px;border-radius:4px;background:rgba(255,255,255,.05);overflow:hidden}
+.bar .track{height:8px;border-radius:5px;background:var(--sunk);overflow:hidden}
 .bar .fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--flow-dim),var(--flow));
   transition:width .9s cubic-bezier(.2,.8,.2,1)}
-.bar.out .fill{background:linear-gradient(90deg,#8a7a55,var(--silt))}
+.bar.out .fill{background:linear-gradient(90deg,var(--silt-dim),var(--silt))}
 .bar .n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;color:var(--ink)}
 .bar .n small{color:var(--ink-faint)}
 
@@ -143,8 +149,20 @@ svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y
 .spark .area{fill:url(#sparkfill);stroke:none}
 .spark .out{stroke:var(--silt)}
 
+/* --- generation mix --- */
+.mixbar{display:flex;height:26px;border-radius:7px;overflow:hidden;background:var(--sunk)}
+.mixbar span{transition:width .8s cubic-bezier(.2,.8,.2,1);min-width:0}
+.mixlegend{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:12px;font-size:12.5px;color:var(--ink-soft)}
+.mixlegend b{color:var(--ink);font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600}
+.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+/* Rows are buttons: clicking one lights its marker on the map. */
+.bar.clickable{cursor:pointer;border-radius:7px;padding:2px 4px;margin:-2px -4px;transition:background .15s}
+.bar.clickable:hover,.bar.clickable:focus-visible{background:var(--sunk);outline:none}
+.bar.on{background:var(--sunk)}
+
 /* --- prose --- */
-.note-block{background:rgba(8,36,48,.5);border-left:2px solid var(--flow-dim);border-radius:0 12px 12px 0;
+.note-block{background:var(--sunk);border-left:2px solid var(--flow-dim);border-radius:0 12px 12px 0;
   padding:14px 16px;margin-bottom:18px;font-size:13.5px;color:var(--ink-soft)}
 .note-block strong{color:var(--ink)}
 footer{color:var(--ink-faint);font-size:12.5px;padding:26px 0 40px;border-top:1px solid var(--line);margin-top:26px}
@@ -206,12 +224,12 @@ footer a{color:var(--ink-soft)}
   <svg class="map" id="map" viewBox="0 0 800 470" role="img" aria-label="Magyarország folyói és vízrajzi szelvényei">
     <defs>
       <linearGradient id="basin" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#0b2c3a" stop-opacity=".95"/>
-        <stop offset="100%" stop-color="#061e29" stop-opacity=".9"/>
+        <stop offset="0%" stop-color="#eaf5f8" stop-opacity="1"/>
+        <stop offset="100%" stop-color="#dceef3" stop-opacity="1"/>
       </linearGradient>
       <linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#3fd0d8" stop-opacity=".35"/>
-        <stop offset="100%" stop-color="#3fd0d8" stop-opacity="0"/>
+        <stop offset="0%" stop-color="#0e8f9e" stop-opacity=".28"/>
+        <stop offset="100%" stop-color="#0e8f9e" stop-opacity="0"/>
       </linearGradient>
     </defs>
     <g id="layer-country"></g>
@@ -239,6 +257,21 @@ footer a{color:var(--ink-soft)}
     <h3>Kilépő szelvények</h3>
     <div class="bars" id="bars-out"></div>
   </div>
+</section>
+
+<section class="card" style="margin-bottom:18px">
+  <h3>Erőművek és hűtővizük</h3>
+  <div id="plantlist" class="bars"></div>
+  <p style="font-size:13px;color:var(--ink-soft);margin-top:10px">
+    A hűtővíz a termelésből számított becslés, nem mérés. A kivett víz több mint 99%-a
+    visszakerül a folyóba — felmelegítve; a mérlegből ténylegesen csak az elpárolgó rész hiányzik.
+  </p>
+</section>
+
+<section class="card" style="margin-bottom:18px">
+  <h3>Honnan jön az áram most</h3>
+  <div id="mix" class="mixbar"></div>
+  <div id="mixlegend" class="mixlegend"></div>
 </section>
 
 <section class="card" style="margin-bottom:18px">
@@ -401,10 +434,10 @@ function drawNodes(){
     const [x,y] = px(p.location.lon, p.location.lat);
     const mw = p.generation && p.generation.powerMw;
     const w = p.water && p.water.withdrawalM3s;
-    const g = svgEl('g',{ class:'plant', transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
-    const size = w==null ? 3 : Math.max(3, Math.min(11, 3+Math.sqrt(w)*0.9));
+    const g = svgEl('g',{ class:'plant '+(p.type||''), 'data-plant':p.id, transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
+    const size = w==null ? 3.4 : Math.max(3.4, Math.min(11, 3.4+Math.sqrt(w)*0.9));
     g.appendChild(svgEl('circle',{ class:'heat', r:(size*2).toFixed(1) }));
-    g.appendChild(svgEl('polygon',{ points:`0,${-size} ${size},0 0,${size} ${-size},0` }));
+    g.appendChild(plantGlyph(p.type, size));
     if(w!=null && w>5){
       const t = svgEl('text',{ x:(size+4).toFixed(1), y:'-3' });
       t.textContent = p.name.split(/[ (]/)[0];
@@ -417,6 +450,35 @@ function drawNodes(){
   }
 
   styleRivers(byId);
+}
+
+/**
+ * A shape per fuel, not one marker with a colour swapped.
+ *
+ * Shape survives what colour does not: a small marker on a busy map, a colour-blind
+ * reader, a printed page. The nuclear one is the trefoil-ish rotor because that is the
+ * plant this whole model exists for, and it should be findable at a glance.
+ */
+function plantGlyph(type, r){
+  if(type==='nuclear'){
+    const g = svgEl('g');
+    g.appendChild(svgEl('circle',{ r:(r*0.34).toFixed(2), class:'hub' }));
+    for(let i=0;i<3;i++){
+      const a = (i*120-90)*Math.PI/180, a1 = a-0.42, a2 = a+0.42;
+      const P = (ang,rad)=>`${(Math.cos(ang)*rad).toFixed(2)},${(Math.sin(ang)*rad).toFixed(2)}`;
+      g.appendChild(svgEl('path',{ d:`M ${P(a1,r*0.42)} L ${P(a1,r*1.25)} A ${r*1.25} ${r*1.25} 0 0 1 ${P(a2,r*1.25)} L ${P(a2,r*0.42)} Z` }));
+    }
+    return g;
+  }
+  if(type==='coal' || type==='lignite'){
+    // A cooling tower's waist, squared off enough to read at 8 pixels.
+    return svgEl('polygon',{ points:`${-r*0.8},${-r} ${r*0.8},${-r} ${r},${r} ${-r},${r}` });
+  }
+  if(type==='biomass'){
+    return svgEl('circle',{ r:r.toFixed(2) });
+  }
+  // Gas and everything else: a flame-ish drop.
+  return svgEl('path',{ d:`M 0,${-r*1.2} C ${r*0.9},${-r*0.2} ${r*0.7},${r} 0,${r} C ${-r*0.7},${r} ${-r*0.9},${-r*0.2} 0,${-r*1.2} Z` });
 }
 
 function currentStationFlows(){
@@ -518,6 +580,78 @@ function renderSpark(history){
   $('spark-note').innerHTML = `Beáramlás <span style="color:var(--flow)">———</span> és kiáramlás <span style="color:var(--silt)">———</span> az elmúlt ${hrs} órában.`;
 }
 
+// Colours belong to the electricity system, so they stay warm; water keeps the cool
+// end of the palette. The one exception is hydro, which is water and reads as water.
+const MIX = {
+  nuclear:['Atomenergia','#7a4bd6'], naturalGas:['Földgáz','#c2521c'], coal:['Szén, lignit','#6b4a30'],
+  pv:['Napelem','#e0a21a'], wind:['Szél','#4a9d7e'], biomass:['Biomassza','#7f9c3a'],
+  hydro:['Vízerőmű','#0e8f9e'], oil:['Olaj','#8a5a3c'], waste:['Hulladék','#9a7b5f'],
+};
+
+function renderMix(power){
+  const mix = (power && power.generationMix) || {};
+  const parts = Object.entries(MIX)
+    .map(([key,[label,colour]]) => ({ key, label, colour, mw: Number(mix[key]) }))
+    .filter((p) => Number.isFinite(p.mw) && p.mw > 0)
+    .sort((a,b) => b.mw - a.mw);
+
+  const bar = $('mix'), legend = $('mixlegend');
+  if(parts.length === 0){
+    bar.innerHTML=''; 
+    legend.innerHTML = '<span>Nincs élő termelési adat. A MAVIR nyilvános exportja országos összeget ad, erőművenkénti bontást nem; a blokkonkénti adat az ENTSO-E-ből fog jönni.</span>';
+    return;
+  }
+
+  const total = parts.reduce((sum,p) => sum+p.mw, 0);
+  bar.innerHTML = parts.map((p) =>
+    `<span style="width:${((p.mw/total)*100).toFixed(2)}%;background:${p.colour}" title="${p.label}"></span>`).join('');
+  legend.innerHTML = parts.map((p) =>
+    `<span><i class="swatch" style="background:${p.colour}"></i>${p.label} <b>${fmt(p.mw,0)}</b> MW`
+    + ` <span style="color:var(--ink-faint)">${fmt((p.mw/total)*100,0)}%</span></span>`).join('');
+}
+
+/**
+ * Plants, with what they draw and how sure we are of it.
+ *
+ * The confidence column is not decoration: everything here is derived from generation,
+ * and while generation itself is unavailable the whole column is an estimate from
+ * nameplate. Showing the number without that is how a model becomes a measurement.
+ */
+function renderPlants(){
+  const rows = plants.map((p) => {
+    const w = p.water && p.water.withdrawalM3s;
+    const mw = p.generation && p.generation.powerMw;
+    const conf = (p.generation && p.generation.confidence) || 'unavailable';
+    return { p, w:Number.isFinite(w)?w:0, mw, conf };
+  }).sort((a,b) => b.w - a.w);
+
+  const max = Math.max(...rows.map((r) => r.w), 1);
+  $('plantlist').innerHTML = rows.map(({p,w,mw,conf}) => {
+    const label = conf==='measured' ? '' : conf==='unavailable'
+      ? ' <small style="color:var(--ink-faint)">nincs élő adat</small>'
+      : ' <small style="color:var(--ink-faint)">becsült</small>';
+    return `<div class="bar clickable" data-plant="${p.id}" tabindex="0" role="button">`+
+      `<div class="nm" title="${p.name}">${p.name}</div>`+
+      `<div class="track"><div class="fill" style="width:${Math.max(0.6,(w/max)*100).toFixed(1)}%;`+
+      `background:linear-gradient(90deg,var(--ember-dim),var(--ember))"></div></div>`+
+      `<div class="n">${fmt(w,1)}${label}</div></div>`;
+  }).join('');
+
+  for(const row of $('plantlist').querySelectorAll('[data-plant]')){
+    const select = () => selectPlant(row.dataset.plant);
+    row.addEventListener('click', select);
+    row.addEventListener('keydown', (e) => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); select(); } });
+  }
+}
+
+/** Clicking a row lights the marker, so the name and the place connect. */
+let selectedPlant = null;
+function selectPlant(id){
+  selectedPlant = selectedPlant===id ? null : id;
+  for(const el of document.querySelectorAll('[data-plant]')) el.classList.toggle('on', el.dataset.plant===selectedPlant);
+  for(const el of document.querySelectorAll('.plant')) el.classList.toggle('selected', el.dataset.plant===selectedPlant);
+}
+
 function renderExplainer(s){
   const b=s.balance;
   const warn = b.dataQuality.warnings||[];
@@ -536,6 +670,7 @@ async function loadStatic(){
   ]);
   stations = st.stations||[];
   plants = (pl.plants||[]).filter(p=>p.status==='operating');
+  renderPlants();
 }
 
 async function refresh(){
@@ -550,6 +685,7 @@ async function refresh(){
     renderBars(s.balance.inflow.stations, $('bars-in'), '');
     renderBars(s.balance.outflow.stations, $('bars-out'), 'out');
     renderExplainer(s);
+    renderMix(s.power);
     drawNodes();
 
     const at = s._meta && s._meta.lastPollAt;
