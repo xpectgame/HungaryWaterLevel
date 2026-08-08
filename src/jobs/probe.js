@@ -481,7 +481,7 @@ async function main() {
   if (doAll || args.includes('--mavir')) {
     const cfg = mavir.config();
     console.log('\n########## mavir.hu ##########');
-    console.log(`Currently configured: ${vizugy.seriesUrl(cfg)} haf=${cfg.hafCode} at=${cfg.atCode}`);
+    console.log(`Currently configured: ${cfg.baseUrl}${cfg.path} chartId=${cfg.chartId}`);
 
     // The real-time figures live on their own page; its bundles are the ones that know
     // where the data comes from.

@@ -148,6 +148,13 @@ function config(env = process.env) {
 
 /** The service address. Concatenated, not resolved - see the note in seriesUrl's test. */
 function seriesUrl(cfg) {
+  // Say which config arrived rather than throwing "cannot read startsWith of undefined".
+  // The probe passed MAVIR's config here by accident, and the TypeError named neither
+  // the caller nor the missing field.
+  if (!cfg || typeof cfg.seriesPath !== 'string' || typeof cfg.baseUrl !== 'string') {
+    throw new TypeError(`seriesUrl needs a vizugy config with baseUrl and seriesPath, got ${JSON.stringify(cfg)}`);
+  }
+
   // `new URL('/TS/TsShort', 'https://h/vraquery')` resolves the leading slash against
   // the origin and silently drops `/vraquery`. The base path is part of the service
   // address here, not a directory to navigate away from.

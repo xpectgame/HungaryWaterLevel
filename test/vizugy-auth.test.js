@@ -254,3 +254,14 @@ test('the origin is derived from the configured auth URL, not hard-coded', async
   await provider.getToken();
   assert.strictEqual(seenUrl, 'https://staging.example.hu/AuthApi/auth/token');
 });
+
+test('seriesUrl names the config it was handed instead of throwing on a missing field', () => {
+  // The probe passed MAVIR's config to this function by accident and got "cannot read
+  // properties of undefined (reading 'startsWith')", which named neither side.
+  const mavirConfig = require('../src/sources/mavir').config({});
+
+  assert.throws(
+    () => vizugy.seriesUrl(mavirConfig),
+    (err) => /vizugy config/.test(err.message) && /baseUrl/.test(err.message),
+  );
+});
