@@ -29,18 +29,24 @@ const { fetchDocs } = require('./docs');
  */
 
 async function probeUrl(url, label, opts = {}) {
+  // How much of a non-JSON body to show. 400 characters is enough to recognise an error
+  // page, and far too little to read a configuration out of one - the swagger shell hid
+  // its OpenAPI document just past that cut.
+  const { maxChars = 400, ...fetchOpts } = opts;
+
   console.log(`\n=== ${label || url} ===`);
   console.log(`GET ${url}`);
 
   try {
-    const { body, contentType } = await fetchText(url, { timeoutMs: 20000, retries: 0, ...opts });
+    const { body, contentType } = await fetchText(url, { timeoutMs: 20000, retries: 0, ...fetchOpts });
     console.log(`content-type: ${contentType}`);
     console.log(`length: ${body.length} bytes`);
 
     const trimmed = body.trim();
     if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-      console.log('Not JSON. First 400 characters:\n');
-      console.log(trimmed.slice(0, 400));
+      console.log(`Not JSON. First ${maxChars} characters:\n`);
+      console.log(trimmed.slice(0, maxChars));
+      if (trimmed.length > maxChars) console.log(`\n... (${trimmed.length - maxChars} more bytes)`);
       console.log('\nIf this is HTML, the data is probably behind a different path or loaded by a script.');
       return null;
     }
@@ -94,21 +100,35 @@ async function main() {
     // That document is the entire contract - every path, parameter and response shape -
     // which ends the guessing completely. The UI's own script names where it lives.
     console.log('\n########## vraquery openapi ##########');
-    await discover('https://vmservice.vizugy.hu/vraquery/swagger/index.html', {
-      keywords: ['swagger', 'urls', 'SwaggerUIBundle'],
+    const swaggerShell = 'https://vmservice.vizugy.hu/vraquery/swagger/index.html';
+
+    // The whole shell, not an excerpt. The referenced bundles turned out to be stock
+    // Swagger UI, whose string literals are all about the spec format rather than this
+    // API - so the document URL is in the page itself, in an inline script, and there
+    // are only a few hundred bytes of it to read.
+    await probeUrl(swaggerShell, 'swagger shell (full body)', {
+      maxChars: 20000,
+      headers: browserHeaders('https://vmservice.vizugy.hu'),
     });
 
+    await discover(swaggerShell, { keywords: ['swagger', 'urls', 'SwaggerUIBundle'] });
+
     for (const path of [
-      // The UI's own config script names the document; everything else is a guess.
+      // The shell's inline configuration names the document; these are the conventional
+      // locations, tried in case it is generated at runtime rather than written down.
       '/swagger/index.js',
       '/swagger/swagger-ui-init.js',
       '/swagger/v1/swagger.json',
+      '/swagger/v1/swagger.yaml',
       '/swagger/swagger.json',
       '/swagger/docs/v1',
       '/swagger/vraquery/swagger.json',
+      '/swagger.json',
       '/openapi.json',
     ]) {
-      await probeUrl(`https://vmservice.vizugy.hu/vraquery${path}`, `vraquery${path}`);
+      await probeUrl(`https://vmservice.vizugy.hu/vraquery${path}`, `vraquery${path}`, {
+        headers: browserHeaders('https://vmservice.vizugy.hu', swaggerShell),
+      });
     }
 
     // 403 rather than 404 on the token endpoint means it exists and is refusing this

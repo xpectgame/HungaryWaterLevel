@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { extractScriptUrls, extractCandidates } = require('../src/jobs/discover');
+const { extractScriptUrls, extractInlineScripts, extractCandidates } = require('../src/jobs/discover');
 
 /**
  * The portals are single-page applications, so their HTML carries no endpoint to read
@@ -46,6 +46,52 @@ test('a base href pointing at a subdirectory is honoured', () => {
   const html = '<base href="/app/"><script src="main.js"></script>';
   const urls = extractScriptUrls(html, 'https://example.hu/app/index.html');
   assert.deepStrictEqual(urls, ['https://example.hu/app/main.js']);
+});
+
+// ---------------------------------------------------------------------------
+// Inline scripts
+// ---------------------------------------------------------------------------
+
+/** What a generated API explorer actually serves - the config is in the page. */
+const SWAGGER_SHELL = `<!DOCTYPE html><html><head><title>Swagger UI</title>
+  <link rel="stylesheet" href="./swagger-ui.css">
+</head><body>
+  <div id="swagger-ui"></div>
+  <script src="./swagger-ui-bundle.js"></script>
+  <script>
+    window.onload = function () {
+      SwaggerUIBundle({ url: "/vraquery/swagger/v1/swagger.json", dom_id: "#swagger-ui" });
+    };
+  </script>
+</body></html>`;
+
+test('inline script blocks are read, and referenced ones are not duplicated', () => {
+  // Mining only <script src=...> missed the config entirely: the referenced bundle is
+  // stock Swagger UI, so every literal in it is about the spec format, not this API.
+  const blocks = extractInlineScripts(SWAGGER_SHELL);
+
+  assert.strictEqual(blocks.length, 1);
+  assert.match(blocks[0], /SwaggerUIBundle/);
+  assert.doesNotMatch(blocks[0], /swagger-ui-bundle\.js/, 'the referenced script is not inline content');
+});
+
+test('the OpenAPI document URL is recovered from the inline config', () => {
+  const [block] = extractInlineScripts(SWAGGER_SHELL);
+  const found = [...extractCandidates(block, 'https://vmservice.vizugy.hu/vraquery/swagger/index.html').keys()];
+
+  assert.ok(
+    found.includes('https://vmservice.vizugy.hu/vraquery/swagger/v1/swagger.json'),
+    `spec URL missing from ${JSON.stringify(found)}`,
+  );
+});
+
+test('empty and whitespace-only script blocks are dropped', () => {
+  assert.deepStrictEqual(extractInlineScripts('<script></script><script>  \n </script>'), []);
+});
+
+test('a script with attributes but no src still counts as inline', () => {
+  const blocks = extractInlineScripts('<script type="text/javascript" defer>var u="/api/x";</script>');
+  assert.deepStrictEqual(blocks, ['var u="/api/x";']);
 });
 
 test('endpoint-looking string literals are pulled out of a bundle', () => {

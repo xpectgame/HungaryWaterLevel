@@ -20,6 +20,10 @@ const { fetchText, browserHeaders } = require('../lib/http');
 const MAX_SCRIPT_BYTES = 8 * 1024 * 1024;
 const MAX_PROBES = 30;
 
+// Inline blocks are printed verbatim; a hand-written config is a few hundred bytes, and
+// anything much larger is generated code that the literal-mining below reads anyway.
+const INLINE_PRINT_LIMIT = 4000;
+
 const ENDPOINT_HINT = /(api|rest|service|adat|data|station|allomas|measure|meres|hidro|vizrajz|graphql|swagger|openapi|v1|v2)/i;
 
 /**
@@ -47,6 +51,11 @@ function extractFrameUrls(html, pageUrl) {
     }
   }
   return [...urls];
+}
+
+/** Keep printed source visibly separate from the probe's own output. */
+function indent(text) {
+  return text.split('\n').map((line) => `  ${line}`).join('\n');
 }
 
 /** Attribute values arrive HTML-escaped; &amp; in a query string breaks the request. */
@@ -86,6 +95,26 @@ function extractScriptUrls(html, pageUrl) {
     }
   }
   return [...urls];
+}
+
+/**
+ * The contents of every `<script>` block that has no `src`.
+ *
+ * A generated API explorer keeps its configuration here, not in a downloadable file:
+ * Swashbuckle and NSwag both emit an `index.html` whose inline script names the OpenAPI
+ * document - `SwaggerUIBundle({url: "..."})`, or a `configObject` holding `urls`. Reading
+ * only `<script src=...>` misses it entirely, which is why every guessed spec path 404'd
+ * while the UI that loads one served fine.
+ */
+function extractInlineScripts(html) {
+  const blocks = [];
+  for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    const [, attrs, body] = match;
+    if (/\bsrc\s*=/i.test(attrs)) continue; // referenced separately
+    const content = body.trim();
+    if (content) blocks.push(content);
+  }
+  return blocks;
 }
 
 /**
@@ -202,6 +231,29 @@ async function discover(pageUrl, { probe = true, depth = 1, keywords = [], radiu
   const candidates = new Map();
   const sources = new Map();
 
+  // Inline scripts first. They are small, and on a generated API explorer they are the
+  // only place the OpenAPI document is named - the referenced bundles are the stock
+  // library, whose own string literals are all about the spec format, not this API.
+  const inline = extractInlineScripts(html);
+  if (inline.length > 0) {
+    const totalBytes = inline.reduce((sum, block) => sum + block.length, 0);
+    console.log(`${inline.length} inline script block(s), ${totalBytes} bytes:`);
+    inline.forEach((block, i) => {
+      sources.set(`${pageUrl}#inline-${i + 1}`, block);
+      for (const [url, count] of extractCandidates(block, pageUrl)) {
+        candidates.set(url, (candidates.get(url) || 0) + count);
+      }
+      // Short enough to read in full, and that is the point - the configuration is
+      // usually four lines and no amount of literal-mining beats seeing it.
+      console.log(`\n  --- inline #${i + 1} ---`);
+      console.log(indent(block.slice(0, INLINE_PRINT_LIMIT)));
+      if (block.length > INLINE_PRINT_LIMIT) {
+        console.log(`  ... (${block.length - INLINE_PRINT_LIMIT} more bytes)`);
+      }
+    });
+    console.log('');
+  }
+
   for (const scriptUrl of scripts) {
     try {
       const { body } = await fetchText(scriptUrl, { timeoutMs: 30000, retries: 0, headers });
@@ -289,4 +341,12 @@ async function discover(pageUrl, { probe = true, depth = 1, keywords = [], radiu
   return ranked;
 }
 
-module.exports = { discover, extractScriptUrls, extractFrameUrls, extractCandidates, decodeHtml, dumpContext };
+module.exports = {
+  discover,
+  extractScriptUrls,
+  extractInlineScripts,
+  extractFrameUrls,
+  extractCandidates,
+  decodeHtml,
+  dumpContext,
+};
