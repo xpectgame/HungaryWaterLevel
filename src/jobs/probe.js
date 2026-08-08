@@ -147,28 +147,60 @@ async function probeDataTypes() {
   }
 }
 
+/** The raw catalogue. `internetOnly` picks the published subset over the full list. */
+async function fetchCatalogue(vmoType = 11, { internetOnly = true } = {}) {
+  const url = `${VRAQUERY_BASE}/Vra/${internetOnly ? 'InternetVmo' : 'Vmo'}/${vmoType}/false`;
+  const token = await createTokenProvider().getToken();
+  const rows = await fetchJson(url, {
+    timeoutMs: 30000,
+    headers: { Authorization: `Bearer ${token}`, ...browserHeaders('https://data.vizugy.hu') },
+  });
+  return { url, rows };
+}
+
+/**
+ * Search the catalogue by name or watercourse.
+ *
+ * Tiszabecs - the Tisza's entry gauge, and the second largest inflow in the country -
+ * came back as MISSING with nothing on the Tisza within 17 km of it. That is either a
+ * different spelling or a genuine absence from the internet-published subset, and the
+ * difference matters: one is a lookup, the other means falling back to /Vra/Vmo. Both
+ * lists are searched so the answer is visible rather than inferred.
+ */
+async function probeFind(needle) {
+  console.log(`\n########## catalogue search: ${needle} ##########`);
+  const wanted = needle.toLowerCase();
+
+  for (const internetOnly of [true, false]) {
+    try {
+      const { url, rows } = await fetchCatalogue(11, { internetOnly });
+      const hits = rows.filter((row) =>
+        [row.Nev, row.MdrNev, row.Telepules, row.Tsz].some((field) =>
+          String(field ?? '').toLowerCase().includes(wanted),
+        ),
+      );
+      console.log(`\n${url}\n${rows.length} stations, ${hits.length} matching:`);
+      for (const hit of hits.slice(0, 40)) console.log(`  ${JSON.stringify(hit)}`);
+    } catch (err) {
+      console.log(`FAILED: ${err.message}`);
+    }
+  }
+}
+
 /**
  * Fetch the station catalogue and line it up against the registry.
  *
  * This is what produces EXTERNAL_IDS. A wrong identifier here does not fail - it
  * reports a different river under a station's name and the balance stays plausible,
- * so the matcher checks the coordinates as well as the name and labels its confidence.
+ * so the matcher checks the coordinates and the river kilometre as well as the name,
+ * and labels how much the three agree.
  */
 async function probeCatalogue(vmoType = 11) {
   console.log(`\n########## station catalogue (vmoType ${vmoType}) ##########`);
 
-  const url = `${VRAQUERY_BASE}/Vra/InternetVmo/${vmoType}/false`;
-  console.log(`GET ${url}`);
-
   try {
-    const token = await createTokenProvider().getToken();
-    const rows = await fetchJson(url, {
-      timeoutMs: 30000,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...browserHeaders('https://data.vizugy.hu'),
-      },
-    });
+    const { url, rows } = await fetchCatalogue(vmoType);
+    console.log(`GET ${url}`);
 
     if (!Array.isArray(rows)) {
       console.log(`Expected an array, got ${typeof rows}: ${JSON.stringify(rows).slice(0, 300)}`);
@@ -188,8 +220,89 @@ async function probeCatalogue(vmoType = 11) {
   }
 }
 
+// Confirmed from /Base/AdatFajta: "Felszíni vízhozam", m3/s. Stage is 68 and reads in
+// centimetres, which is the mistake this constant exists to prevent - it would return a
+// number four times too large and perfectly plausible.
+const HAF_SURFACE_DISCHARGE = 87;
+
+/**
+ * Find which data-type code actually carries live discharge.
+ *
+ * /Base/AdatTipus lists 21 of them and the difference is not cosmetic: `operatív` is
+ * the real-time feed, `feldolgozott` is quality-controlled and lags by weeks, and
+ * `előrejelzett` is a forecast that would enter the balance as though it were a
+ * measurement. There is no way to tell from the list which one is populated right now,
+ * so ask for the same day at one station under each candidate and see what comes back.
+ */
+async function probeSeries(torzsszam = 1, label = 'Rajka') {
+  console.log(`\n########## time series: ${label} (Tsz ${torzsszam}), haf ${HAF_SURFACE_DISCHARGE} ##########`);
+
+  const endTime = new Date();
+  const startTime = new Date(endTime.getTime() - 48 * 3600 * 1000);
+
+  // TsShort rather than TsShortList: the list form takes a bare array of törzsszám and
+  // answers with an ItemId whose meaning is not documented, while TsShort lets the
+  // caller assign the ItemId and get it back. Same single request, unambiguous mapping.
+  const candidates = [
+    { code: 100, name: 'operatív' },
+    { code: 101, name: 'operatív összefésült' },
+    { code: 6, name: 'számított' },
+    { code: 2, name: 'regisztrált' },
+    { code: 9, name: 'hidrológiai idősor' },
+    { code: 1, name: 'nyers észlelt' },
+  ];
+
+  for (const { code, name } of candidates) {
+    const body = [
+      {
+        ItemId: 1,
+        Torzsszam: torzsszam,
+        AdatFajtaKod: HAF_SURFACE_DISCHARGE,
+        AdatTipusKod: code,
+        StartTime: startTime.toISOString(),
+        EndTime: endTime.toISOString(),
+      },
+    ];
+
+    try {
+      const token = await createTokenProvider().getToken();
+      const response = await fetchJson(`${VRAQUERY_BASE}/TS/TsShort`, {
+        timeoutMs: 25000,
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          ...browserHeaders('https://data.vizugy.hu'),
+        },
+      });
+
+      const items = (Array.isArray(response) ? response : []).flatMap((r) => r.TsItemList || []);
+      if (items.length === 0) {
+        console.log(`  AdatTipusKod ${String(code).padEnd(4)} ${name.padEnd(22)} - empty`);
+        continue;
+      }
+      const last = items[items.length - 1];
+      console.log(
+        `  AdatTipusKod ${String(code).padEnd(4)} ${name.padEnd(22)} - ${items.length} samples,` +
+          ` latest ${last.UTCTime} = ${last.Adat} m3/s`,
+      );
+    } catch (err) {
+      console.log(`  AdatTipusKod ${String(code).padEnd(4)} ${name.padEnd(22)} - FAILED: ${err.message.split('\n')[0]}`);
+    }
+  }
+
+  console.log('\nThe code with recent samples in a plausible range is the one to configure.');
+}
+
 async function main() {
   const args = process.argv.slice(2);
+
+  const findArg = args.find((a) => a.startsWith('--find='));
+  if (findArg) {
+    await probeFind(findArg.split('=').slice(1).join('='));
+    return;
+  }
 
   const urlArg = args.find((a) => a.startsWith('--url='));
   if (urlArg) {
@@ -218,6 +331,7 @@ async function main() {
     await probeOpenApi();
     await probeDataTypes();
     await probeCatalogue(11);
+    await probeSeries(1, 'Rajka');
 
     // Confirms the anonymous token still works, and that it still needs the headers a
     // browser sends - the 403 without them looks like a permissions problem and is not.

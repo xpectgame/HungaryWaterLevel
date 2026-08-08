@@ -64,7 +64,7 @@ function describeCause(err) {
  * they return HTML error pages with a 200, and they occasionally 502. The poller runs
  * unattended every 15 minutes, so a failure has to be legible from a log line alone.
  */
-async function fetchText(url, { timeoutMs = 15000, headers = {}, retries = 1 } = {}) {
+async function fetchText(url, { timeoutMs = 15000, headers = {}, retries = 1, method = 'GET', body } = {}) {
   let lastError;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -73,6 +73,10 @@ async function fetchText(url, { timeoutMs = 15000, headers = {}, retries = 1 } =
 
     try {
       const response = await fetch(url, {
+        method,
+        // The query service's time-series calls are POSTs carrying a JSON filter, so a
+        // GET-only client cannot read a single discharge value from it.
+        ...(body === undefined ? {} : { body }),
         headers: { 'User-Agent': USER_AGENT, Accept: 'application/json, text/plain, */*', ...headers },
         signal: controller.signal,
         redirect: 'follow',

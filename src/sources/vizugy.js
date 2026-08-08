@@ -59,15 +59,55 @@ const DEFAULTS = {
 };
 
 /**
- * Mapping from our station ids to the portal's own station identifiers.
+ * Mapping from our station ids to the portal's own station identifiers (törzsszám).
  *
- * Empty on purpose. Populating this from a guess would produce an API that silently
- * serves the wrong river. Run `npm run probe -- --catalogue` against the live portal
- * to list its stations, then fill these in.
+ * Filled from the live catalogue - GET /Vra/InternetVmo/11/false, 1193 stations - by
+ * `npm run probe -- --vizugy`, which matches on three independent signals: the folded
+ * station name, the watercourse name, and the river kilometre. Only entries where all
+ * three agreed are listed here. A wrong törzsszám does not fail; it reports a different
+ * river under a station's name and leaves the balance looking entirely plausible.
+ *
+ * Still unresolved, and deliberately absent rather than guessed:
+ *
+ *   tisza-tiszabecs      no Tisza gauge within 17 km in the published subset. This is
+ *                        the second largest inflow in the country, so it is the most
+ *                        expensive one to get wrong - `--find=Tiszabecs` settles it.
+ *   fekete-koros-sarkad  three candidates around Sarkad-Malomfok, all pumping stations.
+ *   lajta-mosonmagyarovar  only candidate is a barrage tailwater gauge (Tsz 20).
+ *   repce-zsira          nearest Répce gauge is at Répcevis, the next village.
+ *   drava-dravaszabolcs  name and river agree, but the river kilometre is 9.7 km off,
+ *                        so either the registry's figure or the match is wrong.
  */
 const EXTERNAL_IDS = Object.freeze({
-  // 'duna-rajka': '...',
-  // 'tisza-tiszabecs': '...',
+  // Danube system
+  'duna-rajka': '1',
+  'duna-nagymaros': '1020',
+  'duna-budapest': '1026',
+  'duna-paks': '549',
+  'duna-mohacs': '831',
+  'raba-szentgotthard': '342',
+  'pinka-felsocsatar': '345',
+  'ipoly-ipolytarnoc': '1040',
+
+  // Tisza system
+  'szamos-csenger': '1523',
+  'tur-garbolc': '1527',
+  'kraszna-agerdomajor': '1530',
+  'bodrog-felsoberecki': '1724',
+  'sajo-sajopuspoki': '1726',
+  'bodva-hidvegardo': '1742',
+  'hernad-hidasnemeti': '1732',
+  'sebes-koros-korosszakal': '2736',
+  'berettyo-pocsaj': '2545',
+  'feher-koros-gyula': '2747',
+  'maros-mako': '2278',
+  'tisza-szolnok': '2046',
+  'tisza-szeged': '2275',
+  'tisza-tiszasziget': '2279',
+
+  // Drava system
+  'drava-ortilos': '833',
+  'mura-letenye': '360',
 });
 
 function config(env = process.env) {

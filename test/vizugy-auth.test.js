@@ -136,10 +136,25 @@ test('the service base path survives URL assembly', () => {
   // new URL('/x', 'https://h/vraquery') resolves to 'https://h/x' - the base path is
   // dropped. Here that would silently address the wrong service.
   const cfg = { ...vizugy.config({}), path: '/{externalId}/discharge/latest' };
-  const url = vizugy.buildUrl(cfg, { id: 'duna-rajka' });
+  const url = vizugy.buildUrl(cfg, { id: 'unmapped-station' });
 
   assert.ok(url.startsWith('https://vmservice.vizugy.hu/vraquery/'), `got ${url}`);
-  assert.ok(url.endsWith('/duna-rajka/discharge/latest'));
+  assert.ok(url.endsWith('/unmapped-station/discharge/latest'));
+});
+
+test('a mapped station addresses the portal by its törzsszám, not by our own id', () => {
+  const cfg = { ...vizugy.config({}), path: '/{externalId}/discharge/latest' };
+  assert.ok(vizugy.buildUrl(cfg, { id: 'duna-rajka' }).endsWith('/1/discharge/latest'));
+});
+
+test('every mapped id names a station that exists, and none is a placeholder', () => {
+  // A törzsszám that does not resolve is the failure mode this whole mapping is careful
+  // about: it does not error, it reports a different river under the right name.
+  const { getStation } = require('../src/config/stations');
+  for (const [id, tsz] of Object.entries(vizugy.EXTERNAL_IDS)) {
+    assert.ok(getStation(id), `EXTERNAL_IDS names an unknown station: ${id}`);
+    assert.match(String(tsz), /^\d+$/, `törzsszám for ${id} is not numeric: ${tsz}`);
+  }
 });
 
 test('a base with a trailing slash does not double it', () => {

@@ -25,8 +25,17 @@ const { STATIONS } = require('../config/stations');
 
 // Gauges on the same river a few km apart are common; beyond this it is a different
 // place with a similar name.
-const CONFIDENT_KM = 5;
+// The registry's coordinates are approximate - they name the settlement, not the
+// gauge's cross-section - so distance is a coarse filter, not a fine one. Fkm is what
+// resolves the last few kilometres when both sides have it.
+const CONFIDENT_KM = 15;
 const PLAUSIBLE_KM = 25;
+const CONFIDENT_FKM = 5;
+
+// Generic watercourse-type suffixes. The catalogue writes "Bodva-patak" where the
+// registry writes "Bodva"; stripping the type word makes those compare equal without
+// letting "Mosoni-Duna" pass as "Duna", which is a genuinely different river.
+const WATERCOURSE_SUFFIXES = /\s+(patak|csatorna|focsatorna|fo csatorna|er|folyo|holtag|ag)$/;
 
 /** Fold accents and case so "Őrtilos" and "ORTILOS" compare equal. */
 function fold(value) {
@@ -36,6 +45,18 @@ function fold(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+/**
+ * A watercourse name reduced to what identifies it.
+ *
+ * Only a trailing type word is removed. A qualifier in front - "Mosoni-Duna", "Sebes-
+ * Koros" - names a different watercourse and has to survive, which is why this is not
+ * a substring comparison: Rajka has gauges on both the Duna and the Mosoni-Duna, a
+ * kilometre apart, and one of them is a lock.
+ */
+function riverBase(name) {
+  return fold(name).replace(WATERCOURSE_SUFFIXES, '');
 }
 
 /**
@@ -134,15 +155,11 @@ function comparePlace(recordName, wanted) {
 function score(station, record) {
   const wanted = splitName(station.name);
   const place = comparePlace(record.name, wanted);
-  const gotWater = fold(record.water);
+  const gotWater = riverBase(record.water);
+  const wantedRiver = riverBase(wanted.river);
 
-  // Exact and related are kept apart: "Duna" and "Mosoni-Duna" are related names for
-  // different watercourses, and there are gauges on both near Rajka.
-  const riverExact = Boolean(wanted.river && gotWater && gotWater === wanted.river);
-  const riverRelated =
-    riverExact ||
-    Boolean(wanted.river && gotWater && (gotWater.includes(wanted.river) || wanted.river.includes(gotWater)));
-  const riverConflict = Boolean(wanted.river && gotWater && !riverRelated);
+  const riverExact = Boolean(wantedRiver && gotWater && gotWater === wantedRiver);
+  const riverConflict = Boolean(wantedRiver && gotWater && !riverExact);
 
   const km = distanceKm(station, record);
 
@@ -157,14 +174,19 @@ function score(station, record) {
   if (riverConflict) return null;
   if (!place.contains && !(riverExact && km !== null && km < CONFIDENT_KM)) return null;
 
+  // Fkm outranks distance when both are available: it is measured along the watercourse
+  // and the registry's coordinates are only settlement-accurate. A station 5.4 km from
+  // where the registry puts it, but 0.3 river-km from where the registry says it sits
+  // along the Danube, is the same station - that was Paks.
+  const positionAgrees = fkmDelta === null ? km !== null && km <= CONFIDENT_KM : fkmDelta <= CONFIDENT_FKM;
+
   let confidence;
   if (km !== null && km > PLAUSIBLE_KM) confidence = 'rejected';
   else if (fkmDelta !== null && fkmDelta > 15) confidence = 'rejected';
-  else if (place.exact && riverExact && (km === null || km <= CONFIDENT_KM) && (fkmDelta === null || fkmDelta <= 5))
-    confidence = 'high';
+  else if (place.exact && riverExact && positionAgrees) confidence = 'high';
   else confidence = 'plausible';
 
-  return { record, km, fkmDelta, place, riverExact, riverRelated, confidence };
+  return { record, km, fkmDelta, place, riverExact, confidence };
 }
 
 /** Rank candidates: agreement first, then the sharpest positional evidence. */
@@ -257,4 +279,4 @@ function report(matches) {
   return lines;
 }
 
-module.exports = { matchStations, report, normalizeRecord, splitName, fold, distanceKm, score, comparePlace };
+module.exports = { matchStations, report, normalizeRecord, splitName, fold, riverBase, distanceKm, score, comparePlace };
