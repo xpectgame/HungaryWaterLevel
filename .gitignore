@@ -7,3 +7,6 @@ data/
 .DS_Store
 npm-debug.log*
 coverage/
+
+# Probe output is committed on purpose - see scripts/probe-save.sh
+!probe-output/
