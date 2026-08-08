@@ -38,7 +38,15 @@ const SMALL_SCRIPT_BYTES = 24 * 1024;
  */
 const BOILERPLATE = /\b(Liferay|AUI\(\)|GoogleAnalyticsObject|dataLayer|gtag|_com_liferay|Analytics\.send)\b/;
 
-const ENDPOINT_HINT = /(api|rest|service|adat|data|station|allomas|measure|meres|hidro|vizrajz|graphql|swagger|openapi|v1|v2)/i;
+const ENDPOINT_HINT = /(api|rest|service|adat|data|station|allomas|measure|meres|hidro|vizrajz|graphql|swagger|openapi|servlet|chart|v1|v2)/i;
+
+// A trailing query, which for some services is the whole address.
+const QUERY = '(?:\\?[A-Za-z0-9_\\-.=&%{}$:,+]{1,150})?';
+const QUOTED_PATH = new RegExp(`["'\`](\\/[A-Za-z0-9_\\-./{}$:]{3,150}${QUERY})["'\`]`, 'g');
+const RELATIVE_PATH = new RegExp(
+  `["'\`]((?:\\.{0,2}\\/)?[A-Za-z0-9_\\-.]+(?:\\/[A-Za-z0-9_\\-.{}$]+){1,8}${QUERY})["'\`]`,
+  'g',
+);
 
 /**
  * Frames embedded by an HTML document.
@@ -143,22 +151,27 @@ function extractCandidates(source, pageUrl) {
     const value = raw.trim();
     if (!value || value.length > 200) return;
     if (!ENDPOINT_HINT.test(value)) return;
-    // Skip the obvious non-endpoints that still match the hint.
-    if (/\.(js|css|svg|png|jpe?g|woff2?|map|ico)$/i.test(value) && !/swagger|openapi/i.test(value)) return;
+    // Skip the obvious non-endpoints that still match the hint. The query is stripped
+    // first, or "/main.js?v=2" slips past a check anchored on the extension.
+    const withoutQuery = value.split('?')[0];
+    if (/\.(js|css|svg|png|jpe?g|woff2?|map|ico)$/i.test(withoutQuery) && !/swagger|openapi/i.test(value)) return;
     if (/^(data|blob|javascript):/i.test(value)) return;
     found.set(value, (found.get(value) || 0) + 1);
   };
 
   // Absolute URLs.
   for (const m of source.matchAll(/https?:\/\/[^\s"'`<>\\)]{6,200}/g)) add(m[0]);
-  // Quoted path-like literals, rooted at /.
-  for (const m of source.matchAll(/["'`](\/[A-Za-z0-9_\-./{}$:]{3,150})["'`]/g)) add(m[1]);
+  // Quoted path-like literals, rooted at /, with their query string. The query is part
+  // of the endpoint, not decoration: MAVIR's chart data is addressed entirely by one -
+  // GenerateChartsServlet?tabId=tab4402 - so a pattern that stops at the '?' matches
+  // nothing at all there.
+  for (const m of source.matchAll(QUOTED_PATH)) add(m[1]);
   // ...and relative ones. Requiring a leading slash missed the case that mattered:
   // NSwag writes the OpenAPI document's location relative to the page it serves the
   // explorer from - `url: "v1/swagger.json"` - so the one literal worth finding in that
   // file was the one shape not being looked for. A relative literal needs a slash of its
   // own to be a path at all, otherwise every identifier in a bundle qualifies.
-  for (const m of source.matchAll(/["'`]((?:\.{0,2}\/)?[A-Za-z0-9_\-.]+(?:\/[A-Za-z0-9_\-.{}$]+){1,8})["'`]/g)) {
+  for (const m of source.matchAll(RELATIVE_PATH)) {
     if (!m[1].startsWith('/')) add(m[1]);
   }
 
