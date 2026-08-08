@@ -14,7 +14,7 @@
     "backfill": "node src/jobs/poll.js --backfill",
     "test": "node --test \"test/*.test.js\"",
     "probe": "node src/jobs/probe.js",
-    "probe:save": "node src/jobs/probe.js"
+    "probe:save": "bash scripts/probe-save.sh"
   },
   "dependencies": {
     "express": "^4.21.2",
