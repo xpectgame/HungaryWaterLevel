@@ -1,10 +1,13 @@
 'use strict';
 
-const { fetchText, browserHeaders } = require('../lib/http');
+const { fetchText, fetchJson, browserHeaders } = require('../lib/http');
 const { describeShape } = require('../lib/jsonpath');
+const { summarizeOperations, describeSchema } = require('../lib/openapi');
 const vizugy = require('../sources/vizugy');
 const mavir = require('../sources/mavir');
+const { createTokenProvider } = require('../sources/vizugy-auth');
 const { discover } = require('./discover');
+const { matchStations, report } = require('./catalogue');
 const { fetchDocs } = require('./docs');
 
 /**
@@ -68,6 +71,91 @@ async function probeUrl(url, label, opts = {}) {
   }
 }
 
+const VRAQUERY_BASE = 'https://vmservice.vizugy.hu/vraquery';
+const OPENAPI_URL = `${VRAQUERY_BASE}/swagger/v1.0/swagger.json`;
+
+/**
+ * Read the contract instead of guessing at it.
+ *
+ * The document was found by the swagger UI's own initialiser naming it. It is ~90 KB,
+ * so it is flattened to one line per operation; the two schemas that matter are then
+ * expanded in full, because the time-series call is a POST and its body is the only
+ * part of this API that cannot be worked out by trying URLs.
+ */
+async function probeOpenApi() {
+  console.log('\n########## vraquery contract ##########');
+  console.log(`GET ${OPENAPI_URL}`);
+
+  let spec;
+  try {
+    spec = await fetchJson(OPENAPI_URL, {
+      timeoutMs: 30000,
+      headers: browserHeaders('https://vmservice.vizugy.hu', `${VRAQUERY_BASE}/swagger/index.html`),
+    });
+  } catch (err) {
+    console.log(`FAILED: ${err.message}`);
+    return null;
+  }
+
+  const info = spec.info || {};
+  console.log(`${info.title || 'untitled'} ${info.version || ''} - ${info.description || ''}`);
+  console.log(`servers: ${JSON.stringify(spec.servers || [])}`);
+
+  const operations = summarizeOperations(spec);
+  console.log(`\n${operations.length} line(s) of operations:\n`);
+  for (const line of operations) console.log(`  ${line}`);
+
+  // The two calls the portal itself makes, so their exact shapes are the ones needed.
+  console.log('\nSchemas for the time-series call:');
+  for (const name of ['TsQuery', 'TsRequest', 'TsShortListRequest', 'TsItem', 'TsShortList']) {
+    for (const line of describeSchema(spec, name)) console.log(`  ${line}`);
+    console.log('');
+  }
+
+  return spec;
+}
+
+/**
+ * Fetch the station catalogue and line it up against the registry.
+ *
+ * This is what produces EXTERNAL_IDS. A wrong identifier here does not fail - it
+ * reports a different river under a station's name and the balance stays plausible,
+ * so the matcher checks the coordinates as well as the name and labels its confidence.
+ */
+async function probeCatalogue(vmoType = 11) {
+  console.log(`\n########## station catalogue (vmoType ${vmoType}) ##########`);
+
+  const url = `${VRAQUERY_BASE}/Vra/InternetVmo/${vmoType}/false`;
+  console.log(`GET ${url}`);
+
+  try {
+    const token = await createTokenProvider().getToken();
+    const rows = await fetchJson(url, {
+      timeoutMs: 30000,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...browserHeaders('https://data.vizugy.hu'),
+      },
+    });
+
+    if (!Array.isArray(rows)) {
+      console.log(`Expected an array, got ${typeof rows}: ${JSON.stringify(rows).slice(0, 300)}`);
+      return null;
+    }
+
+    console.log(`${rows.length} stations in the catalogue.`);
+    console.log(`\nOne record, in full:\n${JSON.stringify(rows[0], null, 2)}`);
+
+    console.log('\nMatched against the registry:\n');
+    for (const line of report(matchStations(rows))) console.log(line);
+
+    return rows;
+  } catch (err) {
+    console.log(`FAILED: ${err.message}`);
+    return null;
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
 
@@ -89,79 +177,34 @@ async function main() {
     const cfg = vizugy.config();
     console.log('\n########## data.vizugy.hu ##########');
     console.log(`Currently configured: ${cfg.baseUrl}${cfg.path}`);
-    // The portal, not the configured API base. Once baseUrl moved to the query service
-    // this pointed at https://vmservice.vizugy.hu/vraquery, which is an API root and
-    // answers 404 to a browser - so the discovery that found the auth flow in the first
-    // place silently stopped running. The single-page app is what carries the bundles.
-    //
-    // The bundle showed the shape: an anonymous JWT from AuthApi, then vraquery calls
-    // carrying it. loadStations is where the path after the base is assembled, so ask
-    // for a wide window around it rather than around the base URL.
-    await discover('https://data.vizugy.hu/', {
-      keywords: ['loadStations', '_apiRootUrl', 'getStationData', 'stationData', 'timeSeries'],
-    });
 
-    // The query service serves Swagger UI, so an OpenAPI document exists somewhere.
-    // That document is the entire contract - every path, parameter and response shape -
-    // which ends the guessing completely. The UI's own script names where it lives.
-    console.log('\n########## vraquery openapi ##########');
-    const swaggerShell = 'https://vmservice.vizugy.hu/vraquery/swagger/index.html';
+    // The endpoints are no longer in question. The portal's bundle gave up the auth
+    // flow and the two calls it makes, and the swagger initialiser named the OpenAPI
+    // document. So the default run reads the contract and the catalogue rather than
+    // re-mining megabytes of minified code; `--discover` still does the mining when
+    // something upstream changes and the contract stops matching.
+    await probeOpenApi();
+    await probeCatalogue(11);
 
-    // The whole shell, not an excerpt. Its referenced bundles are stock Swagger UI,
-    // whose string literals are all about the spec format rather than this API, so the
-    // configuration has to be either inline here or in a small script beside it. 735
-    // bytes - cheap to read rather than mine.
-    await probeUrl(swaggerShell, 'swagger shell (full body)', {
-      maxChars: 20000,
-      headers: browserHeaders('https://vmservice.vizugy.hu'),
-    });
-
-    await discover(swaggerShell, { keywords: ['swagger', 'urls', 'SwaggerUIBundle'] });
-
-    // The initialiser, in full. The shell turned out to be stock swagger-ui-dist with no
-    // inline script at all - it loads this file, which opens with a `parseFunction`
-    // helper copied from a gist. That is NSwag's, and NSwag puts the document URL in the
-    // SwaggerUIBundle call further down. Printing 400 characters stopped exactly above it.
-    await probeUrl(`https://vmservice.vizugy.hu/vraquery/swagger/index.js`, 'swagger initialiser (full)', {
-      maxChars: 20000,
-      headers: browserHeaders('https://vmservice.vizugy.hu', swaggerShell),
-    });
-
-    for (const path of [
-      // The initialiser above names the document; these are the conventional locations,
-      // tried in case it is computed at runtime rather than written down.
-      '/swagger/swagger-ui-init.js',
-      '/swagger/v1/swagger.json',
-      '/swagger/v1/swagger.yaml',
-      '/swagger/swagger.json',
-      '/swagger/docs/v1',
-      '/swagger/vraquery/swagger.json',
-      '/swagger.json',
-      '/openapi.json',
-    ]) {
-      await probeUrl(`https://vmservice.vizugy.hu/vraquery${path}`, `vraquery${path}`, {
-        headers: browserHeaders('https://vmservice.vizugy.hu', swaggerShell),
-      });
-    }
-
-    // 403 rather than 404 on the token endpoint means it exists and is refusing this
-    // particular request. The portal sends Origin and Referer; a gateway checking them
-    // rejects anything that does not.
+    // Confirms the anonymous token still works, and that it still needs the headers a
+    // browser sends - the 403 without them looks like a permissions problem and is not.
     console.log('\n########## vizugy auth ##########');
     await probeUrl('https://data.vizugy.hu/AuthApi/auth/token', 'token (plain)');
     await probeUrl('https://data.vizugy.hu/AuthApi/auth/token', 'token (portal headers)', {
       headers: browserHeaders('https://data.vizugy.hu'),
     });
 
-    // The portal's bundles point at vmservice.vizugy.hu/vraquery - the hydrological
-    // database's own query service, which publishes documentation next to itself. The
-    // contract is written down; reading it beats probing paths blind.
-    await fetchDocs([
-      'https://vmservice.vizugy.hu/vmhelp/',
-      'https://vmservice.vizugy.hu/vmhelp/Funkcioleiras.html',
-      'https://vmservice.vizugy.hu/vmhelp/Katalogustaroltnapiadatoklekerde.html',
-      'https://vmservice.vizugy.hu/vmhelp/Hidrometeorologiaiadatok.html',
-    ]);
+    if (args.includes('--discover')) {
+      await discover('https://data.vizugy.hu/', {
+        keywords: ['loadStations', '_apiRootUrl', 'getStationData', 'postLastData', 'setRequest'],
+      });
+      await discover(`${VRAQUERY_BASE}/swagger/index.html`, { keywords: ['SwaggerUIBundle'] });
+      await fetchDocs([
+        'https://vmservice.vizugy.hu/vmhelp/',
+        'https://vmservice.vizugy.hu/vmhelp/Funkcioleiras.html',
+        'https://vmservice.vizugy.hu/vmhelp/Katalogustaroltnapiadatoklekerde.html',
+      ]);
+    }
   }
 
   if (doAll || args.includes('--mavir')) {
