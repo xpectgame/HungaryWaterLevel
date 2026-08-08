@@ -382,3 +382,18 @@ test('the staleness window is at least as long as the window the adapter fetches
     `maxReadingAgeMs ${config.maxReadingAgeMs} is shorter than the ${vizugyConfig.lookbackHours} h fetch window`,
   );
 });
+
+test('a station with no usable upstream series is estimated, not silently zero', () => {
+  // The Lajta's only gauges are a river section that publishes nothing and a barrage
+  // tailwater that reads 0.0 when the gate is shut. A zero looks like a measurement and
+  // would enter the sum as one; an estimate is labelled and counted as estimated.
+  const readings = meanReadings();
+  delete readings['lajta-mosonmagyarovar'];
+
+  const balance = computeBalance(readings);
+  const lajta = balance.inflow.stations.find((s) => s.id === 'lajta-mosonmagyarovar');
+
+  assert.strictEqual(lajta.quality, 'climatology');
+  assert.notStrictEqual(lajta.flowM3s, 0, 'an unavailable gauge must never read as zero flow');
+  assert.ok(balance.inflow.estimatedCount >= 1);
+});
