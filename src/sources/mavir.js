@@ -1,7 +1,7 @@
 'use strict';
 
-const { extract, firstArray } = require('../lib/jsonpath');
-const { fetchJson } = require('../lib/http');
+const { fetchBuffer, browserHeaders } = require('../lib/http');
+const { readXlsx, excelDate } = require('../lib/xlsx');
 
 /**
  * Adapter for MAVIR's real-time electricity system data.
@@ -66,13 +66,19 @@ const { fetchJson } = require('../lib/http');
  */
 
 const DEFAULTS = {
-  baseUrl: 'https://www.mavir.hu',
-  path: '/rtdwweb/webuser/chart/{chartId}/data',
-  chartId: '7678',
-  arrayPath: 'data',
-  timeField: 'timestamp',
-  timeoutMs: 20000,
+  // The publication app, not the portal that frames it. The host root answers 403.
+  baseUrl: 'https://rtdwweb.mavir.hu/rtdwweb/webuser',
+  chartId: '4401', // "Erőművi termelés" - generation per power plant
+  // The only combination that answers; every other exportType or periodType is a 500.
+  exportType: 'xlsx',
+  periodType: 'hour',
+  period: '1',
+  lookbackHours: 6,
+  timeoutMs: 30000,
 };
+
+const REFERER = 'https://rtdwweb.mavir.hu/rtdwweb/webuser/GenerateChartsServlet?hunLang=hu-hu&tabId=tab4402';
+
 
 /**
  * Maps whatever MAVIR calls a series onto our internal source types.
@@ -123,20 +129,23 @@ function resolveSourceType(seriesName) {
 }
 
 function config(env = process.env) {
+  const num = (value, fallback) => {
+    if (value === undefined || value === null || value === '') return fallback;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
   return {
     baseUrl: env.MAVIR_BASE_URL || DEFAULTS.baseUrl,
-    path: env.MAVIR_PATH || DEFAULTS.path,
     chartId: env.MAVIR_CHART_ID || DEFAULTS.chartId,
-    arrayPath: env.MAVIR_ARRAY_PATH || DEFAULTS.arrayPath,
-    timeField: env.MAVIR_TIME_FIELD || DEFAULTS.timeField,
-    timeoutMs: Number(env.MAVIR_TIMEOUT_MS) || DEFAULTS.timeoutMs,
+    exportType: env.MAVIR_EXPORT_TYPE || DEFAULTS.exportType,
+    periodType: env.MAVIR_PERIOD_TYPE || DEFAULTS.periodType,
+    period: env.MAVIR_PERIOD || DEFAULTS.period,
+    lookbackHours: num(env.MAVIR_LOOKBACK_HOURS, DEFAULTS.lookbackHours),
+    timeoutMs: num(env.MAVIR_TIMEOUT_MS, DEFAULTS.timeoutMs),
   };
 }
 
-function buildUrl(cfg) {
-  const path = cfg.path.replace('{chartId}', encodeURIComponent(cfg.chartId));
-  return new URL(path, cfg.baseUrl).toString();
-}
 
 /**
  * Reduce a MAVIR response to { sourceType: MW } for the most recent complete sample.
@@ -224,27 +233,105 @@ function toMillis(raw) {
   return Number.isNaN(parsed) ? NaN : parsed;
 }
 
-/** Fetch the current generation mix. Throws on transport failure. */
-async function fetchGeneration(env = process.env) {
-  const cfg = config(env);
-  const url = buildUrl(cfg);
-  const payload = await fetchJson(url, { timeoutMs: cfg.timeoutMs });
-  const parsed = parseGeneration(payload, cfg);
+/** The one URL that answers. Times are epoch milliseconds. */
+function exportUrl(cfg, now = new Date()) {
+  const to = now.getTime();
+  const from = to - cfg.lookbackHours * 3600 * 1000;
+  const base = cfg.baseUrl.replace(/\/+$/, '');
+  return (
+    `${base}/chart/${cfg.chartId}/export` +
+    `?exportType=${cfg.exportType}&fromTime=${from}&toTime=${to}` +
+    `&periodType=${cfg.periodType}&period=${cfg.period}`
+  );
+}
 
-  if (!parsed) {
-    throw new Error(`MAVIR response from ${url} contained no recognisable generation series`);
+/**
+ * Download the spreadsheet. Exactly one request, deliberately.
+ *
+ * Twenty requests in a few seconds put the whole host into 429 - the page included -
+ * and it stayed there. A retry here does not recover the source, it locks it out, so
+ * there is none: a failed poll waits for the next quarter hour like everything else.
+ */
+async function fetchSheet(env = process.env, now = new Date()) {
+  const cfg = config(env);
+  const url = exportUrl(cfg, now);
+
+  const { buffer, contentType } = await fetchBuffer(url, {
+    timeoutMs: cfg.timeoutMs,
+    headers: browserHeaders('https://rtdwweb.mavir.hu', REFERER),
+  });
+
+  // A 429 or an error page arrives as HTML with a 200 often enough to be worth naming,
+  // and "not a ZIP archive" three frames later says nothing about why.
+  if (!/spreadsheet|officedocument|octet-stream/i.test(contentType)) {
+    throw new Error(`Expected a spreadsheet from ${url}, got ${contentType || 'no content-type'}`);
   }
 
-  return { source: 'mavir', fetchedAt: new Date().toISOString(), ...parsed };
+  return { url, rows: readXlsx(buffer).rows };
+}
+
+/**
+ * Read the grid into { plantName -> MW } at the newest timestamped row.
+ *
+ * The layout is taken from the sheet rather than assumed: the header is the first row
+ * carrying two or more non-numeric labels, and the time column is the first column of
+ * the row below it that parses as a date. Hard-coding row 1 and column A would work
+ * until MAVIR adds a title row, and then it would silently read the title as a plant.
+ */
+function parseSheet(rows) {
+  const headerIndex = rows.findIndex(
+    (row) => row.filter((cell) => typeof cell === 'string' && cell.trim()).length >= 2,
+  );
+  if (headerIndex === -1) throw new Error('No header row in the MAVIR export');
+
+  const header = rows[headerIndex].map((cell) => (typeof cell === 'string' ? cell.trim() : cell));
+
+  let latest = null;
+  for (const row of rows.slice(headerIndex + 1)) {
+    const stamp = typeof row[0] === 'number' ? excelDate(row[0]) : row[0] ? new Date(row[0]) : null;
+    if (!stamp || Number.isNaN(stamp.getTime())) continue;
+    // Rows with no numbers at all are separators or footers, not observations.
+    if (!row.slice(1).some((cell) => Number.isFinite(cell))) continue;
+    if (!latest || stamp > latest.stamp) latest = { stamp, row };
+  }
+
+  if (!latest) throw new Error('No timestamped row with values in the MAVIR export');
+
+  const byPlant = {};
+  for (let i = 1; i < header.length; i += 1) {
+    const name = header[i];
+    const value = latest.row[i];
+    if (typeof name === 'string' && name && Number.isFinite(value)) byPlant[name] = value;
+  }
+
+  return { timestamp: latest.stamp.toISOString(), byPlant, columns: header };
+}
+
+/** Fetch the current per-plant generation. Throws on transport failure. */
+async function fetchGeneration(env = process.env, now = new Date()) {
+  const { rows } = await fetchSheet(env, now);
+  const { timestamp, byPlant } = parseSheet(rows);
+
+  return {
+    source: 'mavir',
+    fetchedAt: new Date().toISOString(),
+    timestamp,
+    byPlant,
+    // The aggregate the rest of the project already consumes is derived downstream,
+    // once the column names are mapped onto the plant registry.
+    generationMw: {},
+  };
 }
 
 module.exports = {
+  fetchSheet,
+  exportUrl,
+  parseSheet,
   fetchGeneration,
   parseGeneration,
   resolveSourceType,
   normalise,
   config,
-  buildUrl,
   SERIES_ALIASES,
   DEFAULTS,
 };

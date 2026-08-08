@@ -586,8 +586,49 @@ async function probeSite(baseUrl) {
   }
 }
 
+/**
+ * Download the generation export once and print the grid.
+ *
+ * The column names are the whole remaining question: they have to be matched against
+ * the plant registry, and guessing at them is how one plant's output gets attributed to
+ * another. One request, because twenty took the host to 429 and kept it there.
+ */
+async function probeMavirSheet() {
+  console.log('\n########## mavir generation export ##########');
+  try {
+    const { url, rows } = await mavir.fetchSheet();
+    console.log(`GET ${url}\n${rows.length} rows\n`);
+
+    for (const [i, row] of rows.slice(0, 14).entries()) {
+      const cells = row.map((c) => (c === null ? '' : typeof c === 'number' ? c.toFixed(1) : String(c)));
+      console.log(`  ${String(i).padStart(3)}  ${cells.join(' | ')}`);
+    }
+    if (rows.length > 14) console.log(`  ... ${rows.length - 14} more rows`);
+
+    const parsed = mavir.parseSheet(rows);
+    console.log(`\n  newest row: ${parsed.timestamp}`);
+    console.log('  plant columns and their current output:');
+    for (const [name, mw] of Object.entries(parsed.byPlant).sort((a, b) => b[1] - a[1])) {
+      console.log(`    ${name.padEnd(34)} ${mw.toFixed(1).padStart(9)} MW`);
+    }
+
+    console.log('\n  Registry plants awaiting a column match:');
+    for (const plant of require('../config/powerplants').listPlants('operating')) {
+      console.log(`    ${plant.id.padEnd(20)} ${plant.name}`);
+    }
+  } catch (err) {
+    console.log(`FAILED: ${err.message}`);
+    console.log('A 429 means the host is rate limited - wait, do not retry in a loop.');
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
+
+  if (args.includes('--mavir-sheet')) {
+    await probeMavirSheet();
+    return;
+  }
 
   const siteArg = args.find((a) => a.startsWith('--site='));
   if (siteArg) {

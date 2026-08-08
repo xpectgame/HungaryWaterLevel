@@ -145,8 +145,46 @@ async function fetchJson(url, opts = {}) {
   }
 }
 
+/**
+ * Fetch binary content.
+ *
+ * A spreadsheet read through fetchText is destroyed on arrival: the bytes are decoded
+ * as UTF-8, every invalid sequence becomes U+FFFD, and re-encoding gives a buffer that
+ * is neither the original length nor a valid ZIP. There is no way to recover it, and
+ * the failure surfaces much later as "not a ZIP archive".
+ */
+async function fetchBuffer(url, { timeoutMs = 20000, headers = {}, method = 'GET', body } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      method,
+      ...(body === undefined ? {} : { body }),
+      headers: { 'User-Agent': USER_AGENT, ...headers },
+      signal: controller.signal,
+      redirect: 'follow',
+    });
+
+    if (!response.ok) {
+      throw new HttpError(`HTTP ${response.status} from ${url}`, { status: response.status, url });
+    }
+
+    return {
+      buffer: Buffer.from(await response.arrayBuffer()),
+      contentType: response.headers.get('content-type') || '',
+    };
+  } catch (err) {
+    if (err.name === 'AbortError') throw new HttpError(`Timeout after ${timeoutMs}ms: ${url}`, { url });
+    if (err instanceof HttpError) throw err;
+    throw new HttpError(`${describeCause(err)}: ${url}`, { url, cause: err });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-module.exports = { fetchText, fetchJson, HttpError, describeCause, browserHeaders, USER_AGENT };
+module.exports = { fetchText, fetchJson, fetchBuffer, HttpError, describeCause, browserHeaders, USER_AGENT };
