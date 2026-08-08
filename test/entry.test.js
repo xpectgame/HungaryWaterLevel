@@ -224,7 +224,19 @@ test('the frontend is served from the app root', async () => {
     const res = await fetch(`http://127.0.0.1:${port}/`);
     assert.strictEqual(res.status, 200);
     const html = await res.text();
-    assert.match(html, /Magyarország vízmérlege/);
+
+    // Anchored on what the page IS, not on its wording. A title assertion breaks on
+    // every copy edit and tells you nothing about whether the page works.
+    assert.match(html, /<svg[^>]+id="map"/, 'the map element must be present');
+    assert.match(html, /\/api\/v1\/snapshot/, 'the page must poll the live endpoint');
+
+    // Resource loads only - <script src>, <link href>, <img src>. An anchor to the data
+    // source is a link a reader follows, not something the page needs to render.
+    assert.doesNotMatch(
+      html,
+      /<(?:script|link|img|iframe)[^>]+(?:src|href)="(?:https?:)?\/\//,
+      'no runtime dependency on a third-party host: the page must work when a CDN does not',
+    );
   } finally {
     server.close();
     await store.close();
@@ -252,7 +264,11 @@ test('a missing frontend asset degrades to a working page, not a 500', async () 
     assert.strictEqual(res.status, 200);
 
     const html = await res.text();
-    assert.match(html, /Magyarország vízmérlege/);
+
+    // The fallback is deliberately not the real page: it exists so a deployment missing
+    // its HTML reads as a working API rather than a dead site.
+    assert.match(html, /<html/i);
+    assert.match(html, /\/api\/v1\//, 'the fallback must point at the API that does work');
     // It must fetch live figures rather than show a static apology.
     assert.match(html, /\/api\/v1\/snapshot/);
   } finally {

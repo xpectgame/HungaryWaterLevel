@@ -2,299 +2,596 @@
 <html lang="hu">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Magyarország vízmérlege – élő</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mennyi víz folyik át Magyarországon?</title>
+<meta name="description" content="Magyarország felszíni vízmérlege élőben: mennyi víz lép be a határon, mennyi hagyja el, és mennyit vesz ki az energiaipar hűtésre.">
+<meta name="theme-color" content="#04141c">
+<meta property="og:title" content="Mennyi víz folyik át Magyarországon?">
+<meta property="og:description" content="Élő vízmérleg 30 határszelvényből, negyedóránként frissítve.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>💧</text></svg>">
+
 <style>
-  :root {
-    --bg: #0e1621;
-    --panel: #16222f;
-    --panel-2: #1d2c3c;
-    --line: #26384b;
-    --text: #e8f0f7;
-    --muted: #8ba3ba;
-    --in: #3fbf8f;
-    --out: #4a9fe0;
-    --warn: #e0a33f;
-    --plant: #e05f5f;
-    --nuclear: #d94f8c;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; }
-  body {
-    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
-    background: var(--bg); color: var(--text);
-    display: grid; grid-template-columns: 380px 1fr; height: 100vh;
-  }
-  @media (max-width: 860px) {
-    body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; }
-    #map { height: 60vh; }
-  }
+/* ---------------------------------------------------------------------------
+   Water first.
 
-  aside { overflow-y: auto; border-right: 1px solid var(--line); padding: 20px; }
-  h1 { font-size: 17px; margin: 0 0 2px; letter-spacing: -0.2px; }
-  .sub { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+   The reference this was modelled on is an electricity dashboard: black ground,
+   neon on top, everything monospaced. That reads as an instrument panel, which
+   suits current but not rivers. Here the ground is deep water rather than black,
+   the palette runs from silt to shallow to open water, and the one warm colour
+   in the page belongs to the power sector - the single thing on this page that
+   is not water, so it should look like it.
 
-  .banner {
-    background: #4a3410; border: 1px solid #7a5518; color: #f0c675;
-    padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 16px;
-  }
-  .banner.hidden { display: none; }
+   Numbers are tabular and monospaced because they change in place and must not
+   jitter. Prose is not, because the point is to be read.
+--------------------------------------------------------------------------- */
+:root {
+  --abyss:#04141c; --deep:#082430; --shelf:#0d3242; --edge:#16495c;
+  --flow:#3fd0d8; --flow-dim:#1d8f9c; --shallow:#7fe6d2; --silt:#c9b48a;
+  --ember:#ff9d4d; --ember-dim:#b86a2c;      /* the power sector, and nothing else */
+  --alarm:#ff6b7d;
+  --ink:#e8f4f6; --ink-soft:#9fbcc4; --ink-faint:#6d8f99;
+  --card:rgba(13,50,66,.55); --line:rgba(63,208,216,.18);
+  --sans:ui-sans-serif,-apple-system,"Segoe UI",Inter,system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; font-family:var(--sans); color:var(--ink); line-height:1.55;
+  background:
+    radial-gradient(1200px 700px at 15% -10%, #0d3a4a 0%, transparent 60%),
+    radial-gradient(900px 600px at 90% 5%, #0a2c3c 0%, transparent 55%),
+    linear-gradient(180deg,#04141c 0%, #061c26 45%, #04141c 100%);
+  background-attachment:fixed; min-height:100vh;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:clamp(14px,3vw,28px)}
+h1,h2,h3{line-height:1.2;margin:0}
+a{color:var(--flow)}
 
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
-  .card h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+/* --- header --- */
+header{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between;margin-bottom:22px}
+h1{font-size:clamp(21px,3.4vw,32px);font-weight:650;letter-spacing:-.02em}
+h1 em{font-style:normal;color:var(--flow)}
+.sub{color:var(--ink-soft);font-size:14px;margin-top:5px;max-width:56ch}
+.clock{font-family:var(--mono);font-size:clamp(20px,3vw,28px);font-variant-numeric:tabular-nums;color:var(--shallow)}
+.stamp{font-size:12px;color:var(--ink-faint);text-align:right;font-family:var(--mono)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--flow);margin-right:6px;vertical-align:middle}
+.dot.live{animation:pulse 2.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
 
-  .row { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; }
-  .row + .row { border-top: 1px solid var(--line); }
-  .label { color: var(--muted); font-size: 12px; }
-  .val { font-variant-numeric: tabular-nums; font-weight: 600; }
-  .val small { font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 3px; }
+/* --- banners --- */
+.banner{border-radius:12px;padding:12px 15px;margin-bottom:18px;font-size:14px;border:1px solid}
+.banner.warn{background:rgba(255,107,125,.09);border-color:rgba(255,107,125,.4);color:#ffd3d9}
+.banner.note{background:rgba(255,157,77,.08);border-color:rgba(255,157,77,.32);color:#ffd9b8}
+.hidden{display:none !important}
 
-  .net { text-align: center; padding: 6px 0 10px; }
-  .net .big { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
-  .net .pm { color: var(--muted); font-size: 15px; font-weight: 400; }
-  .net .verdict { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
-  .net.insignificant .big { color: var(--muted); }
+/* --- the three headline figures --- */
+.headline{display:grid;grid-template-columns:1fr auto 1fr;gap:clamp(10px,2vw,26px);align-items:center;
+  background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(16px,3vw,26px);margin-bottom:18px}
+.side{text-align:center}
+.side .label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
+.big{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:-.03em;
+  font-size:clamp(30px,7vw,58px);line-height:1.05}
+.big .unit{font-size:.34em;color:var(--ink-faint);margin-left:.35em;letter-spacing:0}
+.in .big{color:var(--flow)} .out .big{color:var(--silt)}
+.side .meta{font-size:12.5px;color:var(--ink-soft);margin-top:4px}
+.middle{text-align:center;min-width:110px}
+.net{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:clamp(17px,3vw,24px);font-weight:600}
+.net.insignificant{color:var(--ink-faint)}
+.net.accumulating{color:var(--shallow)} .net.draining{color:var(--ember)}
+.verdict{font-size:12px;color:var(--ink-soft);margin-top:6px;max-width:22ch;margin-inline:auto}
 
-  .bar { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; margin: 8px 0 4px; }
-  .bar span { display: block; height: 100%; }
+/* --- map --- */
+.mapcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(10px,2vw,18px);margin-bottom:18px;position:relative}
+.maphead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.maphead h2{font-size:15px;font-weight:600;letter-spacing:.02em}
+.maphead .hint{font-size:12px;color:var(--ink-faint)}
+svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y}
+.border-outline{fill:url(#basin);stroke:var(--edge);stroke-width:1.1;opacity:.95}
+.river{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.river-bed{stroke:rgba(63,208,216,.14)}
+/* The dash marches along the river. Duration is set per river from its own
+   discharge, so a low river visibly crawls and a high one runs. */
+.river-flow{stroke:var(--flow);stroke-dasharray:5 15;animation:drift linear infinite}
+@keyframes drift{to{stroke-dashoffset:-40}}
+.node{cursor:pointer}
+.node circle{transition:r .5s cubic-bezier(.2,.8,.2,1), opacity .4s}
+.node .halo{fill:var(--flow);opacity:.14}
+.node .core{fill:var(--shallow);stroke:var(--abyss);stroke-width:1}
+.node.outflow .core{fill:var(--silt)} .node.outflow .halo{fill:var(--silt)}
+.node.interior .core{fill:var(--ink-faint)} .node.interior .halo{opacity:.06}
+.node text{font-family:var(--sans);font-size:6.5px;fill:var(--ink-soft);pointer-events:none}
+.plant{cursor:pointer}
+.plant polygon{fill:var(--ember);stroke:var(--abyss);stroke-width:.8}
+.plant .heat{fill:var(--ember);opacity:.16}
+.plant text{font-family:var(--sans);font-size:6.5px;fill:var(--ember);pointer-events:none}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);margin-top:8px}
+.key{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 0; font-size: 11px; }
-  td { padding: 4px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
-  td.num { text-align: right; }
-  .tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--panel-2); color: var(--muted); }
-  .tag.measured { background: #14392c; color: var(--in); }
-  .tag.estimated { background: #40320f; color: var(--warn); }
+/* --- tooltip --- */
+#tip{position:fixed;z-index:50;pointer-events:none;opacity:0;transition:opacity .15s;
+  background:#06202b;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;
+  box-shadow:0 10px 30px rgba(0,0,0,.5);max-width:250px}
+#tip .t-name{font-weight:600;margin-bottom:2px}
+#tip .t-val{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--flow);font-size:16px}
+#tip .t-sub{color:var(--ink-faint);font-size:11.5px;margin-top:3px}
 
-  .foot { color: var(--muted); font-size: 11px; line-height: 1.6; margin-top: 14px; }
-  .foot a { color: var(--out); }
+/* --- cards --- */
+.grid{display:grid;gap:12px;margin-bottom:18px}
+.g3{grid-template-columns:repeat(auto-fit,minmax(238px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 16px}
+.card h3{font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);font-weight:600;margin-bottom:8px}
+.card .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600;letter-spacing:-.02em}
+.card p{font-size:13px;color:var(--ink-soft);margin:8px 0 0}
+.card.power{border-color:rgba(255,157,77,.3)} .card.power .v{color:var(--ember)}
 
-  #map { height: 100%; background: #0b1219; }
-  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--text); }
-  .leaflet-popup-content { margin: 12px 14px; font-size: 12px; }
-  .leaflet-popup-content b { display: block; margin-bottom: 4px; font-size: 13px; }
-  .leaflet-container { background: #0b1219; }
-  .legend {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-    padding: 10px 12px; font-size: 11px; color: var(--muted); line-height: 1.9;
-  }
-  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+/* --- station bars --- */
+.bars{display:flex;flex-direction:column;gap:5px}
+.bar{display:grid;grid-template-columns:minmax(96px,1.3fr) 1fr minmax(74px,auto);gap:10px;align-items:center;font-size:13px}
+.bar .nm{color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .track{height:7px;border-radius:4px;background:rgba(255,255,255,.05);overflow:hidden}
+.bar .fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--flow-dim),var(--flow));
+  transition:width .9s cubic-bezier(.2,.8,.2,1)}
+.bar.out .fill{background:linear-gradient(90deg,#8a7a55,var(--silt))}
+.bar .n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;color:var(--ink)}
+.bar .n small{color:var(--ink-faint)}
+
+/* --- sparkline --- */
+.spark{width:100%;height:64px;display:block}
+.spark path{fill:none;stroke:var(--flow);stroke-width:1.6}
+.spark .area{fill:url(#sparkfill);stroke:none}
+.spark .out{stroke:var(--silt)}
+
+/* --- prose --- */
+.note-block{background:rgba(8,36,48,.5);border-left:2px solid var(--flow-dim);border-radius:0 12px 12px 0;
+  padding:14px 16px;margin-bottom:18px;font-size:13.5px;color:var(--ink-soft)}
+.note-block strong{color:var(--ink)}
+footer{color:var(--ink-faint);font-size:12.5px;padding:26px 0 40px;border-top:1px solid var(--line);margin-top:26px}
+footer a{color:var(--ink-soft)}
+
+@media (max-width:640px){
+  .headline{grid-template-columns:1fr;gap:14px}
+  .middle{order:3}
+  .bar{grid-template-columns:minmax(80px,1fr) 1fr auto;font-size:12px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none !important;transition:none !important}
+}
 </style>
 </head>
 <body>
-<aside>
-  <h1>Magyarország vízmérlege</h1>
-  <div class="sub" id="updated">Betöltés…</div>
+<div class="wrap">
 
-  <div class="banner hidden" id="synthetic">
-    <b>Szintetikus adat.</b> Az API fixture szolgáltatóval fut – ezek modellezett, nem mért értékek.
+<header>
+  <div>
+    <h1>Mennyi víz folyik át <em>Magyarországon</em>?</h1>
+    <div class="sub">Élő vízmérleg 30 vízrajzi szelvényből. Amennyi belép a határon, amennyi elhagyja, és amennyit közben kivesz az energiaipar hűtésre.</div>
   </div>
+  <div>
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="stamp"><span class="dot live"></span><span id="freshness">betöltés…</span></div>
+  </div>
+</header>
 
+<div class="banner warn hidden" id="synthetic">
+  <strong>Ez szintetikus adat.</strong> A megjelenített értékek generáltak, nem mérések — fejlesztői módban fut.
+  Hihetőnek látszanak, és pontosan ezért van itt ez a sáv.
+</div>
+<div class="banner note hidden" id="stale"></div>
+
+<!-- the whole story in three numbers -->
+<section class="headline">
+  <div class="side in">
+    <div class="label">Beérkezik</div>
+    <div class="big"><span id="inflow">–</span><span class="unit">m³/s</span></div>
+    <div class="meta" id="inflow-meta">&nbsp;</div>
+  </div>
+  <div class="middle">
+    <div class="net" id="net">–</div>
+    <div class="verdict" id="verdict">&nbsp;</div>
+  </div>
+  <div class="side out">
+    <div class="label">Távozik</div>
+    <div class="big"><span id="outflow">–</span><span class="unit">m³/s</span></div>
+    <div class="meta" id="outflow-meta">&nbsp;</div>
+  </div>
+</section>
+
+<section class="mapcard">
+  <div class="maphead">
+    <h2>A folyók most</h2>
+    <div class="hint">A sodrás sebessége a tényleges vízhozamot követi. Vidd rá az egeret egy pontra.</div>
+  </div>
+  <svg class="map" id="map" viewBox="0 0 800 470" role="img" aria-label="Magyarország folyói és vízrajzi szelvényei">
+    <defs>
+      <linearGradient id="basin" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#0b2c3a" stop-opacity=".95"/>
+        <stop offset="100%" stop-color="#061e29" stop-opacity=".9"/>
+      </linearGradient>
+      <linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3fd0d8" stop-opacity=".35"/>
+        <stop offset="100%" stop-color="#3fd0d8" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <g id="layer-country"></g>
+    <g id="layer-rivers"></g>
+    <g id="layer-borderflow"></g>
+    <g id="layer-plants"></g>
+    <g id="layer-nodes"></g>
+  </svg>
+  <div class="legend">
+    <span><i class="key" style="background:var(--shallow)"></i>belépő szelvény</span>
+    <span><i class="key" style="background:var(--silt)"></i>kilépő szelvény</span>
+    <span><i class="key" style="background:var(--ink-faint)"></i>belső mérce (nem összegezzük)</span>
+    <span><i class="key" style="background:var(--ember)"></i>erőmű, hűtővíz-kivétellel</span>
+  </div>
+</section>
+
+<section class="grid g3" id="cards"></section>
+
+<section class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
   <div class="card">
-    <h2>Nettó vízforgalom (ΔQ)</h2>
-    <div class="net" id="net">
-      <div><span class="big" id="netVal">–</span> <span class="pm" id="netUnc"></span></div>
-      <div class="verdict" id="netVerdict"></div>
-    </div>
-    <div class="bar"><span id="netBar" style="width:0%; background:var(--in)"></span></div>
-    <div class="row"><span class="label">Beáramlás</span><span class="val" id="inflow">–</span></div>
-    <div class="row"><span class="label">— ebből mért</span><span class="val" id="inflowGauged">–</span></div>
-    <div class="row"><span class="label">— ebből becsült (nem mért vízfolyások)</span><span class="val" id="inflowUngauged">–</span></div>
-    <div class="row"><span class="label">Kiáramlás</span><span class="val" id="outflow">–</span></div>
+    <h3>Belépő szelvények</h3>
+    <div class="bars" id="bars-in"></div>
   </div>
-
   <div class="card">
-    <h2>Erőművi vízhasználat</h2>
-    <div class="row"><span class="label">Vízkivétel</span><span class="val" id="withdrawal">–</span></div>
-    <div class="row"><span class="label">Visszavezetés</span><span class="val" id="discharge">–</span></div>
-    <div class="row"><span class="label">Tényleges fogyasztás</span><span class="val" id="consumption">–</span></div>
-    <div class="row"><span class="label">Visszavezetett arány</span><span class="val" id="returned">–</span></div>
-    <table id="plants"><thead><tr><th>Erőmű</th><th class="num">MW</th><th class="num">m³/s</th><th></th></tr></thead><tbody></tbody></table>
+    <h3>Kilépő szelvények</h3>
+    <div class="bars" id="bars-out"></div>
   </div>
+</section>
 
-  <div class="foot" id="foot"></div>
-</aside>
+<section class="card" style="margin-bottom:18px">
+  <h3>Az elmúlt 48 óra</h3>
+  <svg class="spark" id="spark" viewBox="0 0 800 120" preserveAspectRatio="none"></svg>
+  <p id="spark-note">&nbsp;</p>
+</section>
 
-<div id="map"></div>
+<div class="note-block" id="explainer"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<footer>
+  Adatforrás: <a href="https://data.vizugy.hu" rel="noopener">OVF / data.vizugy.hu</a> vízrajzi adatok,
+  negyedóránként frissítve. Az energiaipari hűtővíz becslés, a modell és a bizonytalanság
+  a <a href="/api/v1/snapshot">/api/v1/snapshot</a> válaszban végig követhető.
+  <br><br>
+  A vízhozam nem közvetlenül mért érték: vízállásból származik egy vízhozamgörbén keresztül,
+  ami jó folyón is 5–10% hibát hordoz. Ezért van minden számnak hibasávja, és ezért nem jelentünk
+  szignifikáns eltérést ott, ahol a különbség belefér.
+</footer>
+
+</div>
+<div id="tip"></div>
+
 <script>
-const API = '/api/v1';
-const fmt = (v, d = 0) => v == null ? '–' : v.toLocaleString('hu-HU', { minimumFractionDigits: d, maximumFractionDigits: d });
+'use strict';
 
-const COLOR = { inflow: '#3fbf8f', outflow: '#4a9fe0', interior: '#5a6b7d' };
+/* --------------------------------------------------------------------------
+   Geometry.
 
-/**
- * Leaflet comes from a CDN, so it can simply fail to arrive - an outage, an offline
- * client, a strict CSP. The numbers panel needs none of it, so the map is initialised
- * behind a guard and its absence degrades to a message instead of taking the page down.
- */
-let map = null;
-let layer = null;
+   A stylised outline and the three main rivers, drawn in degrees and projected
+   into the viewBox. Tiles were the alternative and were rejected: a tile layer
+   makes this look like every other map with pins on it, needs a third party at
+   runtime, and cannot animate the one thing that matters here - the water
+   moving along the channel at the speed it is actually moving.
+-------------------------------------------------------------------------- */
+const BBOX = { west:15.9, east:23.1, south:45.6, north:48.75 };
+const PAD = 26;
+function px(lon,lat){
+  const x = PAD + (lon-BBOX.west)/(BBOX.east-BBOX.west) * (800-2*PAD);
+  const y = PAD + (BBOX.north-lat)/(BBOX.north-BBOX.south) * (470-2*PAD);
+  return [x,y];
+}
+const path = pts => pts.map((p,i)=> (i?'L':'M') + px(p[0],p[1]).map(v=>v.toFixed(1)).join(' ')).join(' ');
 
-function initMap() {
-  if (typeof L === 'undefined') {
-    document.getElementById('map').innerHTML =
-      '<div style="padding:24px;color:#8ba3ba;font-size:13px">' +
-      'A térképkönyvtár nem töltődött be (CDN nem elérhető). Az adatok ettől függetlenül frissülnek.' +
-      '</div>';
-    return false;
+const BORDER = [[17.16,48.01],[17.75,47.75],[18.75,47.82],[19.53,48.27],[20.33,48.56],[21.44,48.58],
+ [22.15,48.40],[22.90,48.10],[22.30,47.75],[21.95,47.20],[21.65,46.95],[21.50,46.70],[21.20,46.25],
+ [20.75,46.25],[20.25,46.13],[19.55,46.17],[18.90,45.92],[18.30,45.78],[17.60,45.85],[16.90,46.25],
+ [16.45,46.50],[16.11,46.87],[16.45,47.00],[16.28,47.62],[16.65,47.68],[17.05,47.70],[17.16,48.01]];
+
+const RIVERS = [
+  { id:'duna', name:'Duna', station:'duna-komarom', pts:[[17.20,48.00],[17.62,47.86],[18.12,47.74],
+      [18.74,47.79],[18.96,47.79],[19.05,47.50],[18.93,46.96],[18.86,46.58],[18.96,46.18],[18.69,45.99]] },
+  { id:'tisza', name:'Tisza', station:'tisza-szeged', pts:[[22.82,48.10],[22.32,48.13],[21.41,48.12],
+      [21.05,47.93],[20.55,47.55],[20.19,47.17],[20.14,46.71],[20.14,46.25],[20.15,46.17]] },
+  { id:'drava', name:'Dráva', station:'drava-ortilos', pts:[[16.89,46.29],[17.46,45.96],[18.22,45.80],[18.72,45.92]] },
+];
+
+/* -------------------------------------------------------------------------- */
+const $ = id => document.getElementById(id);
+const svgEl = (n,a={}) => { const e=document.createElementNS('http://www.w3.org/2000/svg',n);
+  for(const k in a) e.setAttribute(k,a[k]); return e; };
+
+const fmt = (v,d=0) => v==null || !isFinite(v) ? '–'
+  : new Intl.NumberFormat('hu-HU',{minimumFractionDigits:d,maximumFractionDigits:d}).format(v);
+
+/* Numbers ease to their new value instead of jumping.
+
+   Not decoration: a figure that snaps is indistinguishable from a figure that
+   reloaded, and the eye cannot tell which of twenty numbers actually moved.
+   Easing makes the change itself the signal. */
+const eased = new WeakMap();
+function setNumber(el, value, decimals=0){
+  if(el==null) return;
+  const from = eased.get(el) ?? value ?? 0;
+  const to = value;
+  if(to==null || !isFinite(to)){ el.textContent='–'; eased.set(el,0); return; }
+  eased.set(el,to);
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches || from===to){
+    el.textContent = fmt(to,decimals); return;
+  }
+  const t0 = performance.now(), dur = 850;
+  (function step(now){
+    const k = Math.min(1,(now-t0)/dur);
+    const e = 1-Math.pow(1-k,3);
+    el.textContent = fmt(from+(to-from)*e, decimals);
+    if(k<1) requestAnimationFrame(step);
+  })(performance.now());
+}
+
+/* -------------------------------------------------------------------------- */
+let stations = [], plants = [], snapshot = null;
+
+function drawBase(){
+  $('layer-country').appendChild(svgEl('path',{ d: path(BORDER)+' Z', class:'border-outline' }));
+
+  for(const r of RIVERS){
+    const d = path(r.pts);
+    const g = svgEl('g');
+    g.appendChild(svgEl('path',{ d, class:'river river-bed', 'stroke-width':7, id:'bed-'+r.id }));
+    g.appendChild(svgEl('path',{ d, class:'river river-flow', 'stroke-width':2.4, id:'flow-'+r.id }));
+    $('layer-rivers').appendChild(g);
+  }
+}
+
+/* River width and current speed both come from the live figure.
+
+   Width is the honest encoding of quantity; speed is what makes a drought
+   legible at a glance without reading a single number. */
+function styleRivers(byId){
+  for(const r of RIVERS){
+    const s = byId.get(r.station);
+    const flow = s ? s.flowM3s : null;
+    const bed = $('bed-'+r.id), fl = $('flow-'+r.id);
+    if(!bed||!fl) continue;
+
+    const w = flow==null ? 4 : Math.max(3, Math.min(16, 3 + Math.sqrt(flow)/6));
+    bed.setAttribute('stroke-width', (w+3.5).toFixed(1));
+    fl.setAttribute('stroke-width', w.toFixed(1));
+
+    // A river at its long-term mean drifts in about three seconds; a tenth of
+    // that crawls. Clamped so nothing ever stops dead or strobes.
+    const ratio = flow==null ? 0.3 : Math.max(0.04, Math.min(2.5, flow/1500));
+    fl.style.animationDuration = (Math.max(0.9, Math.min(16, 2.4/ratio))).toFixed(2)+'s';
+    fl.style.opacity = flow==null ? .25 : .95;
+  }
+}
+
+function drawNodes(){
+  const nodes = $('layer-nodes'); nodes.textContent='';
+  const flows = $('layer-borderflow'); flows.textContent='';
+  const byId = new Map(currentStationFlows());
+
+  for(const st of stations){
+    if(!st.location) continue;
+    const [x,y] = px(st.location.lon, st.location.lat);
+    const live = byId.get(st.id);
+    const flow = live ? live.flowM3s : null;
+    const role = st.role;
+
+    const g = svgEl('g',{ class:'node '+role, transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
+    const r = flow==null ? 3 : Math.max(2.6, Math.min(13, 2.6+Math.sqrt(flow)/3.2));
+    g.appendChild(svgEl('circle',{ class:'halo', r:(r*2.1).toFixed(1) }));
+    g.appendChild(svgEl('circle',{ class:'core', r:r.toFixed(1) }));
+
+    // Only the big ones get a label, or the map turns into a word cloud.
+    if(flow!=null && flow>60){
+      const t = svgEl('text',{ x:(r+4).toFixed(1), y:'2.5' });
+      t.textContent = st.name.split('–').pop().trim();
+      g.appendChild(t);
+    }
+
+    g.addEventListener('pointerenter', e => showTip(e, st, flow));
+    g.addEventListener('pointermove', moveTip);
+    g.addEventListener('pointerleave', hideTip);
+    nodes.appendChild(g);
   }
 
-  map = L.map('map', { zoomControl: true }).setView([47.1, 19.5], 7);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap, &copy; CARTO | Adat: OVF, MAVIR',
-    maxZoom: 18,
-  }).addTo(map);
-
-  layer = L.layerGroup().addTo(map);
-
-  const legend = L.control({ position: 'bottomright' });
-  legend.onAdd = () => {
-    const div = L.DomUtil.create('div', 'legend');
-    div.innerHTML =
-      '<i style="background:#3fbf8f"></i>Belépő szelvény<br>' +
-      '<i style="background:#4a9fe0"></i>Kilépő szelvény<br>' +
-      '<i style="background:#5a6b7d"></i>Belső mérőállomás<br>' +
-      '<i style="background:#e05f5f"></i>Erőmű (vízkivétel)<br>' +
-      '<span style="opacity:.7">A jel mérete a vízhozammal arányos</span>';
-    return div;
-  };
-  legend.addTo(map);
-  return true;
-}
-
-const hasMap = initMap();
-
-async function refresh() {
-  // Fetched and rendered independently: a failure on one side must not blank the other.
-  try {
-    const snapshot = await fetch(`${API}/snapshot`).then((r) => r.json());
-    renderSidebar(snapshot);
-  } catch (err) {
-    document.getElementById('updated').textContent = 'Az API nem érhető el: ' + err.message;
+  for(const p of plants){
+    if(!p.location) continue;
+    const [x,y] = px(p.location.lon, p.location.lat);
+    const mw = p.generation && p.generation.powerMw;
+    const w = p.water && p.water.withdrawalM3s;
+    const g = svgEl('g',{ class:'plant', transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
+    const size = w==null ? 3 : Math.max(3, Math.min(11, 3+Math.sqrt(w)*0.9));
+    g.appendChild(svgEl('circle',{ class:'heat', r:(size*2).toFixed(1) }));
+    g.appendChild(svgEl('polygon',{ points:`0,${-size} ${size},0 0,${size} ${-size},0` }));
+    if(w!=null && w>5){
+      const t = svgEl('text',{ x:(size+4).toFixed(1), y:'-3' });
+      t.textContent = p.name.split(/[ (]/)[0];
+      g.appendChild(t);
+    }
+    g.addEventListener('pointerenter', e => showPlantTip(e, p, mw, w));
+    g.addEventListener('pointermove', moveTip);
+    g.addEventListener('pointerleave', hideTip);
+    $('layer-plants').appendChild(g);
   }
 
-  if (!hasMap) return;
-  try {
-    const geo = await fetch(`${API}/geojson`).then((r) => r.json());
-    renderMap(geo);
-  } catch (err) {
-    console.error('geojson:', err);
+  styleRivers(byId);
+}
+
+function currentStationFlows(){
+  if(!snapshot) return [];
+  const all = [...snapshot.balance.inflow.stations, ...snapshot.balance.outflow.stations];
+  return all.map(s => [s.id, s]);
+}
+
+/* --- tooltip --- */
+function showTip(e, st, flow){
+  const mean = st.longTermMeanM3s;
+  const ratio = (flow!=null && mean) ? flow/mean : null;
+  $('tip').innerHTML =
+    `<div class="t-name">${st.name}</div>`+
+    `<div class="t-val">${fmt(flow,1)} <span style="font-size:12px;color:var(--ink-faint)">m³/s</span></div>`+
+    `<div class="t-sub">${st.role==='inflow'?'belépő':st.role==='outflow'?'kilépő':'belső mérce'}`+
+    (mean?` · sokéves átlag ${fmt(mean,0)}`:'')+
+    (ratio!=null?` · <b>${fmt(ratio*100,0)}%</b>`:'')+`</div>`;
+  moveTip(e); $('tip').style.opacity='1';
+}
+function showPlantTip(e,p,mw,w){
+  $('tip').innerHTML =
+    `<div class="t-name">${p.name}</div>`+
+    `<div class="t-val" style="color:var(--ember)">${fmt(w,1)} <span style="font-size:12px;color:var(--ink-faint)">m³/s hűtővíz</span></div>`+
+    `<div class="t-sub">${mw!=null?fmt(mw,0)+' MW · ':''}${p.capacityMw} MW beépített`+
+    (p.generation&&p.generation.confidence?` · ${p.generation.confidence==='measured'?'mért':'becsült'}`:'')+`</div>`;
+  moveTip(e); $('tip').style.opacity='1';
+}
+function moveTip(e){
+  const t=$('tip'), pad=14;
+  const x=Math.min(e.clientX+pad, innerWidth-t.offsetWidth-8);
+  const y=Math.max(8, e.clientY-t.offsetHeight-pad);
+  t.style.left=x+'px'; t.style.top=y+'px';
+}
+function hideTip(){ $('tip').style.opacity='0'; }
+
+/* --- render --- */
+function renderHeadline(b){
+  setNumber($('inflow'), b.inflow.totalM3s, 0);
+  setNumber($('outflow'), b.outflow.totalM3s, 0);
+
+  $('inflow-meta').textContent =
+    `${b.inflow.stationCount} szelvény · ±${fmt(b.inflow.uncertaintyM3s,0)} m³/s`
+    + (b.inflow.ungaugedM3s ? ` · ebből ${fmt(b.inflow.ungaugedM3s,0)} becsült` : '');
+  $('outflow-meta').textContent = `${b.outflow.stationCount} szelvény · ±${fmt(b.outflow.uncertaintyM3s,0)} m³/s`;
+
+  const net = $('net');
+  net.className = 'net ' + (b.net.significant ? b.net.direction : 'insignificant');
+  net.textContent = (b.net.m3s>0?'+':'') + fmt(b.net.m3s,0) + ' m³/s';
+  $('verdict').textContent = b.net.significant
+    ? (b.net.direction==='draining' ? 'több távozik, mint amennyi érkezik' : 'több érkezik, mint amennyi távozik')
+    : 'a különbség a mérési hibán belül van';
+}
+
+function renderCards(s){
+  const b=s.balance, p=s.power, c=s.context||{};
+  const daily = b.inflow.dailyM3;
+  const cards = [
+    { h:'Naponta ennyi lép be', v:fmt(daily/1e6,0), u:'millió m³',
+      p:`Ennyi víz halad át a határon egy nap alatt, ha a mostani vízhozam kitart. A Balaton térfogata 1900 millió m³ — vagyis nagyjából ${fmt(1900/(daily/1e6),1)} nap.` },
+    { h:'Mért, nem becsült', v:fmt(b.dataQuality.measuredShare*100,0), u:'%',
+      p:`A mérleg ekkora része származik élő mérésből. A többi a sokéves átlagra esik vissza, és a válaszban külön jelölve van.` },
+    { h:'Energiaipari kivétel', v:fmt(p.totals.withdrawalM3s,0), u:'m³/s', cls:'power',
+      p:`Az erőművek ennyi vizet vesznek ki hűtésre — a beáramlás ${fmt((p.totals.withdrawalM3s/b.inflow.totalM3s)*100,1)}%-a. Ebből ténylegesen elpárolog ${fmt(p.totals.consumptionM3s,1)} m³/s; a többi visszakerül a folyóba, felmelegítve.` },
+  ];
+  $('cards').innerHTML = cards.map(c =>
+    `<div class="card ${c.cls||''}"><h3>${c.h}</h3><div class="v">${c.v}<span style="font-size:14px;color:var(--ink-faint);margin-left:6px">${c.u}</span></div><p>${c.p}</p></div>`
+  ).join('');
+}
+
+function renderBars(list, el, cls){
+  const max = Math.max(...list.map(s=>s.flowM3s), 1);
+  el.innerHTML = list.slice().sort((a,b)=>b.flowM3s-a.flowM3s).map(s=>{
+    const pct = Math.max(0.6, (s.flowM3s/max)*100);
+    const est = s.quality!=='measured' ? ' <small>becsült</small>' : '';
+    return `<div class="bar ${cls}"><div class="nm" title="${s.name}">${s.name}</div>`+
+      `<div class="track"><div class="fill" style="width:${pct.toFixed(1)}%"></div></div>`+
+      `<div class="n">${fmt(s.flowM3s,1)}${est}</div></div>`;
+  }).join('');
+}
+
+function renderSpark(history){
+  const svg=$('spark'); svg.textContent='';
+  if(!history || history.length<2){ $('spark-note').textContent='Még nincs elég előzmény a rajzoláshoz — ez az első néhány óra után jelenik meg.'; return; }
+  const W=800,H=120;
+  const xs = history.map((_,i)=> (i/(history.length-1))*W);
+  const all = history.flatMap(h=>[h.inflowM3s,h.outflowM3s]).filter(v=>v!=null&&isFinite(v));
+  const lo=Math.min(...all)*0.92, hi=Math.max(...all)*1.05;
+  const y = v => H - ((v-lo)/(hi-lo||1))*H;
+
+  const line = key => history.map((h,i)=> (i?'L':'M')+xs[i].toFixed(1)+' '+y(h[key]).toFixed(1)).join(' ');
+  const area = line('inflowM3s')+` L${W} ${H} L0 ${H} Z`;
+
+  svg.appendChild(svgEl('path',{ class:'area', d:area }));
+  svg.appendChild(svgEl('path',{ d:line('inflowM3s') }));
+  svg.appendChild(svgEl('path',{ class:'out', d:line('outflowM3s') }));
+
+  const hrs = Math.round((Date.parse(history[history.length-1].timestamp)-Date.parse(history[0].timestamp))/3600000);
+  $('spark-note').innerHTML = `Beáramlás <span style="color:var(--flow)">———</span> és kiáramlás <span style="color:var(--silt)">———</span> az elmúlt ${hrs} órában.`;
+}
+
+function renderExplainer(s){
+  const b=s.balance;
+  const warn = b.dataQuality.warnings||[];
+  $('explainer').innerHTML =
+    `<strong>Hogyan olvasd?</strong> A beáramlás ${b.inflow.stationCount} határszelvény összege, a kiáramlás ${b.outflow.stationCount}-é. `+
+    `Ami közte marad, az nem „elveszett” víz: a hazai csapadékból származó lefolyás, a párolgás és a mérési hiba együtt adja ki. `+
+    `Ezért van minden számnak hibasávja, és ezért mondjuk azt, hogy a különbség ${b.net.significant?'kilóg a hibasávból':'belefér a hibasávba'}.`+
+    (warn.length ? `<br><br><strong>Fenntartás:</strong> ${warn.join(' · ')}` : '');
+}
+
+/* --- data --- */
+async function loadStatic(){
+  const [st, pl] = await Promise.all([
+    fetch('/api/v1/stations').then(r=>r.json()),
+    fetch('/api/v1/powerplants').then(r=>r.json()).catch(()=>({plants:[]})),
+  ]);
+  stations = st.stations||[];
+  plants = (pl.plants||[]).filter(p=>p.status==='operating');
+}
+
+async function refresh(){
+  try{
+    const s = await fetch('/api/v1/snapshot',{cache:'no-store'}).then(r=>r.json());
+    snapshot = s;
+
+    $('synthetic').classList.toggle('hidden', !(s._meta && s._meta.synthetic));
+
+    renderHeadline(s.balance);
+    renderCards(s);
+    renderBars(s.balance.inflow.stations, $('bars-in'), '');
+    renderBars(s.balance.outflow.stations, $('bars-out'), 'out');
+    renderExplainer(s);
+    drawNodes();
+
+    const at = s._meta && s._meta.lastPollAt;
+    const stale = $('stale');
+    if(at){
+      const mins = Math.round((Date.now()-Date.parse(at))/60000);
+      $('freshness').textContent = mins<2 ? 'épp most frissült' : `frissítve ${mins} perce`;
+      // The poll runs quarter-hourly; an hour of silence is a broken poller, not a quiet river.
+      stale.classList.toggle('hidden', mins < 60);
+      if(mins>=60) stale.innerHTML = `<strong>Az adat ${mins} perce nem frissült.</strong> A számok a legutóbbi sikeres lekérdezésből valók.`;
+    } else {
+      $('freshness').textContent = 'ismeretlen frissesség';
+      stale.classList.add('hidden');
+    }
+  }catch(err){
+    $('freshness').textContent = 'nem sikerült frissíteni';
   }
 }
 
-function renderSidebar(s) {
-  const b = s.balance, p = s.power;
-
-  document.getElementById('synthetic').classList.toggle('hidden', !s._meta.synthetic);
-  document.getElementById('updated').textContent =
-    'Frissítve: ' + new Date(s.generatedAt).toLocaleString('hu-HU') +
-    ' · módszer: ' + (b.method === 'lagged' ? 'futásidő-korrigált' : 'pillanatnyi');
-
-  // The uncertainty is rendered at the same visual weight as the value itself - the
-  // net figure is meaningless without it, and usually smaller than it.
-  document.getElementById('netVal').textContent = (b.net.m3s > 0 ? '+' : '') + fmt(b.net.m3s, 0);
-  document.getElementById('netUnc').textContent = '± ' + fmt(b.net.uncertaintyM3s, 0) + ' m³/s';
-  // The API speaks English by contract; the UI localises from the flag rather than
-  // displaying the API's prose, so the two never drift out of sync.
-  document.getElementById('netVerdict').textContent = !b.net.significant
-    ? 'A különbség a mérési bizonytalanságon belül van — nem különböztethető meg nullától.'
-    : b.net.m3s > 0
-      ? 'Jelenleg több víz lép be az országba, mint amennyi kilép.'
-      : 'Jelenleg több víz lép ki az országból, mint amennyi belép.';
-  document.getElementById('net').classList.toggle('insignificant', !b.net.significant);
-
-  const ratio = Math.min(100, Math.abs(b.net.m3s) / Math.max(1, b.net.uncertaintyM3s * 2) * 100);
-  const bar = document.getElementById('netBar');
-  bar.style.width = ratio + '%';
-  bar.style.background = b.net.significant ? (b.net.m3s > 0 ? 'var(--in)' : 'var(--out)') : 'var(--muted)';
-
-  set('inflow', fmt(b.inflow.totalM3s) + ' <small>m³/s</small>');
-  set('inflowGauged', fmt(b.inflow.gaugedM3s) + ' <small>m³/s</small>');
-  set('inflowUngauged', fmt(b.inflow.ungaugedM3s) + ' <small>m³/s</small>');
-  set('outflow', fmt(b.outflow.totalM3s) + ' <small>m³/s</small>');
-
-  set('withdrawal', fmt(p.totals.withdrawalM3s, 1) + ' <small>m³/s</small>');
-  set('discharge', fmt(p.totals.dischargeM3s, 1) + ' <small>m³/s</small>');
-  set('consumption', fmt(p.totals.consumptionM3s, 2) + ' <small>m³/s</small>');
-  set('returned', p.totals.returnedShare == null ? '–' : (p.totals.returnedShare * 100).toFixed(1) + '%');
-
-  const tbody = document.querySelector('#plants tbody');
-  tbody.innerHTML = '';
-  p.plants
-    .filter((x) => x.status === 'operating')
-    .sort((a, b2) => b2.water.withdrawalM3s - a.water.withdrawalM3s)
-    .forEach((plant) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML =
-        `<td>${plant.name.replace(/\s*\(.*\)/, '')}</td>` +
-        `<td class="num">${fmt(plant.generation.powerMw)}</td>` +
-        `<td class="num">${fmt(plant.water.withdrawalM3s, 1)}</td>` +
-        `<td><span class="tag ${plant.generation.confidence}">${plant.generation.confidence === 'measured' ? 'mért' : 'becsült'}</span></td>`;
-      tbody.appendChild(tr);
-    });
-
-  document.getElementById('foot').innerHTML =
-    `A vízkivétel a beáramlás <b>${(s.context.powerWithdrawalShareOfInflow * 100).toFixed(2)}%</b>-a, ` +
-    `de a tényleges fogyasztás csak <b>${(s.context.powerConsumptionShareOfInflow * 100).toFixed(3)}%</b>-a — ` +
-    `a frissvízhűtés a vizet kölcsönveszi, nem elhasználja.<br><br>` +
-    `Adatforrás: OVF (vízrajz), MAVIR (villamosenergia). ` +
-    `<a href="${API}/meta/sources">Módszertan és korlátok →</a>`;
+async function refreshHistory(){
+  try{
+    const h = await fetch('/api/v1/balance/history?days=2&limit=300').then(r=>r.json());
+    renderSpark(h.series||h.history||[]);
+  }catch{ /* history is optional garnish, not the page */ }
 }
 
-function set(id, html) { document.getElementById(id).innerHTML = html; }
-
-function renderMap(geo) {
-  layer.clearLayers();
-
-  geo.features.forEach((f) => {
-    const p = f.properties;
-    const [lon, lat] = f.geometry.coordinates;
-    const isPlant = p.kind === 'powerplant';
-
-    const radius = 4 + p.weight * (isPlant ? 16 : 20);
-    const color = isPlant ? (p.type === 'nuclear' ? '#d94f8c' : '#e05f5f') : COLOR[p.role];
-
-    L.circleMarker([lat, lon], {
-      radius,
-      color,
-      weight: p.countsTowardBalance === false ? 1 : 2,
-      opacity: p.countsTowardBalance === false ? 0.45 : 0.9,
-      fillColor: color,
-      fillOpacity: p.hasLiveReading === false ? 0.1 : 0.35,
-      dashArray: p.status && p.status !== 'operating' ? '3,3' : null,
-    })
-      .bindPopup(isPlant ? plantPopup(p) : gaugePopup(p))
-      .addTo(layer);
-  });
+function tick(){
+  $('clock').textContent = new Date().toLocaleTimeString('hu-HU',{hour12:false});
 }
 
-function gaugePopup(p) {
-  const role = { inflow: 'belépő', outflow: 'kilépő', interior: 'belső' }[p.role];
-  return `<b>${p.name}</b>` +
-    `${p.flowM3s == null ? 'Nincs élő adat' : fmt(p.flowM3s, 1) + ' m³/s'}` +
-    `${p.ratioToMean ? ` · a sokéves átlag ${(p.ratioToMean * 100).toFixed(0)}%-a` : ''}<br>` +
-    `<span style="color:#8ba3ba">Szelvény: ${role}` +
-    `${p.countsTowardBalance ? '' : ' — nem számít bele a mérlegbe'}</span>` +
-    `${p.note ? `<br><span style="color:#8ba3ba;font-size:11px">${p.note}</span>` : ''}`;
-}
-
-function plantPopup(p) {
-  if (p.status !== 'operating') {
-    return `<b>${p.name}</b><span style="color:#8ba3ba">${p.capacityMw} MW · ${p.status}</span>`;
-  }
-  return `<b>${p.name}</b>` +
-    `${fmt(p.powerMw)} MW / ${p.capacityMw} MW<br>` +
-    `Vízkivétel: <b>${fmt(p.withdrawalM3s, 1)} m³/s</b><br>` +
-    `Visszavezetés: ${fmt(p.dischargeM3s, 1)} m³/s<br>` +
-    `Fogyasztás: ${fmt(p.consumptionM3s, 2)} m³/s<br>` +
-    `<span style="color:#8ba3ba">${p.receivingWater} · ${p.confidence === 'measured' ? 'mért' : 'becsült'} termelés</span>`;
-}
-
-refresh();
-setInterval(refresh, 60000);
+(async function start(){
+  drawBase();
+  tick(); setInterval(tick,1000);
+  await loadStatic();
+  await refresh();
+  refreshHistory();
+  // Upstream publishes quarter-hourly; polling faster only burns the function budget.
+  setInterval(refresh, 60000);
+  setInterval(refreshHistory, 300000);
+  // A tab left open for hours should be current the moment it is looked at again.
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refresh(); });
+})();
 </script>
 </body>
 </html>
