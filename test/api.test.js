@@ -156,10 +156,15 @@ test('GET /api/v1/stations exposes which gauges count toward the balance', async
     const { body } = await get('/api/v1/stations');
     const nagymaros = body.stations.find((s) => s.id === 'duna-nagymaros');
     const rajka = body.stations.find((s) => s.id === 'duna-rajka');
+    const komarom = body.stations.find((s) => s.id === 'duna-komarom');
 
     assert.strictEqual(nagymaros.countsTowardBalance, false);
-    assert.strictEqual(nagymaros.redundantWith, 'duna-rajka');
-    assert.strictEqual(rajka.countsTowardBalance, true);
+    assert.strictEqual(nagymaros.redundantWith, 'duna-komarom');
+
+    // Rajka is published because people recognise it, and excluded from the sum because
+    // it is below the Cunovo diversion and carries only the old riverbed.
+    assert.strictEqual(rajka.countsTowardBalance, false);
+    assert.strictEqual(komarom.countsTowardBalance, true);
   });
 });
 

@@ -32,11 +32,32 @@ test('station registry excludes redundant gauges from the balance', () => {
   // tributary already contained in the reading below its confluence.
   assert.ok(!balanceIds.includes('duna-nagymaros'), 'Nagymaros must not count as inflow');
   assert.ok(!balanceIds.includes('duna-budapest'), 'Budapest must not count as inflow');
-  assert.ok(!balanceIds.includes('tisza-szeged'), 'Szeged duplicates Tiszasziget');
   assert.ok(!balanceIds.includes('mura-letenye'), 'Mura is already inside the Őrtilos reading');
 
-  assert.ok(balanceIds.includes('duna-rajka'));
+  // Rajka sits below the Cunovo diversion and carries only the old riverbed - roughly
+  // half the Danube at low flow, less in normal flow. Counting it as the Danube inflow
+  // is the largest single error available here, so it must never enter the sum.
+  assert.ok(!balanceIds.includes('duna-rajka'), 'Rajka is below the diversion, not the inflow section');
+  assert.ok(balanceIds.includes('duna-komarom'), 'the Danube inflow is taken at Komárom');
   assert.ok(balanceIds.includes('duna-mohacs'));
+
+  // Tiszasziget is the border section but publishes no discharge, so Szeged carries the
+  // term. Exactly one of the pair may be summed.
+  assert.ok(balanceIds.includes('tisza-szeged'), 'the Tisza outflow is taken at Szeged');
+  assert.ok(!balanceIds.includes('tisza-tiszasziget'), 'Tiszasziget would duplicate Szeged');
+});
+
+test('no two summed stations sit on the same river with one below the other', () => {
+  // A structural version of the check above: any pair of summed gauges on one river
+  // where the upstream reading is contained in the downstream one is a double-count.
+  const summed = listStations('inflow').concat(listStations('outflow'));
+
+  for (const station of summed) {
+    assert.ok(
+      !station.redundantWith,
+      `${station.id} is summed but declares itself redundant with ${station.redundantWith}`,
+    );
+  }
 });
 
 test('every redundant station points at a station that exists', () => {
@@ -63,8 +84,8 @@ test('net balance is reported as insignificant when it sits inside the error ban
 });
 
 test('a large genuine imbalance is reported as significant', () => {
-  // Triple the Danube at Rajka - far beyond any plausible rating-curve error.
-  const balance = computeBalance(meanReadings({ 'duna-rajka': 6060 }));
+  // Triple the Danube at Komárom - far beyond any plausible rating-curve error.
+  const balance = computeBalance(meanReadings({ 'duna-komarom': 6150 }));
   assert.ok(balance.net.m3s > 2000);
   assert.strictEqual(balance.net.significant, true);
   assert.strictEqual(balance.net.direction, 'accumulating');
@@ -79,15 +100,15 @@ test('uncertainty grows with the flows, never zero', () => {
 
 test('a missing gauge falls back to climatology and says so', () => {
   const readings = meanReadings();
-  delete readings['duna-rajka'];
+  delete readings['duna-komarom'];
 
   const balance = computeBalance(readings);
   assert.strictEqual(balance.inflow.estimatedCount, 1);
-  assert.ok(balance.dataQuality.warnings.some((w) => w.includes('duna-rajka')));
+  assert.ok(balance.dataQuality.warnings.some((w) => w.includes('duna-komarom')));
 
-  const rajka = balance.inflow.stations.find((s) => s.id === 'duna-rajka');
-  assert.strictEqual(rajka.quality, 'climatology');
-  assert.strictEqual(rajka.flowM3s, getStation('duna-rajka').meanFlow);
+  const komarom = balance.inflow.stations.find((s) => s.id === 'duna-komarom');
+  assert.strictEqual(komarom.quality, 'climatology');
+  assert.strictEqual(komarom.flowM3s, getStation('duna-komarom').meanFlow);
 });
 
 test('ungauged inflow is reported separately and can be switched off', () => {
@@ -121,8 +142,8 @@ test('lagged method reads history at each station travel time', () => {
   });
 
   assert.strictEqual(balance.method, 'lagged');
-  const rajka = seen.find((s) => s.stationId === 'duna-rajka');
-  assert.strictEqual(rajka.lagHours, getStation('duna-rajka').travelTimeHours);
+  const komarom = seen.find((s) => s.stationId === 'duna-komarom');
+  assert.strictEqual(komarom.lagHours, getStation('duna-komarom').travelTimeHours);
   // Outflow stations are the time reference and must never be shifted.
   assert.ok(!seen.some((s) => s.stationId === 'duna-mohacs'));
 });

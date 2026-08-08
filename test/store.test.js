@@ -232,9 +232,9 @@ test('partial history stays lagged but says how much was actually shifted', () =
   const store = new MemoryStore();
   const now = Date.now();
 
-  // Only the Danube has history reaching back to its 90 h travel time.
-  store.putStationReadings({ a: reading('duna-rajka', now - 90 * HOUR, 1800) });
-  store.putStationReadings({ b: reading('duna-rajka', now, 2000) });
+  // Only the Danube has history reaching back to its 80 h travel time.
+  store.putStationReadings({ a: reading('duna-komarom', now - 80 * HOUR, 1800) });
+  store.putStationReadings({ b: reading('duna-komarom', now, 2000) });
 
   const balance = computeBalance(store.latestReadings(), {
     method: 'lagged',

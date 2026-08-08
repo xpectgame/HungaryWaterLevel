@@ -68,8 +68,6 @@ const DEFAULTS = {
  *   fekete-koros-sarkad  three candidates around Sarkad-Malomfok, all pumping stations.
  *   lajta-mosonmagyarovar  only candidate is a barrage tailwater gauge (Tsz 20).
  *   repce-zsira          nearest Répce gauge is at Répcevis, the next village.
- *   drava-dravaszabolcs  name and river agree, but the river kilometre is 9.7 km off,
- *                        so either the registry's figure or the match is wrong.
  */
 const EXTERNAL_IDS = Object.freeze({
   // Danube system
@@ -102,6 +100,10 @@ const EXTERNAL_IDS = Object.freeze({
   'tisza-tiszasziget': '2279',
 
   // Drava system
+  // Drávaszabolcs matched on name and river but 9.7 river-km off. It is the only gauge
+  // of that name on the Dráva and Őrtilos matched to 0.1 km on the same river, so the
+  // registry's figure is the doubtful one, not the match. Accepted; riverKm needs a check.
+  'drava-dravaszabolcs': '836',
   'drava-ortilos': '833',
   'mura-letenye': '360',
 });

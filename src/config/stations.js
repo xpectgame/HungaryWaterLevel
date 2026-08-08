@@ -42,30 +42,42 @@ const STATIONS = [
     id: 'duna-rajka',
     name: 'Duna – Rajka',
     river: 'Duna',
-    role: 'inflow',
+    // Measured, not summed. On 2026-08-08 Rajka read 411 m3/s and Nagymaros 802, with
+    // the Ipoly - the only counted tributary between them - contributing 0.6 during a
+    // nationwide drought. The ~390 m3/s appearing in between is the Gabcikovo canal
+    // rejoining the old riverbed near Szap, around 1811 fkm. Summing this gauge as the
+    // Danube inflow therefore loses roughly half the river, and more in normal flow.
+    role: 'interior',
+    partialSection: true,
     riverKm: 1848,
     lat: 47.9975,
     lon: 17.1997,
     country: 'SK/AT',
-    meanFlow: 2020,
+    // The released flow in the old riverbed, not the Danube's 2020. Corrected once the
+    // live feed showed 411 while every neighbouring gauge sat at a third of its own mean.
+    meanFlow: 480,
     travelTimeHours: 90,
+    uncertaintyPct: 8,
+    note:
+      'Old Danube riverbed below the Cunovo diversion. Carries only the released flow, not the Danube.',
+  },
+  {
+    id: 'duna-komarom',
+    name: 'Duna – Komárom',
+    river: 'Duna',
+    role: 'inflow',
+    riverKm: 1768,
+    lat: 47.7433,
+    lon: 18.12,
+    country: 'SK',
+    meanFlow: 2050,
+    travelTimeHours: 80,
     uncertaintyPct: 5,
     note:
-      'Old Danube riverbed below the Cunovo diversion. NOT the total Danube inflow - see suspectedIssue.',
-    // The live feed reads ~410 m3/s here against a long-term mean of 2020, and that is
-    // not low water: the Danube's recorded minimum at Bratislava, 20 km upstream, is
-    // several times this. The gauge sits at 1848 fkm, below the Cunovo diversion that
-    // sends the bulk of the river into the Gabcikovo power canal on the Slovak side.
-    // What passes Rajka is the released flow in the old riverbed; the canal rejoins
-    // near Szap at about 1811 fkm.
-    //
-    // If that reading is right, summing Rajka as the Danube inflow understates the
-    // country's total inflow by well over a thousand cubic metres a second - the
-    // largest single error available in this project. It is left as 'inflow' rather
-    // than quietly reassigned because the fix is a methodology decision (which section
-    // represents the border) and not a config tweak, and because the balance response
-    // surfaces suspectedIssue so the number is never presented as settled.
-    suspectedIssue: 'below-diversion',
+      'The Danube inflow section. Below the Gabcikovo canal rejoining near Szap (~1811 fkm) and above the Vag, so it carries the whole river as it reaches Hungary. Rajka, 80 km upstream, carries only the old riverbed.',
+    // The Vag (~150 m3/s) and Garam (~55) join the border reach below here and are not
+    // gauged by OVF, so they fall into UNGAUGED_INFLOW rather than being counted.
+    ungaugedBelow: ['Vág', 'Garam'],
   },
   {
     id: 'lajta-mosonmagyarovar',
@@ -349,7 +361,9 @@ const STATIONS = [
     id: 'tisza-tiszasziget',
     name: 'Tisza – Tiszasziget',
     river: 'Tisza',
-    role: 'outflow',
+    // The exit section geographically, but the service publishes no discharge series
+    // for it - only stage. Szeged, 11 river km up, carries the outflow term instead.
+    role: 'interior',
     riverKm: 163,
     lat: 46.1683,
     lon: 20.1531,
@@ -357,6 +371,8 @@ const STATIONS = [
     meanFlow: 820,
     travelTimeHours: 0,
     uncertaintyPct: 6,
+    redundantWith: 'tisza-szeged',
+    note: 'No discharge series is published here; the Tisza outflow is taken at Szeged.',
   },
 
   // ---------------------------------------------------------------------------
@@ -372,8 +388,8 @@ const STATIONS = [
     lon: 18.9631,
     meanFlow: 2200,
     uncertaintyPct: 5,
-    redundantWith: 'duna-rajka',
-    note: 'Deep inside the country. Carries the water already counted at Rajka - summing both double-counts the Danube.',
+    redundantWith: 'duna-komarom',
+    note: 'Below the canal confluence and every Slovak tributary. Carries the whole Danube, plus the Ipoly.',
   },
   {
     id: 'duna-budapest',
@@ -405,14 +421,18 @@ const STATIONS = [
     id: 'tisza-szeged',
     name: 'Tisza – Szeged',
     river: 'Tisza',
-    role: 'interior',
+    // Stands in for the exit section at Tiszasziget, 11 river km below, which publishes
+    // no discharge. Nothing of consequence joins between the two, so the substitution
+    // costs less than leaving the Tisza out of the outflow entirely.
+    role: 'outflow',
     riverKm: 174,
     lat: 46.2530,
     lon: 20.1414,
+    country: 'RS',
     meanFlow: 815,
-    uncertaintyPct: 6,
-    redundantWith: 'tisza-tiszasziget',
-    note: 'About 11 river km above the exit section - effectively the same water as Tiszasziget.',
+    travelTimeHours: 0,
+    uncertaintyPct: 7,
+    note: 'The Tisza exit term. Measured 11 river km above the border section at Tiszasziget.',
   },
   {
     id: 'tisza-szolnok',
