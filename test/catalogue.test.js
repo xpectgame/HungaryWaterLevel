@@ -13,13 +13,15 @@ const { summarizeOperations, describeSchema, deref, typeName } = require('../src
  * able to say "I am not sure", and these tests are mostly about the cases where it must.
  */
 
-// Shaped like the real catalogue: Tsz/Nev/Lat/Lon/Mdr, as the portal's own mapper reads.
+// The real shape: Mdr is a GUID, MdrNev is the watercourse name.
+const DUNA = '711e32b7-14ea-4995-8e3e-5595ec8d58c8';
 const CATALOGUE = [
-  { Tsz: 1001, Nev: 'Rajka', Lat: 47.9975, Lon: 17.1997, Mdr: 'DUNA', Fkm: 1848 },
-  { Tsz: 1234, Nev: 'Mohács', Lat: 45.9928, Lon: 18.6931, Mdr: 'DUNA', Fkm: 1447 },
-  { Tsz: 2002, Nev: 'Tiszabecs', Lat: 48.1006, Lon: 22.7869, Mdr: 'TISZA', Fkm: 757 },
-  { Tsz: 3003, Nev: 'Őrtilos', Lat: 46.2861, Lon: 16.8875, Mdr: 'DRÁVA', Fkm: 236 },
-  { Tsz: 4004, Nev: 'Sarkad', Lat: 46.7439, Lon: 21.3839, Mdr: 'FEKETE-KÖRÖS' },
+  { Tsz: 1001, Nev: 'Rajka', Lat: 47.9975, Lon: 17.1997, Mdr: DUNA, MdrNev: 'Duna', Fkm: 1848 },
+  { Tsz: 3876, Nev: 'Rajka 2. zsilip, alvíz', Lat: 47.99, Lon: 17.19, Mdr: 'aa11bb22-14ea-4995-8e3e-5595ec8d58c8', MdrNev: 'Mosoni-Duna' },
+  { Tsz: 1234, Nev: 'Duna Mohács', Lat: 45.9928, Lon: 18.6931, Mdr: DUNA, MdrNev: 'Duna', Fkm: 1447 },
+  { Tsz: 2002, Nev: 'Tiszabecs', Lat: 48.1006, Lon: 22.7869, MdrNev: 'Tisza', Fkm: 757 },
+  { Tsz: 3003, Nev: 'Őrtilos', Lat: 46.2861, Lon: 16.8875, MdrNev: 'Dráva', Fkm: 236 },
+  { Tsz: 4004, Nev: 'Sarkad', Lat: 46.7439, Lon: 21.3839, MdrNev: 'Fekete-Körös' },
 ];
 
 test('accents and case are folded before comparing', () => {
@@ -39,12 +41,48 @@ test('a compound river name is not split at its own hyphen', () => {
 });
 
 test('a station matches its catalogue entry with high confidence', () => {
-  const registry = [{ id: 'duna-rajka', name: 'Duna – Rajka', lat: 47.9975, lon: 17.1997 }];
+  const registry = [{ id: 'duna-rajka', name: 'Duna – Rajka', lat: 47.9975, lon: 17.1997, riverKm: 1848 }];
   const [match] = matchStations(CATALOGUE, registry);
 
   assert.strictEqual(match.best.record.tsz, 1001);
   assert.strictEqual(match.best.confidence, 'high');
   assert.ok(match.best.km < 1);
+});
+
+test('a lock gauge beside the real one does not win on distance', () => {
+  // The failure this fixes: "Rajka 2. zsilip, alvíz" sat 1.9 km from the registry's
+  // coordinates while the real Rajka sat 3.7 km away, so ranking on distance alone
+  // picked the lock. It is on the Mosoni-Duna, and the river name says so.
+  const registry = [{ id: 'duna-rajka', name: 'Duna – Rajka', lat: 47.9975, lon: 17.1997, riverKm: 1848 }];
+  const [match] = matchStations(CATALOGUE, registry);
+
+  assert.strictEqual(match.best.record.tsz, 1001);
+  assert.ok(
+    !match.alternatives.some((a) => a.record.tsz === 3876),
+    'a gauge on a different watercourse must be rejected, not merely outranked',
+  );
+});
+
+test('a river-prefixed catalogue name still matches exactly', () => {
+  // The catalogue writes "Duna Mohács" where the registry says "Duna – Mohács".
+  const registry = [{ id: 'duna-mohacs', name: 'Duna – Mohács', lat: 45.9928, lon: 18.6931, riverKm: 1447 }];
+  const [match] = matchStations(CATALOGUE, registry);
+
+  assert.strictEqual(match.best.record.tsz, 1234);
+  assert.strictEqual(match.best.confidence, 'high');
+});
+
+test('a GUID watercourse field is ignored rather than folded into a name', () => {
+  // Mdr holds a GUID and MdrNev the name. Folding the GUID meant the river never
+  // matched, which downgraded every station in the registry to "plausible".
+  assert.strictEqual(normalizeRecord({ Tsz: 1, Mdr: DUNA }).water, null);
+  assert.strictEqual(normalizeRecord({ Tsz: 1, Mdr: DUNA, MdrNev: 'Duna' }).water, 'Duna');
+});
+
+test('river kilometre rejects a same-name gauge far along the river', () => {
+  const registry = [{ id: 'duna-rajka', name: 'Duna – Rajka', lat: 47.9975, lon: 17.1997, riverKm: 1700 }];
+  const [match] = matchStations(CATALOGUE, registry);
+  assert.strictEqual(match.best, null, '148 river-km apart is not the same station');
 });
 
 test('a name that matches at the wrong place is not accepted as confident', () => {
@@ -65,20 +103,20 @@ test('a station absent from the catalogue reports no match rather than the neare
 
 test('the river disambiguates two gauges with the same place name', () => {
   const catalogue = [
-    { Tsz: 10, Nev: 'Szeged', Lat: 46.25, Lon: 20.15, Mdr: 'TISZA' },
-    { Tsz: 11, Nev: 'Szeged', Lat: 46.26, Lon: 20.16, Mdr: 'MAROS' },
+    { Tsz: 10, Nev: 'Szeged', Lat: 46.25, Lon: 20.15, MdrNev: 'Tisza' },
+    { Tsz: 11, Nev: 'Szeged', Lat: 46.26, Lon: 20.16, MdrNev: 'Maros' },
   ];
   const [match] = matchStations(catalogue, [
     { id: 'tisza-szeged', name: 'Tisza – Szeged', lat: 46.25, lon: 20.15 },
   ]);
 
   assert.strictEqual(match.best.record.tsz, 10);
-  assert.ok(match.alternatives.length >= 1, 'the rejected candidate must still be shown');
 });
 
 test('records are normalised regardless of the casing the service used', () => {
-  assert.deepStrictEqual(normalizeRecord({ tsz: 7, nev: 'X', lat: 1, lon: 2, mdr: 'Y' }).tsz, 7);
-  assert.deepStrictEqual(normalizeRecord({ Tsz: 7, Nev: 'X', Lat: 1, Lon: 2, Mdr: 'Y' }).name, 'X');
+  assert.strictEqual(normalizeRecord({ tsz: 7, nev: 'X', lat: 1, lon: 2, mdrNev: 'Y' }).tsz, 7);
+  assert.strictEqual(normalizeRecord({ Tsz: 7, Nev: 'X', Lat: 1, Lon: 2, MdrNev: 'Y' }).name, 'X');
+  assert.strictEqual(normalizeRecord({ Tsz: 7, MdrNev: 'Duna' }).water, 'Duna');
 });
 
 test('distance is null when either side has no coordinates', () => {

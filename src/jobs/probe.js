@@ -105,14 +105,46 @@ async function probeOpenApi() {
   console.log(`\n${operations.length} line(s) of operations:\n`);
   for (const line of operations) console.log(`  ${line}`);
 
-  // The two calls the portal itself makes, so their exact shapes are the ones needed.
-  console.log('\nSchemas for the time-series call:');
-  for (const name of ['TsQuery', 'TsRequest', 'TsShortListRequest', 'TsItem', 'TsShortList']) {
-    for (const line of describeSchema(spec, name)) console.log(`  ${line}`);
+  // The names the document actually uses. POST /TS/TsShortList takes a RequestTSList
+  // and answers TSShortResponse[]; the catalogue answers InternetVMO[]. Those four
+  // types are the whole contract this project needs.
+  console.log('\nSchemas for the calls this project makes:');
+  for (const name of ['RequestTSList', 'RequestTS', 'TSFilter', 'TSShortResponse', 'TSShortItemDT', 'InternetVMO']) {
+    for (const line of describeSchema(spec, name, { depth: 4 })) console.log(`  ${line}`);
     console.log('');
   }
 
   return spec;
+}
+
+/**
+ * The hydrological data-type list.
+ *
+ * Every time-series call is parameterised by an `adatfajta` code - water level,
+ * discharge, precipitation - and discharge in m3/s is the only one this project wants.
+ * The portal's bundle carries a partial table (74 = spring discharge in l/s, 92 =
+ * spring stage, 69 = groundwater), but not the surface figures, and picking the wrong
+ * code returns a plausible number in the wrong unit. The service publishes the list.
+ */
+async function probeDataTypes() {
+  console.log('\n########## data types (adatfajta) ##########');
+
+  for (const path of ['/Base/AdatFajta', '/Base/AdatTipus']) {
+    const url = `${VRAQUERY_BASE}${path}`;
+    console.log(`\nGET ${url}`);
+    try {
+      const token = await createTokenProvider().getToken();
+      const rows = await fetchJson(url, {
+        timeoutMs: 20000,
+        headers: { Authorization: `Bearer ${token}`, ...browserHeaders('https://data.vizugy.hu') },
+      });
+      const list = Array.isArray(rows) ? rows : [rows];
+      console.log(`${list.length} entries:`);
+      for (const row of list) console.log(`  ${JSON.stringify(row)}`);
+    } catch (err) {
+      console.log(`FAILED: ${err.message}`);
+    }
+  }
 }
 
 /**
@@ -184,6 +216,7 @@ async function main() {
     // re-mining megabytes of minified code; `--discover` still does the mining when
     // something upstream changes and the contract stops matching.
     await probeOpenApi();
+    await probeDataTypes();
     await probeCatalogue(11);
 
     // Confirms the anonymous token still works, and that it still needs the headers a

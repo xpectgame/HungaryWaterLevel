@@ -79,15 +79,49 @@ function normalizeRecord(row) {
     }
     return null;
   };
+
+  // Mdr is a GUID identifying the watercourse; MdrNev is its name. Folding the GUID
+  // meant the river never matched anything, which downgraded every single station to
+  // "plausible" and let a lock-gate gauge outrank the real one on distance alone.
+  const water = pick('MdrNev', 'mdrNev', 'water');
+
   return {
     tsz: pick('Tsz', 'tsz'),
     name: pick('Nev', 'nev', 'name'),
     lat: Number(pick('Lat', 'lat')),
     lon: Number(pick('Lon', 'lon')),
-    water: pick('Mdr', 'mdr', 'water'),
+    water: isGuid(water) ? null : water,
+    waterId: pick('Mdr', 'mdr'),
     riverKm: pick('Fkm', 'fkm'),
+    settlement: pick('Telepules', 'telepules'),
     directorate: pick('Vizig', 'vizig'),
+    active: pick('Uzem', 'uzem'),
     raw: row,
+  };
+}
+
+function isGuid(value) {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+/**
+ * Compare a catalogue entry's name with the place we are looking for.
+ *
+ * The catalogue writes the same station several ways: bare ("Rajka"), river-prefixed
+ * ("Duna Mohacs"), or qualified ("Rajka 2. zsilip, alvíz"). The first two are the same
+ * station under two spellings; the third is a different structure a kilometre away. So
+ * an exact match - after stripping a leading river name - is kept distinct from a mere
+ * substring hit, because that distinction is what separates the gauge from the lock.
+ */
+function comparePlace(recordName, wanted) {
+  const got = fold(recordName);
+  if (!got) return { exact: false, contains: false };
+
+  const stripped = wanted.river && got.startsWith(`${wanted.river} `) ? got.slice(wanted.river.length + 1) : got;
+
+  return {
+    exact: stripped === wanted.place || got === wanted.place,
+    contains: stripped.includes(wanted.place) || wanted.place.includes(stripped),
   };
 }
 
@@ -99,30 +133,46 @@ function normalizeRecord(row) {
  */
 function score(station, record) {
   const wanted = splitName(station.name);
-  const gotPlace = fold(record.name);
+  const place = comparePlace(record.name, wanted);
   const gotWater = fold(record.water);
 
-  const placeMatches = gotPlace === wanted.place || gotPlace.includes(wanted.place) || wanted.place.includes(gotPlace);
-  const riverMatches = Boolean(wanted.river && gotWater && (gotWater === wanted.river || gotWater.includes(wanted.river)));
+  // Exact and related are kept apart: "Duna" and "Mosoni-Duna" are related names for
+  // different watercourses, and there are gauges on both near Rajka.
+  const riverExact = Boolean(wanted.river && gotWater && gotWater === wanted.river);
+  const riverRelated =
+    riverExact ||
+    Boolean(wanted.river && gotWater && (gotWater.includes(wanted.river) || wanted.river.includes(gotWater)));
+  const riverConflict = Boolean(wanted.river && gotWater && !riverRelated);
+
   const km = distanceKm(station, record);
 
-  if (!placeMatches && !(riverMatches && km !== null && km < CONFIDENT_KM)) return null;
+  // River kilometre: an independent measurement of position along the watercourse, and
+  // the one signal that separates two gauges a few hundred metres apart. Rajka is 1848
+  // in the registry and 1848.31 in the catalogue.
+  const fkmDelta =
+    Number.isFinite(Number(station.riverKm)) && Number.isFinite(Number(record.riverKm))
+      ? Math.abs(Number(station.riverKm) - Number(record.riverKm))
+      : null;
 
-  // Both rivers known and different: the coordinates may still line up, but the entry
-  // is on another watercourse and must never be adopted silently.
-  const riverConflict = Boolean(wanted.river && gotWater && !riverMatches);
+  if (riverConflict) return null;
+  if (!place.contains && !(riverExact && km !== null && km < CONFIDENT_KM)) return null;
 
-  // The point of using two signals is that they can contradict each other. 'high' means
-  // they agree - the name AND the position. River plus position with the wrong name is
-  // how a downstream gauge on the same river gets adopted for an upstream one, which is
-  // precisely the double-counting this project spends a config file avoiding.
   let confidence;
-  if (km === null) confidence = placeMatches && riverMatches ? 'name-only' : 'weak';
-  else if (km > PLAUSIBLE_KM) confidence = 'rejected';
-  else if (placeMatches && km <= CONFIDENT_KM && !riverConflict) confidence = 'high';
+  if (km !== null && km > PLAUSIBLE_KM) confidence = 'rejected';
+  else if (fkmDelta !== null && fkmDelta > 15) confidence = 'rejected';
+  else if (place.exact && riverExact && (km === null || km <= CONFIDENT_KM) && (fkmDelta === null || fkmDelta <= 5))
+    confidence = 'high';
   else confidence = 'plausible';
 
-  return { record, km, placeMatches, riverMatches, riverConflict, confidence };
+  return { record, km, fkmDelta, place, riverExact, riverRelated, confidence };
+}
+
+/** Rank candidates: agreement first, then the sharpest positional evidence. */
+function compareCandidates(a, b) {
+  const tier = (s) => (s.place.exact ? 0 : 2) + (s.riverExact ? 0 : 1);
+  if (tier(a) !== tier(b)) return tier(a) - tier(b);
+  if (a.fkmDelta !== null && b.fkmDelta !== null && a.fkmDelta !== b.fkmDelta) return a.fkmDelta - b.fkmDelta;
+  return (a.km ?? Infinity) - (b.km ?? Infinity);
 }
 
 /**
@@ -136,14 +186,31 @@ function matchStations(catalogue, registry = STATIONS) {
     const scored = records
       .map((record) => score(station, record))
       .filter((s) => s && s.confidence !== 'rejected')
-      .sort((a, b) => {
-        const rank = { high: 0, plausible: 1, 'name-only': 2, weak: 3 };
-        if (rank[a.confidence] !== rank[b.confidence]) return rank[a.confidence] - rank[b.confidence];
-        return (a.km ?? Infinity) - (b.km ?? Infinity);
-      });
+      .sort(compareCandidates);
 
-    return { station, best: scored[0] || null, alternatives: scored.slice(1, 4) };
+    // When nothing matched, what is actually useful is what the catalogue does have
+    // nearby - a station may simply be spelled differently there.
+    const nearby =
+      scored.length > 0
+        ? []
+        : records
+            .map((record) => ({ record, km: distanceKm(station, record) }))
+            .filter((n) => n.km !== null && n.km <= PLAUSIBLE_KM)
+            .sort((a, b) => a.km - b.km)
+            .slice(0, 4);
+
+    return { station, best: scored[0] || null, alternatives: scored.slice(1, 4), nearby };
   });
+}
+
+/** One candidate as a single readable line. */
+function describeCandidate(candidate) {
+  const km = candidate.km === null ? 'no coords' : `${candidate.km.toFixed(1)} km`;
+  const fkm = candidate.fkmDelta === null ? '' : `  fkm±${candidate.fkmDelta.toFixed(1)}`;
+  return (
+    `Tsz=${String(candidate.record.tsz).padEnd(8)} ${String(candidate.record.water || '?').padEnd(16)}` +
+    ` ${String(candidate.record.name || '?').padEnd(38)} ${km}${fkm}`
+  );
 }
 
 /** Render the match table and a paste-ready EXTERNAL_IDS block. */
@@ -152,27 +219,26 @@ function report(matches) {
   const resolved = [];
   const unresolved = [];
 
-  for (const { station, best, alternatives } of matches) {
+  for (const { station, best, alternatives, nearby } of matches) {
     if (!best) {
-      lines.push(`  MISSING   ${station.id.padEnd(28)} ${station.name}`);
+      lines.push(`  MISSING   ${station.id.padEnd(26)} ${station.name}`);
+      // "MISSING" on its own is not actionable. The catalogue names a station several
+      // ways, so what is needed is what it does have at those coordinates.
+      for (const near of nearby || []) {
+        lines.push(
+          `              nearby: Tsz=${String(near.record.tsz).padEnd(8)}` +
+            ` ${String(near.record.water || '?').padEnd(16)} ${near.record.name} (${near.km.toFixed(1)} km)`,
+        );
+      }
       unresolved.push(station);
       continue;
     }
 
-    const km = best.km === null ? 'no coords' : `${best.km.toFixed(1)} km`;
-    lines.push(
-      `  ${best.confidence.padEnd(9)} ${station.id.padEnd(28)} Tsz=${String(best.record.tsz).padEnd(10)}` +
-        ` ${String(best.record.water || '?').padEnd(14)} ${String(best.record.name || '?').padEnd(22)} ${km}`,
-    );
+    lines.push(`  ${best.confidence.padEnd(9)} ${station.id.padEnd(26)} ${describeCandidate(best)}`);
 
     // An ambiguous match is worse than none: it looks resolved. Show what it beat.
     if (best.confidence !== 'high') {
-      for (const alt of alternatives) {
-        lines.push(
-          `              also: Tsz=${String(alt.record.tsz).padEnd(10)} ${String(alt.record.water || '?').padEnd(14)}` +
-            ` ${alt.record.name} (${alt.km === null ? '?' : `${alt.km.toFixed(1)} km`})`,
-        );
-      }
+      for (const alt of alternatives) lines.push(`              also: ${describeCandidate(alt)}`);
     }
 
     if (best.confidence === 'high') resolved.push({ station, record: best.record });
@@ -185,10 +251,10 @@ function report(matches) {
   lines.push('Paste into EXTERNAL_IDS in src/sources/vizugy.js (confident matches only):');
   lines.push('');
   for (const { station, record } of resolved) {
-    lines.push(`  '${station.id}': '${record.tsz}',   // ${record.water} ${record.name}`);
+    lines.push(`  '${station.id}': '${record.tsz}',   // ${record.water} - ${record.name}`);
   }
 
   return lines;
 }
 
-module.exports = { matchStations, report, normalizeRecord, splitName, fold, distanceKm, score };
+module.exports = { matchStations, report, normalizeRecord, splitName, fold, distanceKm, score, comparePlace };
