@@ -1,61 +1,57 @@
 'use strict';
 
 const { pollableStations, getStation } = require('../config/stations');
-const { extract, firstArray } = require('../lib/jsonpath');
-const { fetchJson } = require('../lib/http');
+const { fetchJson, browserHeaders } = require('../lib/http');
 const { createTokenProvider } = require('./vizugy-auth');
 
 /**
- * Adapter for OVF's hydrological open data (data.vizugy.hu).
+ * Adapter for OVF's hydrological open data.
  *
  * ---------------------------------------------------------------------------
- * WHAT THE PORTAL ACTUALLY DOES
+ * THE CONTRACT, AS CONFIRMED AGAINST THE LIVE SERVICE
  * ---------------------------------------------------------------------------
- * Read out of the portal's own Angular bundle:
+ * Auth      GET  https://data.vizugy.hu/AuthApi/auth/token
+ *           An anonymous 15-minute JWT issued to `opendatauser`. No credentials.
+ *           Requires the Origin and Referer a browser sends, or it answers 403.
  *
- *   authApiBaseUrl = "https://data.vizugy.hu/AuthApi/auth"
- *   vraQueryApiBaseUrl = "https://vmservice.vizugy.hu/vraquery/"
+ * Catalogue GET  {base}/Vra/InternetVmo/11/false   -> InternetVMO[]
+ *           1193 surface stations. `Tsz` is the törzsszám every other call takes.
+ *           /Vra/Vmo/11/false is the full list, 5035 entries, for stations the
+ *           published subset omits - Tiszabecs is one.
  *
- * It asks AuthApi for an anonymous JWT - no credentials - and sends it as a bearer
- * token on every vraquery call. That is implemented and confirmed working: the token
- * endpoint returns a 15-minute JWT issued to `opendatauser`, provided the request
- * carries the Origin and Referer headers a browser would send.
+ * Series    POST {base}/TS/TsShort    body RequestTS[]  -> TSShortResponse[]
+ *           {ItemId, Torzsszam, AdatFajtaKod, AdatTipusKod, StartTime, EndTime}
+ *           answers {ItemId, TsItemList:[{UTCTime, Adat, DataExt}]}.
  *
- * What remains unknown is only the path after the base.
+ * AdatFajtaKod 87 is "Felszíni vízhozam" in m3/s. 68 is stage in centimetres -
+ * substituting it returns a number several times larger and entirely plausible.
+ * AdatTipusKod 100 is `operatív`, the real-time feed; 5 is `előrejelzett`, which
+ * would put a forecast into the balance as though it had been measured.
+ *
+ * TsShort rather than TsShortList: the list form answers with an ItemId whose
+ * meaning is undocumented, while TsShort lets the caller assign it. One request
+ * either way - every station goes in a single POST.
  *
  * ---------------------------------------------------------------------------
- * READ THIS BEFORE POINTING IT AT PRODUCTION
+ * THE DATA IS OPEN; THE INTERPRETATION IS NOT AUTOMATIC
  * ---------------------------------------------------------------------------
- * The portal is real, the data is genuinely open (free to use with attribution to
- * OVF / the regional water directorate), and it exposes an API. What is NOT pinned
- * down in this file is the exact request path and response shape, because it could
- * not be reached from the environment this was written in.
- *
- * So nothing here hard-codes a guessed endpoint as if it were verified. Instead the
- * request and the response mapping are both configuration, and `npm run probe` prints
- * what the live service actually returns. Confirming the shape is a config edit, not a
- * code change:
- *
- *   VIZUGY_BASE_URL     - service origin
- *   VIZUGY_PATH         - path template, {stationId} and {externalId} are substituted
- *   VIZUGY_ARRAY_PATH   - dotted path to the array of samples in the response
- *   VIZUGY_VALUE_FIELD  - field holding discharge in m3/s
- *   VIZUGY_TIME_FIELD   - field holding the sample timestamp
- *
- * `externalId` on each station below is the portal's own identifier. Those are not
- * known yet either - fill them in from the station catalogue once you can reach it.
- * Until then this adapter reports unavailability honestly rather than inventing values.
+ * Free to use with attribution to OVF and the regional water directorate. What
+ * the numbers mean is a separate question - see the note on Rajka in
+ * config/stations.js, where a gauge on the Danube reads a fifth of the Danube.
  */
 
 const DEFAULTS = {
   // The query service, not the portal that embeds it.
   baseUrl: 'https://vmservice.vizugy.hu/vraquery',
   authBaseUrl: 'https://data.vizugy.hu/AuthApi/auth',
-  path: '/{externalId}/discharge/latest',
-  arrayPath: 'data',
-  valueField: 'value',
-  timeField: 'timestamp',
-  timeoutMs: 15000,
+  seriesPath: '/TS/TsShort',
+  hafCode: 87, // Felszíni vízhozam, m3/s
+  atCode: 100, // operatív
+  // How far back to ask. The feed is hourly, so a day is ample and still cheap;
+  // it also carries the poll through an upstream gap without reporting a station
+  // as unavailable the moment one sample is late.
+  lookbackHours: 24,
+  timeoutMs: 20000,
 };
 
 /**
@@ -69,9 +65,6 @@ const DEFAULTS = {
  *
  * Still unresolved, and deliberately absent rather than guessed:
  *
- *   tisza-tiszabecs      no Tisza gauge within 17 km in the published subset. This is
- *                        the second largest inflow in the country, so it is the most
- *                        expensive one to get wrong - `--find=Tiszabecs` settles it.
  *   fekete-koros-sarkad  three candidates around Sarkad-Malomfok, all pumping stations.
  *   lajta-mosonmagyarovar  only candidate is a barrage tailwater gauge (Tsz 20).
  *   repce-zsira          nearest Répce gauge is at Répcevis, the next village.
@@ -90,6 +83,9 @@ const EXTERNAL_IDS = Object.freeze({
   'ipoly-ipolytarnoc': '1040',
 
   // Tisza system
+  // Tiszabecs is absent from /Vra/InternetVmo but present in the full /Vra/Vmo list,
+  // which is why the catalogue match reported it missing rather than misspelled.
+  'tisza-tiszabecs': '1514',
   'szamos-csenger': '1523',
   'tur-garbolc': '1527',
   'kraszna-agerdomajor': '1530',
@@ -111,95 +107,183 @@ const EXTERNAL_IDS = Object.freeze({
 });
 
 function config(env = process.env) {
+  const num = (value, fallback) => {
+    if (value === undefined || value === null || value === '') return fallback;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
   return {
     baseUrl: env.VIZUGY_BASE_URL || DEFAULTS.baseUrl,
     authBaseUrl: env.VIZUGY_AUTH_BASE_URL || DEFAULTS.authBaseUrl,
-    path: env.VIZUGY_PATH || DEFAULTS.path,
-    arrayPath: env.VIZUGY_ARRAY_PATH || DEFAULTS.arrayPath,
-    valueField: env.VIZUGY_VALUE_FIELD || DEFAULTS.valueField,
-    timeField: env.VIZUGY_TIME_FIELD || DEFAULTS.timeField,
-    timeoutMs: Number(env.VIZUGY_TIMEOUT_MS) || DEFAULTS.timeoutMs,
+    seriesPath: env.VIZUGY_SERIES_PATH || DEFAULTS.seriesPath,
+    hafCode: num(env.VIZUGY_HAF_CODE, DEFAULTS.hafCode),
+    atCode: num(env.VIZUGY_AT_CODE, DEFAULTS.atCode),
+    lookbackHours: num(env.VIZUGY_LOOKBACK_HOURS, DEFAULTS.lookbackHours),
+    timeoutMs: num(env.VIZUGY_TIMEOUT_MS, DEFAULTS.timeoutMs),
     apiKey: env.VIZUGY_API_KEY || null,
   };
 }
 
-function buildUrl(cfg, station) {
-  const externalId = EXTERNAL_IDS[station.id] || station.id;
-  const path = cfg.path
-    .replace('{stationId}', encodeURIComponent(station.id))
-    .replace('{externalId}', encodeURIComponent(externalId));
-
-  // Concatenate rather than resolve. `new URL('/x', 'https://h/vraquery')` resolves the
-  // leading slash against the origin and silently drops `/vraquery` - the base path is
-  // part of the service address here, not a directory to navigate away from.
+/** The service address. Concatenated, not resolved - see the note in seriesUrl's test. */
+function seriesUrl(cfg) {
+  // `new URL('/TS/TsShort', 'https://h/vraquery')` resolves the leading slash against
+  // the origin and silently drops `/vraquery`. The base path is part of the service
+  // address here, not a directory to navigate away from.
   const base = cfg.baseUrl.replace(/\/+$/, '');
-  const suffix = path.startsWith('/') ? path : `/${path}`;
-  return `${base}${suffix}`;
+  const path = cfg.seriesPath.startsWith('/') ? cfg.seriesPath : `/${cfg.seriesPath}`;
+  return `${base}${path}`;
+}
+
+/** The stations this adapter can actually address, in request order. */
+function mappedStations() {
+  return pollableStations().filter((station) => EXTERNAL_IDS[station.id]);
 }
 
 /**
- * Pull the newest discharge sample out of whatever the service returned.
+ * Build the request body: one entry per station, in one POST.
  *
- * Tolerant by design: the configured path is tried first, then a few common shapes,
- * because the point of this adapter is to survive a response layout that differs
- * slightly from the guess rather than to fail the whole poll.
+ * ItemId is the index into the station list, which is what makes the response
+ * unambiguous - the service echoes it back and nothing else identifies the series.
  */
-function parseDischarge(payload, cfg) {
-  let rows = extract(payload, cfg.arrayPath);
-  if (!Array.isArray(rows)) rows = firstArray(payload);
-  if (!Array.isArray(rows) || rows.length === 0) {
-    // A bare scalar response is also plausible for a "latest value" endpoint.
-    const direct = extract(payload, cfg.valueField);
-    if (Number.isFinite(Number(direct))) {
-      return { flowM3s: Number(direct), timestamp: new Date().toISOString() };
-    }
-    return null;
+function buildRequest(stations, cfg, now = new Date()) {
+  const endTime = new Date(now.getTime() + 60 * 60 * 1000); // clock skew headroom
+  const startTime = new Date(now.getTime() - cfg.lookbackHours * 60 * 60 * 1000);
+
+  return stations.map((station, index) => ({
+    ItemId: index,
+    Torzsszam: Number(EXTERNAL_IDS[station.id]),
+    AdatFajtaKod: cfg.hafCode,
+    AdatTipusKod: cfg.atCode,
+    StartTime: startTime.toISOString(),
+    EndTime: endTime.toISOString(),
+  }));
+}
+
+/**
+ * Newest usable sample from one TSShortResponse.
+ *
+ * Samples are not assumed to arrive in order, and a null `Adat` is a real occurrence -
+ * the series carries a slot for every hour whether or not the gauge reported.
+ */
+function latestSample(entry) {
+  const items = (entry && entry.TsItemList) || [];
+
+  let best = null;
+  for (const item of items) {
+    const raw = item && item.Adat;
+    // Number(null) is 0 and 0 is finite, so a reported gap would enter the balance as
+    // a river that has stopped flowing - a physically meaningful and entirely wrong
+    // value, and one that no plausibility check downstream would reject.
+    if (raw === null || raw === undefined || raw === '') continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) continue;
+    const time = new Date(item.UTCTime);
+    if (Number.isNaN(time.getTime())) continue;
+    if (!best || time > best.time) best = { time, value };
   }
 
-  // Newest sample last is the usual convention; sort defensively so either works.
-  const parsed = rows
-    .map((row) => {
-      const rawValue = extract(row, cfg.valueField);
-      const rawTime = extract(row, cfg.timeField);
-      const value = Number(rawValue);
-      if (!Number.isFinite(value)) return null;
-      const time = rawTime ? new Date(rawTime) : null;
-      return {
-        flowM3s: value,
-        timestamp: time && !Number.isNaN(time.getTime()) ? time.toISOString() : new Date().toISOString(),
-        sortKey: time && !Number.isNaN(time.getTime()) ? time.getTime() : 0,
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.sortKey - b.sortKey);
-
-  if (parsed.length === 0) return null;
-  const latest = parsed[parsed.length - 1];
-  return { flowM3s: latest.flowM3s, timestamp: latest.timestamp };
+  if (!best) return null;
+  return { flowM3s: best.value, timestamp: best.time.toISOString() };
 }
 
 let tokenProvider = null;
 
-/** One provider per process, so all stations share a single token. */
+/** One provider per process, so every station shares a single token. */
 function getTokenProvider(cfg) {
   if (!tokenProvider) tokenProvider = createTokenProvider({ authBaseUrl: cfg.authBaseUrl });
   return tokenProvider;
 }
 
-/** Fetch one station's current discharge. Resolves to null when unavailable. */
+/** Reset between tests, and after a 401. */
+function resetTokenProvider() {
+  tokenProvider = null;
+}
+
+async function postSeries(body, cfg) {
+  const bearer = cfg.apiKey || (await getTokenProvider(cfg).getToken());
+  const origin = new URL(cfg.authBaseUrl).origin;
+
+  return fetchJson(seriesUrl(cfg), {
+    method: 'POST',
+    body: JSON.stringify(body),
+    timeoutMs: cfg.timeoutMs,
+    headers: {
+      ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+      'Content-Type': 'application/json',
+      ...browserHeaders(origin),
+    },
+  });
+}
+
+/**
+ * Fetch every mapped station in a single request.
+ *
+ * One failing gauge must not take the balance down, so a station that returns no usable
+ * sample is reported as an error against that station rather than thrown. A transport
+ * failure does take the whole call down - there is only one request - and that is
+ * reported once rather than thirty times.
+ */
+async function fetchAll(env = process.env) {
+  const cfg = config(env);
+  const stations = mappedStations();
+  const readings = {};
+  const errors = [];
+
+  const unmapped = pollableStations().filter((station) => !EXTERNAL_IDS[station.id]);
+  for (const station of unmapped) {
+    errors.push({ stationId: station.id, error: 'no törzsszám mapped for this station' });
+  }
+
+  if (stations.length === 0) {
+    return { source: 'vizugy', fetchedAt: new Date().toISOString(), readings, errors, configured: false };
+  }
+
+  try {
+    const response = await postSeries(buildRequest(stations, cfg), cfg);
+    const entries = Array.isArray(response) ? response : [];
+    const byItemId = new Map(entries.map((entry) => [Number(entry.ItemId), entry]));
+
+    stations.forEach((station, index) => {
+      const sample = latestSample(byItemId.get(index));
+      if (!sample) {
+        errors.push({ stationId: station.id, error: 'no discharge sample in the requested window' });
+        return;
+      }
+      readings[station.id] = {
+        stationId: station.id,
+        flowM3s: sample.flowM3s,
+        timestamp: sample.timestamp,
+        source: 'vizugy',
+        quality: 'measured',
+      };
+    });
+  } catch (err) {
+    // A 401 means the cached token outlived its usefulness; drop it so the next cycle
+    // mints a fresh one rather than repeating the same rejected request.
+    if (err && err.status === 401) getTokenProvider(cfg).invalidate();
+    errors.push({ stationId: null, error: String((err && err.message) || err) });
+  }
+
+  return {
+    source: 'vizugy',
+    fetchedAt: new Date().toISOString(),
+    readings,
+    errors,
+    configured: stations.length > 0,
+  };
+}
+
+/** One station. Implemented on top of the batch call so there is one code path. */
 async function fetchStation(stationId, env = process.env) {
   const station = getStation(stationId);
   if (!station) throw new Error(`Unknown station: ${stationId}`);
+  if (!EXTERNAL_IDS[stationId]) return null;
 
   const cfg = config(env);
-  const url = buildUrl(cfg, station);
-
-  // An explicit key wins; otherwise mint the anonymous token the portal itself uses.
-  const bearer = cfg.apiKey || (await getTokenProvider(cfg).getToken());
-  const headers = bearer ? { Authorization: `Bearer ${bearer}` } : {};
-
-  const payload = await fetchJson(url, { timeoutMs: cfg.timeoutMs, headers });
-  const sample = parseDischarge(payload, cfg);
+  const response = await postSeries(buildRequest([station], cfg), cfg);
+  const entries = Array.isArray(response) ? response : [];
+  const sample = latestSample(entries.find((entry) => Number(entry.ItemId) === 0) || entries[0]);
   if (!sample) return null;
 
   return {
@@ -211,35 +295,15 @@ async function fetchStation(stationId, env = process.env) {
   };
 }
 
-/**
- * Fetch every station. One failing gauge must not take the balance down, so failures
- * are collected and reported instead of thrown.
- */
-async function fetchAll(env = process.env) {
-  const stations = pollableStations();
-  const readings = {};
-  const errors = [];
-
-  const results = await Promise.allSettled(stations.map((s) => fetchStation(s.id, env)));
-
-  results.forEach((result, i) => {
-    const station = stations[i];
-    if (result.status === 'fulfilled' && result.value) {
-      readings[station.id] = result.value;
-    } else if (result.status === 'rejected') {
-      errors.push({ stationId: station.id, error: String(result.reason && result.reason.message || result.reason) });
-    } else {
-      errors.push({ stationId: station.id, error: 'no discharge value in response' });
-    }
-  });
-
-  return {
-    source: 'vizugy',
-    fetchedAt: new Date().toISOString(),
-    readings,
-    errors,
-    configured: Object.keys(EXTERNAL_IDS).length > 0,
-  };
-}
-
-module.exports = { fetchStation, fetchAll, parseDischarge, config, buildUrl, EXTERNAL_IDS, DEFAULTS };
+module.exports = {
+  fetchStation,
+  fetchAll,
+  config,
+  seriesUrl,
+  buildRequest,
+  latestSample,
+  mappedStations,
+  resetTokenProvider,
+  EXTERNAL_IDS,
+  DEFAULTS,
+};

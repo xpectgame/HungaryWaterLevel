@@ -50,7 +50,22 @@ const STATIONS = [
     meanFlow: 2020,
     travelTimeHours: 90,
     uncertaintyPct: 5,
-    note: 'Main Danube entry section. Roughly 60% of all water entering Hungary passes here.',
+    note:
+      'Old Danube riverbed below the Cunovo diversion. NOT the total Danube inflow - see suspectedIssue.',
+    // The live feed reads ~410 m3/s here against a long-term mean of 2020, and that is
+    // not low water: the Danube's recorded minimum at Bratislava, 20 km upstream, is
+    // several times this. The gauge sits at 1848 fkm, below the Cunovo diversion that
+    // sends the bulk of the river into the Gabcikovo power canal on the Slovak side.
+    // What passes Rajka is the released flow in the old riverbed; the canal rejoins
+    // near Szap at about 1811 fkm.
+    //
+    // If that reading is right, summing Rajka as the Danube inflow understates the
+    // country's total inflow by well over a thousand cubic metres a second - the
+    // largest single error available in this project. It is left as 'inflow' rather
+    // than quietly reassigned because the fix is a methodology decision (which section
+    // represents the border) and not a config tweak, and because the balance response
+    // surfaces suspectedIssue so the number is never presented as settled.
+    suspectedIssue: 'below-diversion',
   },
   {
     id: 'lajta-mosonmagyarovar',

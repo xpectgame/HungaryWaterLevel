@@ -295,8 +295,72 @@ async function probeSeries(torzsszam = 1, label = 'Rajka') {
   console.log('\nThe code with recent samples in a plausible range is the one to configure.');
 }
 
+/**
+ * Every mapped station's current discharge, next to its long-term mean.
+ *
+ * This is the adapter's own path, so it doubles as an end-to-end check. The ratio
+ * column is the point: a gauge reading a fifth of its mean is either a drought or the
+ * wrong section of river, and the two are distinguishable by whether the neighbours
+ * agree. Rajka came back at 411 m3/s against a mean of 2020 while sitting below the
+ * Cunovo diversion - if Nagymaros and Budapest read near their own means at the same
+ * moment, that settles which of the two explanations holds.
+ */
+async function probeAllStations() {
+  console.log('\n########## live discharge, all mapped stations ##########');
+
+  const { getStation } = require('../config/stations');
+  const result = await vizugy.fetchAll();
+
+  const rows = Object.values(result.readings)
+    .map((reading) => {
+      const station = getStation(reading.stationId);
+      return {
+        station,
+        reading,
+        ratio: station.meanFlow ? reading.flowM3s / station.meanFlow : null,
+      };
+    })
+    .sort((a, b) => b.reading.flowM3s - a.reading.flowM3s);
+
+  console.log(`${rows.length} stations returned a sample, ${result.errors.length} did not.\n`);
+  console.log(`  ${'station'.padEnd(28)} ${'role'.padEnd(9)} ${'m3/s'.padStart(9)} ${'mean'.padStart(7)}  ratio  latest`);
+
+  for (const { station, reading, ratio } of rows) {
+    const flag = ratio !== null && (ratio < 0.35 || ratio > 3) ? '  <-- far from its mean' : '';
+    console.log(
+      `  ${station.id.padEnd(28)} ${String(station.role).padEnd(9)} ${reading.flowM3s.toFixed(1).padStart(9)}` +
+        ` ${String(station.meanFlow ?? '-').padStart(7)}  ${ratio === null ? '   -' : ratio.toFixed(2)}` +
+        `  ${reading.timestamp}${flag}`,
+    );
+  }
+
+  for (const error of result.errors) {
+    console.log(`  ${String(error.stationId ?? '(whole request)').padEnd(28)} ${error.error}`);
+  }
+
+  // Summed the way the balance sums them, so the arithmetic is visible rather than
+  // buried behind an endpoint.
+  const sum = (role) =>
+    rows.filter((r) => r.station.role === role).reduce((total, r) => total + r.reading.flowM3s, 0);
+  const inflow = sum('inflow');
+  const outflow = sum('outflow');
+
+  console.log(`\n  sum inflow  ${inflow.toFixed(0)} m3/s`);
+  console.log(`  sum outflow ${outflow.toFixed(0)} m3/s`);
+  console.log(`  difference  ${(inflow - outflow).toFixed(0)} m3/s`);
+  console.log(
+    '\nOutflow much larger than inflow means water is entering through a section that is ' +
+      'not being counted.',
+  );
+}
+
 async function main() {
   const args = process.argv.slice(2);
+
+  if (args.includes('--live')) {
+    await probeAllStations();
+    return;
+  }
 
   const findArg = args.find((a) => a.startsWith('--find='));
   if (findArg) {
@@ -332,6 +396,7 @@ async function main() {
     await probeDataTypes();
     await probeCatalogue(11);
     await probeSeries(1, 'Rajka');
+    await probeAllStations();
 
     // Confirms the anonymous token still works, and that it still needs the headers a
     // browser sends - the 403 without them looks like a permissions problem and is not.

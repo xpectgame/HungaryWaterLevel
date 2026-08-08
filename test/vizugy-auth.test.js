@@ -133,18 +133,17 @@ test('a failed request does not poison the provider', async () => {
 const vizugy = require('../src/sources/vizugy');
 
 test('the service base path survives URL assembly', () => {
-  // new URL('/x', 'https://h/vraquery') resolves to 'https://h/x' - the base path is
-  // dropped. Here that would silently address the wrong service.
-  const cfg = { ...vizugy.config({}), path: '/{externalId}/discharge/latest' };
-  const url = vizugy.buildUrl(cfg, { id: 'unmapped-station' });
-
-  assert.ok(url.startsWith('https://vmservice.vizugy.hu/vraquery/'), `got ${url}`);
-  assert.ok(url.endsWith('/unmapped-station/discharge/latest'));
+  // new URL('/TS/TsShort', 'https://h/vraquery') resolves to 'https://h/TS/TsShort' -
+  // the base path is dropped. Here that would silently address the wrong service.
+  assert.strictEqual(
+    vizugy.seriesUrl(vizugy.config({})),
+    'https://vmservice.vizugy.hu/vraquery/TS/TsShort',
+  );
 });
 
-test('a mapped station addresses the portal by its törzsszám, not by our own id', () => {
-  const cfg = { ...vizugy.config({}), path: '/{externalId}/discharge/latest' };
-  assert.ok(vizugy.buildUrl(cfg, { id: 'duna-rajka' }).endsWith('/1/discharge/latest'));
+test('a base with a trailing slash does not double it', () => {
+  const cfg = { ...vizugy.config({}), baseUrl: 'https://h/vraquery/', seriesPath: 'TS/TsShort' };
+  assert.strictEqual(vizugy.seriesUrl(cfg), 'https://h/vraquery/TS/TsShort');
 });
 
 test('every mapped id names a station that exists, and none is a placeholder', () => {
@@ -157,14 +156,70 @@ test('every mapped id names a station that exists, and none is a placeholder', (
   }
 });
 
-test('a base with a trailing slash does not double it', () => {
-  const cfg = { ...vizugy.config({}), baseUrl: 'https://h/vraquery/', path: 'stations' };
-  assert.strictEqual(vizugy.buildUrl(cfg, { id: 'x' }), 'https://h/vraquery/stations');
+test('two stations never share a törzsszám', () => {
+  const seen = new Map();
+  for (const [id, tsz] of Object.entries(vizugy.EXTERNAL_IDS)) {
+    assert.ok(!seen.has(tsz), `${id} and ${seen.get(tsz)} both map to ${tsz}`);
+    seen.set(tsz, id);
+  }
 });
 
-test('station ids are URL-encoded into the path', () => {
-  const cfg = { ...vizugy.config({}), path: '/{stationId}/data' };
-  assert.match(vizugy.buildUrl(cfg, { id: 'a b/c' }), /a%20b%2Fc/);
+test('the request asks for discharge in m3/s from the real-time feed', () => {
+  // 68 is stage in centimetres and 5 is the forecast. Either substitution returns a
+  // number that passes every plausibility check this project has.
+  const cfg = vizugy.config({});
+  const [entry] = vizugy.buildRequest([{ id: 'duna-rajka' }], cfg, new Date('2026-08-08T12:00:00Z'));
+
+  assert.strictEqual(entry.AdatFajtaKod, 87, 'Felszíni vízhozam, m3/s');
+  assert.strictEqual(entry.AdatTipusKod, 100, 'operatív');
+  assert.strictEqual(entry.Torzsszam, 1);
+  assert.strictEqual(entry.ItemId, 0);
+  assert.strictEqual(entry.StartTime, '2026-08-07T12:00:00.000Z');
+});
+
+test('every station goes into one request, indexed so the response maps back', () => {
+  const cfg = vizugy.config({});
+  const stations = vizugy.mappedStations();
+  const body = vizugy.buildRequest(stations, cfg);
+
+  assert.strictEqual(body.length, stations.length);
+  assert.deepStrictEqual(
+    body.map((entry) => entry.ItemId),
+    stations.map((_, index) => index),
+  );
+});
+
+test('the newest sample wins regardless of the order they arrive in', () => {
+  const sample = vizugy.latestSample({
+    ItemId: 0,
+    TsItemList: [
+      { UTCTime: '2026-08-08T10:00:00Z', Adat: 400 },
+      { UTCTime: '2026-08-08T12:00:00Z', Adat: 411.219 },
+      { UTCTime: '2026-08-08T11:00:00Z', Adat: 405 },
+    ],
+  });
+
+  assert.strictEqual(sample.flowM3s, 411.219);
+  assert.strictEqual(sample.timestamp, '2026-08-08T12:00:00.000Z');
+});
+
+test('a gap in the series is skipped rather than read as zero', () => {
+  // The feed carries an hourly slot whether or not the gauge reported, and Number(null)
+  // is 0 - a discharge of zero is a physically meaningful and completely wrong value.
+  const sample = vizugy.latestSample({
+    TsItemList: [
+      { UTCTime: '2026-08-08T10:00:00Z', Adat: 411 },
+      { UTCTime: '2026-08-08T12:00:00Z', Adat: null },
+    ],
+  });
+
+  assert.strictEqual(sample.flowM3s, 411);
+});
+
+test('a series with nothing usable reports nothing, not a fabricated sample', () => {
+  assert.strictEqual(vizugy.latestSample({ TsItemList: [] }), null);
+  assert.strictEqual(vizugy.latestSample(undefined), null);
+  assert.strictEqual(vizugy.latestSample({ TsItemList: [{ UTCTime: 'nonsense', Adat: 5 }] }), null);
 });
 
 // ---------------------------------------------------------------------------
