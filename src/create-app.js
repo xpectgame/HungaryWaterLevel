@@ -19,6 +19,7 @@ const fs = require('node:fs');
 
 const { loadConfig, assertProviderSafe } = require('./config');
 const { createStore } = require('./store');
+const { withProviderFilter } = require('./store/provider-filter');
 const { TtlCache } = require('./lib/cache');
 const { createRouter } = require('./routes');
 const { createCronHandler } = require('./jobs/cron-handler');
@@ -145,7 +146,9 @@ function createContext(env = process.env) {
   const config = loadConfig(env);
   assertProviderSafe(config);
 
-  const store = createStore(config);
+  // Reads are filtered by provider so a switch from fixture to live cannot keep
+  // serving generated rows under a live label. Writes go to the store unchanged.
+  const store = withProviderFilter(createStore(config), config.provider);
   const cache = new TtlCache(config.cacheTtlMs);
 
   return { config, store, cache };

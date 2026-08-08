@@ -287,3 +287,45 @@ if (process.env.TEST_DATABASE_URL) {
     );
   });
 }
+
+// ---------------------------------------------------------------------------
+// Provider filtering
+// ---------------------------------------------------------------------------
+
+const { withProviderFilter, isForeign } = require('../src/store/provider-filter');
+
+test('a live deployment does not serve rows the fixture provider wrote', async () => {
+  // Seen in production: the deployment was switched to live and kept serving the
+  // fixture rows already in the store, under provider:live and quality:measured. The
+  // Danube read 2050 m3/s while the river carried 820.
+  const store = new MemoryStore();
+  await store.putStationReadings({
+    a: { stationId: 'duna-komarom', flowM3s: 2050, timestamp: new Date().toISOString(), source: 'fixture', quality: 'measured' },
+    b: { stationId: 'duna-mohacs', flowM3s: 747, timestamp: new Date().toISOString(), source: 'vizugy', quality: 'measured' },
+  });
+
+  const live = withProviderFilter(store, 'live');
+  const readings = await live.latestReadings();
+
+  assert.strictEqual(readings['duna-komarom'], undefined, 'a fixture row must not survive the switch');
+  assert.strictEqual(readings['duna-mohacs'].flowM3s, 747, 'the live row is kept');
+});
+
+test('generation from the fixture era is dropped, not reported as measured', async () => {
+  // Paks read 1966 MW - 98% of nameplate - while the plant was throttled back, because
+  // MAVIR's live fetch fails and nothing overwrote the generated row.
+  const store = new MemoryStore();
+  await store.putGeneration({ timestamp: new Date().toISOString(), generationMw: { nuclear: 1966 }, source: 'fixture' });
+
+  assert.strictEqual(await withProviderFilter(store, 'live').latestGeneration(), null);
+  assert.ok(await withProviderFilter(store, 'fixture').latestGeneration(), 'in fixture mode it is the real thing');
+});
+
+test('a row with no recorded source is kept, since age is the only guard left', () => {
+  // Rows written before the stamp existed. Dropping them would empty the store on
+  // deploy; keeping them leaves the age check, which is what guarded them before.
+  assert.strictEqual(isForeign(undefined, 'live'), false);
+  assert.strictEqual(isForeign('vizugy', 'live'), false);
+  assert.strictEqual(isForeign('fixture', 'live'), true);
+  assert.strictEqual(isForeign('vizugy', 'fixture'), true);
+});
