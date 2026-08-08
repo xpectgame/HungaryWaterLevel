@@ -47,9 +47,24 @@ const { readXlsx, excelDate } = require('../lib/xlsx');
  * including the page itself, and it stayed there. One request per poll is the budget;
  * a retry loop here will lock the source out rather than recover it.
  *
- * Chart 4401 is "Erőművi termelés" - power plant generation - out of a catalogue the
- * servlet lists in full: 4423 import/export, 5229 cross-border flows, 7678 planned and
- * actual system load, 10260 system data.
+ * Chart 4401 is listed as "Erőművi termelés" - power plant generation - and it is not.
+ * Confirmed against the live export: its columns are national aggregates.
+ *
+ *   Nettó terv erőművi termelés    3138.2 MW
+ *   Bruttó tény erőművi termelés   3018.8 MW
+ *   Bruttó terv erőművi termelés   2875.8 MW
+ *
+ * Planned against actual, gross against net. No plant appears anywhere in it, so this
+ * route cannot answer what Paks is generating - the question the cooling model exists
+ * to answer. The name promised a breakdown the file does not contain.
+ *
+ * The rest of the catalogue: 4423 import/export, 5229 cross-border flows, 7678 planned
+ * and actual system load, 10260 system data. None is per-plant either.
+ *
+ * So the conclusion from the first paragraph stands and hardens: for per-plant, and
+ * especially per-unit output, ENTSO-E document A73 is the only source available. This
+ * adapter is worth keeping for the national total, which it does give, and which is a
+ * genuine cross-check against ENTSO-E's A75.
  *
  * Worth recording how this was found, because it generalises: literal-mining returned
  * zero candidates. Play builds its URLs by concatenation - "/" + "chart/" + id - so no
