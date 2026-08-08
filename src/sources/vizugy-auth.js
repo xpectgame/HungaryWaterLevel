@@ -10,10 +10,15 @@ const { fetchJson, browserHeaders } = require('../lib/http');
  *   requestNewToken() { return this.http.get(`${authApiBaseUrl}/token`).pipe(map(t => t.access_token)) }
  *   isTokenExpired(t) { return Date.now() > 1000 * JSON.parse(atob(t.split('.')[1])).exp }
  *
- * No credentials are involved - the endpoint hands a JWT to anyone who asks, which is
- * consistent with the data being published as open. The token is short-lived, so it is
- * cached until its own `exp` claim rather than re-fetched per request: a 15-minute poll
- * across ~30 stations would otherwise mint 30 tokens a cycle.
+ * Confirmed against the live service. No credentials are involved: the endpoint hands a
+ * JWT to anyone who asks, issued to `opendatauser`, which is consistent with the data
+ * being published as open. It does require the headers a browser sends - without Origin
+ * and Referer the gateway answers 403, which reads like a permissions problem and is
+ * not one.
+ *
+ * The token lasts exactly 15 minutes, the same as the poll interval, so it is cached
+ * until its own `exp` claim rather than re-fetched per request: a cycle across ~30
+ * stations would otherwise mint 30 tokens.
  */
 
 const DEFAULT_AUTH_BASE_URL = 'https://data.vizugy.hu/AuthApi/auth';

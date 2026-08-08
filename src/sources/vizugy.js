@@ -17,7 +17,11 @@ const { createTokenProvider } = require('./vizugy-auth');
  *   vraQueryApiBaseUrl = "https://vmservice.vizugy.hu/vraquery/"
  *
  * It asks AuthApi for an anonymous JWT - no credentials - and sends it as a bearer
- * token on every vraquery call. That much is settled and implemented here.
+ * token on every vraquery call. That is implemented and confirmed working: the token
+ * endpoint returns a 15-minute JWT issued to `opendatauser`, provided the request
+ * carries the Origin and Referer headers a browser would send.
+ *
+ * What remains unknown is only the path after the base.
  *
  * ---------------------------------------------------------------------------
  * READ THIS BEFORE POINTING IT AT PRODUCTION

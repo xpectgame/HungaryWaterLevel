@@ -99,12 +99,14 @@ async function main() {
     });
 
     for (const path of [
+      // The UI's own config script names the document; everything else is a guess.
+      '/swagger/index.js',
+      '/swagger/swagger-ui-init.js',
       '/swagger/v1/swagger.json',
       '/swagger/swagger.json',
       '/swagger/docs/v1',
-      '/swagger/v1/swagger.yaml',
+      '/swagger/vraquery/swagger.json',
       '/openapi.json',
-      '/swagger-ui-init.js',
     ]) {
       await probeUrl(`https://vmservice.vizugy.hu/vraquery${path}`, `vraquery${path}`);
     }

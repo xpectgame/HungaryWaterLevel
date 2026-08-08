@@ -29,6 +29,19 @@ test('script URLs are resolved against the document base', () => {
   assert.ok(urls.includes('https://data.vizugy.hu/chunk-XYZ.js'), 'modulepreload chunk');
 });
 
+test('without a base tag, scripts resolve against the page, not the origin', () => {
+  // Defaulting to the origin moved every relative script to the site root. A Swagger UI
+  // served from /vraquery/swagger/ reported its bundles as /swagger-ui-bundle.js, all of
+  // which 404'd - and the one that names the OpenAPI document was among them.
+  const html = '<script src="./swagger-ui-bundle.js"></script><script src="./index.js"></script>';
+  const urls = extractScriptUrls(html, 'https://vmservice.vizugy.hu/vraquery/swagger/index.html');
+
+  assert.deepStrictEqual(urls, [
+    'https://vmservice.vizugy.hu/vraquery/swagger/swagger-ui-bundle.js',
+    'https://vmservice.vizugy.hu/vraquery/swagger/index.js',
+  ]);
+});
+
 test('a base href pointing at a subdirectory is honoured', () => {
   const html = '<base href="/app/"><script src="main.js"></script>';
   const urls = extractScriptUrls(html, 'https://example.hu/app/index.html');

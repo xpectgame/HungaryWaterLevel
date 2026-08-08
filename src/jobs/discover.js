@@ -61,8 +61,12 @@ function decodeHtml(value) {
 
 /** Script and module URLs referenced by an HTML document, resolved against its base. */
 function extractScriptUrls(html, pageUrl) {
-  const base = (html.match(/<base[^>]+href=["']([^"']+)["']/i) || [])[1] || '/';
-  const origin = new URL(base, pageUrl).toString();
+  // Without a <base> tag, relative URLs resolve against the document's own URL - not
+  // against the origin. Defaulting to '/' silently moved every relative script to the
+  // site root, which is why a Swagger UI served from /vraquery/swagger/ reported its
+  // bundles as /swagger-ui-bundle.js and every one of them 404'd.
+  const baseAttr = (html.match(/<base[^>]+href=["']([^"']+)["']/i) || [])[1];
+  const base = baseAttr ? new URL(decodeHtml(baseAttr), pageUrl).toString() : pageUrl;
 
   const urls = new Set();
   const patterns = [
@@ -75,7 +79,7 @@ function extractScriptUrls(html, pageUrl) {
     let match;
     while ((match = pattern.exec(html)) !== null) {
       try {
-        urls.add(new URL(decodeHtml(match[1]), origin).toString());
+        urls.add(new URL(decodeHtml(match[1]), base).toString());
       } catch {
         /* malformed src, skip */
       }
