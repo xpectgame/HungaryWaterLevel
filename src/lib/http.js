@@ -64,7 +64,14 @@ function describeCause(err) {
  * they return HTML error pages with a 200, and they occasionally 502. The poller runs
  * unattended every 15 minutes, so a failure has to be legible from a log line alone.
  */
-async function fetchText(url, { timeoutMs = 15000, headers = {}, retries = 1, method = 'GET', body } = {}) {
+// `body` is destructured under another name on purpose: the response body below is also
+// called `body`, and inside that block the parameter is shadowed by a const that has not
+// been initialised yet. Every request threw "Cannot access 'body' before initialization",
+// including the GETs that never passed one.
+async function fetchText(
+  url,
+  { timeoutMs = 15000, headers = {}, retries = 1, method = 'GET', body: requestBody } = {},
+) {
   let lastError;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -76,7 +83,7 @@ async function fetchText(url, { timeoutMs = 15000, headers = {}, retries = 1, me
         method,
         // The query service's time-series calls are POSTs carrying a JSON filter, so a
         // GET-only client cannot read a single discharge value from it.
-        ...(body === undefined ? {} : { body }),
+        ...(requestBody === undefined ? {} : { body: requestBody }),
         headers: { 'User-Agent': USER_AGENT, Accept: 'application/json, text/plain, */*', ...headers },
         signal: controller.signal,
         redirect: 'follow',
