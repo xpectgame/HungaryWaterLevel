@@ -354,8 +354,67 @@ async function probeAllStations() {
   );
 }
 
+/**
+ * Exercise the ENTSO-E documents this project can use in place of MAVIR.
+ *
+ * A75 answers the same question MAVIR's chart does, from a documented API. A73 answers
+ * one MAVIR never does - output per generation unit - which turns the units cooling
+ * model from an inference into a measurement.
+ */
+async function probeEntsoe() {
+  const entsoe = require('../sources/entsoe');
+  const cfg = entsoe.config();
+
+  console.log('\n########## entsoe ##########');
+  if (!cfg.token) {
+    console.log('ENTSOE_TOKEN is not set, so nothing can be requested.');
+    console.log('Register on https://transparency.entsoe.eu, then email transparency@entsoe.eu');
+    console.log('asking for API access. Set ENTSOE_TOKEN and run this again.');
+    return;
+  }
+  console.log(`domain ${cfg.domain}, token ${cfg.token.slice(0, 4)}...`);
+
+  try {
+    const generation = await entsoe.fetchGeneration();
+    console.log(`\nA75 generation by type at ${generation.timestamp}:`);
+    for (const [source, mw] of Object.entries(generation.generationMw).sort((a, b) => b[1] - a[1])) {
+      console.log(`  ${source.padEnd(14)} ${mw.toFixed(0).padStart(7)} MW`);
+    }
+    console.log('\nNuclear is Paks I and nothing else - that is the cooling-water driver.');
+  } catch (err) {
+    console.log(`A75 FAILED: ${err.message}`);
+  }
+
+  try {
+    const perUnit = await entsoe.fetchUnitGeneration();
+    console.log(`\nA73 generation per unit, ${perUnit.units.length} unit(s):`);
+    for (const unit of perUnit.units.sort((a, b) => b.powerMw - a.powerMw)) {
+      console.log(
+        `  ${unit.unitName.padEnd(28)} ${String(unit.sourceType || '?').padEnd(12)}` +
+          ` ${unit.powerMw.toFixed(0).padStart(6)} MW  of ${String(unit.nominalMw ?? '?').padStart(5)}  ${unit.timestamp}`,
+      );
+    }
+    console.log('\nPaks units listed separately is what the units cooling model needs.');
+  } catch (err) {
+    console.log(`A73 FAILED: ${err.message}`);
+  }
+
+  try {
+    const availability = await entsoe.fetchAvailability();
+    console.log(`\nA80 outages: ${availability.activeOutages} active of ${availability.outageCount} published`);
+    console.log(JSON.stringify(availability.availability, null, 2));
+  } catch (err) {
+    console.log(`A80 FAILED: ${err.message}`);
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
+
+  if (args.includes('--entsoe')) {
+    await probeEntsoe();
+    return;
+  }
 
   if (args.includes('--live')) {
     await probeAllStations();

@@ -123,3 +123,124 @@ test('the request carries the token, domain and window', () => {
   assert.match(url, /periodStart=202608010000/);
   assert.match(url, /periodEnd=202608080000/);
 });
+
+// ---------------------------------------------------------------------------
+// Generation documents - the MAVIR replacement
+// ---------------------------------------------------------------------------
+
+const {
+  parseGeneration,
+  parseUnitGeneration,
+  lastPoint,
+  buildUrl: buildEntsoeUrl,
+  config: entsoeConfig,
+} = require('../src/sources/entsoe');
+
+// Shaped like a real A75 response: nuclear plus a pumped-storage series that reports
+// both directions, which is the trap in this document.
+const A75 = `<GL_MarketDocument>
+  <TimeSeries>
+    <inBiddingZone_Domain.mRID>10YHU-MAVIR----U</inBiddingZone_Domain.mRID>
+    <MktPSRType><psrType>B14</psrType></MktPSRType>
+    <Period>
+      <timeInterval><start>2026-08-08T10:00Z</start><end>2026-08-08T11:00Z</end></timeInterval>
+      <start>2026-08-08T10:00Z</start>
+      <resolution>PT15M</resolution>
+      <Point><position>1</position><quantity>1800</quantity></Point>
+      <Point><position>2</position><quantity>1850</quantity></Point>
+      <Point><position>3</position><quantity>1902</quantity></Point>
+    </Period>
+  </TimeSeries>
+  <TimeSeries>
+    <inBiddingZone_Domain.mRID>10YHU-MAVIR----U</inBiddingZone_Domain.mRID>
+    <MktPSRType><psrType>B04</psrType></MktPSRType>
+    <Period>
+      <start>2026-08-08T10:00Z</start>
+      <resolution>PT15M</resolution>
+      <Point><position>1</position><quantity>1200</quantity></Point>
+      <Point><position>3</position><quantity>1310</quantity></Point>
+    </Period>
+  </TimeSeries>
+  <TimeSeries>
+    <outBiddingZone_Domain.mRID>10YHU-MAVIR----U</outBiddingZone_Domain.mRID>
+    <MktPSRType><psrType>B10</psrType></MktPSRType>
+    <Period>
+      <start>2026-08-08T10:00Z</start>
+      <resolution>PT15M</resolution>
+      <Point><position>3</position><quantity>400</quantity></Point>
+    </Period>
+  </TimeSeries>
+</GL_MarketDocument>`;
+
+test('A75 gives the same generation mix MAVIR publishes, without the portal', () => {
+  const parsed = parseGeneration(A75);
+
+  assert.strictEqual(parsed.generationMw.nuclear, 1902, 'nuclear is Paks I and nothing else');
+  assert.strictEqual(parsed.generationMw.naturalGas, 1310);
+});
+
+test('the newest published point wins, not the last position the resolution implies', () => {
+  // The platform omits trailing positions that have no value yet, and gas here skips
+  // position 2 entirely. Counting slots rather than reading positions misdates the value.
+  const parsed = parseGeneration(A75);
+  assert.strictEqual(parsed.timestamp, '2026-08-08T10:30:00.000Z', 'position 3 of PT15M from 10:00');
+});
+
+test('the pumping leg of a pumped-storage series is not counted as generation', () => {
+  // The platform reports pumped storage in both directions. Adding the consumption leg
+  // would inflate the mix by the amount being consumed.
+  const parsed = parseGeneration(A75);
+  assert.strictEqual(parsed.generationMw.hydroPumped, undefined);
+});
+
+test('a document with no usable series returns nothing rather than an empty mix', () => {
+  assert.strictEqual(parseGeneration('<Acknowledgement_MarketDocument/>'), null);
+  assert.strictEqual(lastPoint('<Period><start>2026-08-08T10:00Z</start></Period>'), null);
+});
+
+test('A73 names each unit, which is what the units cooling model needs', () => {
+  // MAVIR publishes nuclear as one number. Two units at 40% and one at 80% are the same
+  // megawatts and very different cooling water, because pumps belong to a unit.
+  const units = parseUnitGeneration(`<GL_MarketDocument>
+    <TimeSeries>
+      <MktPSRType>
+        <psrType>B14</psrType>
+        <PowerSystemResources><name>Paks 1</name><nominalP>500</nominalP></PowerSystemResources>
+      </MktPSRType>
+      <Period><start>2026-08-08T10:00Z</start><resolution>PT60M</resolution>
+        <Point><position>1</position><quantity>473</quantity></Point></Period>
+    </TimeSeries>
+    <TimeSeries>
+      <MktPSRType>
+        <psrType>B14</psrType>
+        <PowerSystemResources><name>Paks 2</name><nominalP>500</nominalP></PowerSystemResources>
+      </MktPSRType>
+      <Period><start>2026-08-08T10:00Z</start><resolution>PT60M</resolution>
+        <Point><position>1</position><quantity>0</quantity></Point></Period>
+    </TimeSeries>
+  </GL_MarketDocument>`);
+
+  assert.strictEqual(units.length, 2);
+  assert.deepStrictEqual(
+    units.map((u) => [u.unitName, u.powerMw]),
+    [['Paks 1', 473], ['Paks 2', 0]],
+  );
+  assert.strictEqual(units[0].sourceType, 'nuclear');
+  assert.strictEqual(units[0].nominalMw, 500);
+});
+
+test('generation queries use in_Domain and a process type; outage queries do not', () => {
+  // Without processType the platform answers with a "no matching data" acknowledgement
+  // rather than an error - a failure that reads as an idle grid.
+  const cfg = { ...entsoeConfig({}), token: 'x' };
+  const window = { from: new Date('2026-08-08T00:00Z'), to: new Date('2026-08-08T12:00Z') };
+
+  const generation = buildEntsoeUrl(cfg, { ...window, documentType: 'A75', processType: 'A16', domainParam: 'in_Domain' });
+  assert.match(generation, /in_Domain=10YHU-MAVIR----U/);
+  assert.match(generation, /processType=A16/);
+  assert.match(generation, /periodStart=202608080000/);
+
+  const outages = buildEntsoeUrl(cfg, window);
+  assert.match(outages, /biddingZone_Domain=/);
+  assert.doesNotMatch(outages, /processType/);
+});

@@ -59,15 +59,156 @@ function formatPeriod(date) {
   );
 }
 
-function buildUrl(cfg, { from, to }) {
+/**
+ * @param {object} cfg
+ * @param {object} opts
+ * @param {Date} opts.from
+ * @param {Date} opts.to
+ * @param {string} [opts.documentType]  A80 outages, A75 generation by type, A73 by unit
+ * @param {string} [opts.processType]   A16 = realised, required for generation documents
+ * @param {string} [opts.domainParam]   generation uses in_Domain, outages biddingZone_Domain
+ */
+function buildUrl(cfg, { from, to, documentType, processType, domainParam = 'biddingZone_Domain' }) {
   const params = new URLSearchParams({
     securityToken: cfg.token || '',
-    documentType: cfg.documentType,
-    biddingZone_Domain: cfg.domain,
+    documentType: documentType || cfg.documentType,
+    [domainParam]: cfg.domain,
     periodStart: formatPeriod(from),
     periodEnd: formatPeriod(to),
   });
+  // Generation documents are undefined without it; outage documents reject it.
+  if (processType) params.set('processType', processType);
   return `${cfg.baseUrl}?${params.toString()}`;
+}
+
+/**
+ * Production-type codes, as the platform defines them.
+ *
+ * B14 is nuclear, and in Hungary nuclear means Paks I and nothing else - the same fact
+ * the MAVIR adapter leans on, available here without scraping a portal.
+ */
+const PSR_TYPES = {
+  B01: 'biomass',
+  B02: 'coal', // lignite
+  B04: 'naturalGas',
+  B05: 'coal', // hard coal
+  B06: 'oil',
+  B10: 'hydroPumped',
+  B11: 'hydro',
+  B12: 'hydro',
+  B14: 'nuclear',
+  B16: 'pv',
+  B17: 'waste',
+  B19: 'wind',
+  B20: 'wind',
+};
+
+/**
+ * The last real point of a Period, with the time it belongs to.
+ *
+ * Points are numbered from 1 and the platform omits trailing positions that have no
+ * value yet, so the newest published point is the highest position present - not the
+ * last one the resolution implies.
+ */
+function lastPoint(period) {
+  const start = tagValue(period, 'start');
+  const resolution = tagValue(period, 'resolution') || 'PT15M';
+  const minutes = Number((resolution.match(/PT(\d+)M/) || [])[1]) || 60;
+
+  let best = null;
+  for (const point of allBlocks(period, 'Point')) {
+    const position = Number(tagValue(point, 'position'));
+    const quantity = Number(tagValue(point, 'quantity'));
+    if (!Number.isFinite(position) || !Number.isFinite(quantity)) continue;
+    if (!best || position > best.position) best = { position, quantity };
+  }
+  if (!best) return null;
+
+  const startMs = start ? Date.parse(start) : NaN;
+  return {
+    mw: best.quantity,
+    // Position 1 covers the interval starting at `start`.
+    timestamp: Number.isFinite(startMs)
+      ? new Date(startMs + (best.position - 1) * minutes * 60000).toISOString()
+      : null,
+  };
+}
+
+/**
+ * Generation by production type, in the shape the MAVIR adapter returns.
+ *
+ * A75 answers the same question MAVIR's chart does - what is Hungary generating right
+ * now, by fuel - from a documented API rather than from a portal's minified bundle.
+ * Consumption series are skipped: the platform reports pumped storage in both
+ * directions, and counting the pumping as generation would double the hydro term.
+ */
+function parseGeneration(xml) {
+  const bySource = {};
+  let timestamp = null;
+
+  for (const series of allBlocks(xml, 'TimeSeries')) {
+    if (tagValue(series, 'inBiddingZone_Domain\\.mRID') === null &&
+        tagValue(series, 'outBiddingZone_Domain\\.mRID') !== null) {
+      continue; // consumption leg of a pumped-storage series
+    }
+
+    const psrType = tagValue(series, 'psrType');
+    const key = PSR_TYPES[psrType];
+    if (!key) continue;
+
+    for (const period of allBlocks(series, 'Period')) {
+      const point = lastPoint(period);
+      if (!point) continue;
+      bySource[key] = (bySource[key] || 0) + point.mw;
+      if (!timestamp || (point.timestamp && point.timestamp > timestamp)) timestamp = point.timestamp;
+    }
+  }
+
+  if (Object.keys(bySource).length === 0) return null;
+  return { timestamp: timestamp || new Date().toISOString(), generationMw: bySource };
+}
+
+/**
+ * Generation per unit (A73).
+ *
+ * This is the document MAVIR has no equivalent of, and it is the one the units cooling
+ * model actually wants: four Paks units listed separately, so "how many are running" is
+ * read rather than inferred from a total.
+ */
+function parseUnitGeneration(xml) {
+  const units = [];
+
+  for (const series of allBlocks(xml, 'TimeSeries')) {
+    // The unit's name is nested inside PowerSystemResources, not a dotted element -
+    // and <name> also appears elsewhere in the document, so the block has to be
+    // isolated first or the first <name> in the series wins.
+    const resources = allBlocks(series, 'PowerSystemResources')[0];
+    const name =
+      (resources && tagValue(resources, 'name')) ||
+      tagValue(series, 'registeredResource\\.name') ||
+      tagValue(series, 'production_RegisteredResource\\.name');
+    if (!name) continue;
+
+    const psrType = tagValue(series, 'psrType');
+    const nominal = Number((resources && tagValue(resources, 'nominalP')) || tagValue(series, 'nominalP'));
+
+    let latest = null;
+    for (const period of allBlocks(series, 'Period')) {
+      const point = lastPoint(period);
+      if (point && (!latest || (point.timestamp || '') > (latest.timestamp || ''))) latest = point;
+    }
+    if (!latest) continue;
+
+    units.push({
+      unitName: name.trim(),
+      sourceType: PSR_TYPES[psrType] || null,
+      powerMw: latest.mw,
+      nominalMw: Number.isFinite(nominal) ? nominal : null,
+      timestamp: latest.timestamp,
+    });
+  }
+
+  return units;
 }
 
 /**
@@ -195,13 +336,73 @@ async function fetchAvailability(plants, env = process.env, now = new Date()) {
   };
 }
 
+/**
+ * Current generation by production type - the MAVIR replacement.
+ *
+ * Returns the same shape mavir.fetchGeneration does, so the poller can take either.
+ * A75 needs processType A16 ("realised") and in_Domain rather than the bidding-zone
+ * parameter the outage documents use; without processType the platform answers with a
+ * "no matching data" acknowledgement rather than an error, which is the kind of failure
+ * that looks like an empty grid.
+ */
+async function fetchGeneration(env = process.env, now = new Date()) {
+  const cfg = config(env);
+  if (!cfg.token) throw new Error('ENTSOE_TOKEN is not set');
+
+  // A day back. The platform publishes with a lag of an hour or so, and asking for only
+  // the current hour regularly returns an empty document.
+  const url = buildUrl(cfg, {
+    from: new Date(now.getTime() - 24 * 3600 * 1000),
+    to: new Date(now.getTime() + 3600 * 1000),
+    documentType: 'A75',
+    processType: 'A16',
+    domainParam: 'in_Domain',
+  });
+
+  const { body } = await fetchText(url, { timeoutMs: cfg.timeoutMs });
+  const parsed = parseGeneration(body);
+  if (!parsed) {
+    throw new Error(`ENTSO-E returned no generation series (${body.slice(0, 200).replace(/\s+/g, ' ')})`);
+  }
+
+  return { source: 'entsoe', fetchedAt: new Date().toISOString(), ...parsed };
+}
+
+/**
+ * Generation per unit (A73).
+ *
+ * The document that makes the units cooling model a measurement rather than an
+ * inference. Limited to a 24-hour window by the platform.
+ */
+async function fetchUnitGeneration(env = process.env, now = new Date()) {
+  const cfg = config(env);
+  if (!cfg.token) throw new Error('ENTSOE_TOKEN is not set');
+
+  const url = buildUrl(cfg, {
+    from: new Date(now.getTime() - 24 * 3600 * 1000),
+    to: new Date(now.getTime() + 3600 * 1000),
+    documentType: 'A73',
+    processType: 'A16',
+    domainParam: 'in_Domain',
+  });
+
+  const { body } = await fetchText(url, { timeoutMs: cfg.timeoutMs });
+  return { source: 'entsoe', fetchedAt: new Date().toISOString(), units: parseUnitGeneration(body) };
+}
+
 module.exports = {
   fetchAvailability,
+  fetchGeneration,
+  fetchUnitGeneration,
   parseOutages,
+  parseGeneration,
+  parseUnitGeneration,
+  lastPoint,
   activeAt,
   unitsOnlineFor,
   buildUrl,
   formatPeriod,
   config,
+  PSR_TYPES,
   DEFAULTS,
 };
