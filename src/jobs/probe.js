@@ -89,10 +89,15 @@ async function main() {
     const cfg = vizugy.config();
     console.log('\n########## data.vizugy.hu ##########');
     console.log(`Currently configured: ${cfg.baseUrl}${cfg.path}`);
+    // The portal, not the configured API base. Once baseUrl moved to the query service
+    // this pointed at https://vmservice.vizugy.hu/vraquery, which is an API root and
+    // answers 404 to a browser - so the discovery that found the auth flow in the first
+    // place silently stopped running. The single-page app is what carries the bundles.
+    //
     // The bundle showed the shape: an anonymous JWT from AuthApi, then vraquery calls
     // carrying it. loadStations is where the path after the base is assembled, so ask
     // for a wide window around it rather than around the base URL.
-    await discover(cfg.baseUrl, {
+    await discover('https://data.vizugy.hu/', {
       keywords: ['loadStations', '_apiRootUrl', 'getStationData', 'stationData', 'timeSeries'],
     });
 
@@ -102,10 +107,10 @@ async function main() {
     console.log('\n########## vraquery openapi ##########');
     const swaggerShell = 'https://vmservice.vizugy.hu/vraquery/swagger/index.html';
 
-    // The whole shell, not an excerpt. The referenced bundles turned out to be stock
-    // Swagger UI, whose string literals are all about the spec format rather than this
-    // API - so the document URL is in the page itself, in an inline script, and there
-    // are only a few hundred bytes of it to read.
+    // The whole shell, not an excerpt. Its referenced bundles are stock Swagger UI,
+    // whose string literals are all about the spec format rather than this API, so the
+    // configuration has to be either inline here or in a small script beside it. 735
+    // bytes - cheap to read rather than mine.
     await probeUrl(swaggerShell, 'swagger shell (full body)', {
       maxChars: 20000,
       headers: browserHeaders('https://vmservice.vizugy.hu'),
@@ -113,10 +118,18 @@ async function main() {
 
     await discover(swaggerShell, { keywords: ['swagger', 'urls', 'SwaggerUIBundle'] });
 
+    // The initialiser, in full. The shell turned out to be stock swagger-ui-dist with no
+    // inline script at all - it loads this file, which opens with a `parseFunction`
+    // helper copied from a gist. That is NSwag's, and NSwag puts the document URL in the
+    // SwaggerUIBundle call further down. Printing 400 characters stopped exactly above it.
+    await probeUrl(`https://vmservice.vizugy.hu/vraquery/swagger/index.js`, 'swagger initialiser (full)', {
+      maxChars: 20000,
+      headers: browserHeaders('https://vmservice.vizugy.hu', swaggerShell),
+    });
+
     for (const path of [
-      // The shell's inline configuration names the document; these are the conventional
-      // locations, tried in case it is generated at runtime rather than written down.
-      '/swagger/index.js',
+      // The initialiser above names the document; these are the conventional locations,
+      // tried in case it is computed at runtime rather than written down.
       '/swagger/swagger-ui-init.js',
       '/swagger/v1/swagger.json',
       '/swagger/v1/swagger.yaml',

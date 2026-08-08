@@ -24,6 +24,10 @@ const MAX_PROBES = 30;
 // anything much larger is generated code that the literal-mining below reads anyway.
 const INLINE_PRINT_LIMIT = 4000;
 
+// A referenced script this small is not a library. swagger-ui-bundle.js is 1.4 MB; the
+// index.js beside it that names the OpenAPI document is 3 KB.
+const SMALL_SCRIPT_BYTES = 24 * 1024;
+
 const ENDPOINT_HINT = /(api|rest|service|adat|data|station|allomas|measure|meres|hidro|vizrajz|graphql|swagger|openapi|v1|v2)/i;
 
 /**
@@ -137,8 +141,16 @@ function extractCandidates(source, pageUrl) {
 
   // Absolute URLs.
   for (const m of source.matchAll(/https?:\/\/[^\s"'`<>\\)]{6,200}/g)) add(m[0]);
-  // Quoted path-like literals.
+  // Quoted path-like literals, rooted at /.
   for (const m of source.matchAll(/["'`](\/[A-Za-z0-9_\-./{}$:]{3,150})["'`]/g)) add(m[1]);
+  // ...and relative ones. Requiring a leading slash missed the case that mattered:
+  // NSwag writes the OpenAPI document's location relative to the page it serves the
+  // explorer from - `url: "v1/swagger.json"` - so the one literal worth finding in that
+  // file was the one shape not being looked for. A relative literal needs a slash of its
+  // own to be a path at all, otherwise every identifier in a bundle qualifies.
+  for (const m of source.matchAll(/["'`]((?:\.{0,2}\/)?[A-Za-z0-9_\-.]+(?:\/[A-Za-z0-9_\-.{}$]+){1,8})["'`]/g)) {
+    if (!m[1].startsWith('/')) add(m[1]);
+  }
 
   // Resolve relative paths against the page so they are directly callable.
   const resolved = new Map();
@@ -264,6 +276,16 @@ async function discover(pageUrl, { probe = true, depth = 1, keywords = [], radiu
       sources.set(scriptUrl, body);
       for (const [url, count] of extractCandidates(body, pageUrl)) {
         candidates.set(url, (candidates.get(url) || 0) + count);
+      }
+
+      // Size sorts these two kinds of file apart reliably: a megabyte of minified code
+      // is a library, and a few kilobytes next to it is the configuration that wires the
+      // library to this particular service. The small one is worth reading in full -
+      // literal-mining a hand-written file is strictly worse than looking at it.
+      if (body.length <= SMALL_SCRIPT_BYTES) {
+        console.log(`\n  --- ${scriptUrl} (${body.length} bytes, shown in full) ---`);
+        console.log(indent(body));
+        console.log('');
       }
     } catch (err) {
       console.log(`  (failed ${scriptUrl}: ${err.message.split('\n')[0]})`);

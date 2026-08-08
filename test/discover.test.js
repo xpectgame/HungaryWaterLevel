@@ -85,6 +85,32 @@ test('the OpenAPI document URL is recovered from the inline config', () => {
   );
 });
 
+test('a relative spec URL is found and resolved against the page', () => {
+  // What the service actually serves: no inline script at all, a stock swagger-ui-dist
+  // shell plus a small initialiser beside it. NSwag writes the document location
+  // relative to that page, and requiring a leading slash meant the one literal worth
+  // finding in the whole file was the one shape not being looked for.
+  const initialiser = 'var configuration = { url: "v1/swagger.json", validatorUrl: null };';
+  const found = [...extractCandidates(initialiser, 'https://vmservice.vizugy.hu/vraquery/swagger/index.html').keys()];
+
+  assert.ok(
+    found.includes('https://vmservice.vizugy.hu/vraquery/swagger/v1/swagger.json'),
+    `spec URL missing from ${JSON.stringify(found)}`,
+  );
+});
+
+test('a ./ or ../ prefixed path is resolved too', () => {
+  const found = [...extractCandidates('u("../api/v1/measurements")', 'https://x.hu/app/page.html').keys()];
+  assert.ok(found.includes('https://x.hu/api/v1/measurements'), JSON.stringify(found));
+});
+
+test('bare identifiers are not mistaken for relative paths', () => {
+  // Without requiring a slash, every minified identifier in a bundle qualifies and the
+  // output becomes unreadable.
+  const found = [...extractCandidates('"apiClient";"dataService";"stationList"', 'https://x.hu/').keys()];
+  assert.deepStrictEqual(found, []);
+});
+
 test('empty and whitespace-only script blocks are dropped', () => {
   assert.deepStrictEqual(extractInlineScripts('<script></script><script>  \n </script>'), []);
 });
