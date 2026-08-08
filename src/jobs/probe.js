@@ -467,22 +467,36 @@ async function probeMavirExport() {
   const to = Date.now();
   const from = to - 6 * 3600 * 1000;
 
+  // Play binds every declared query parameter, so omitting one is a 400 rather than a
+  // default. getExportFile takes six; the first attempt sent three and got 400 from
+  // every exportType, which reads as "wrong format" and was "wrong arity".
   console.log(`\n--- export, chart 4401 (${MAVIR_CHARTS[4401]}) ---`);
-  for (const exportType of ['csv', 'CSV', 'xlsx', 'excel', 'xls', 'json']) {
-    const url = `${liveBase}/chart/4401/export?exportType=${exportType}&fromTime=${from}&toTime=${to}`;
+  const combos = [];
+  for (const exportType of ['csv', 'xlsx', 'excel', 'CSV', 'XLSX']) {
+    for (const periodType of ['custom', 'day', 'hour', 'interval']) {
+      combos.push({ exportType, periodType, period: '1' });
+    }
+  }
+
+  for (const { exportType, periodType, period } of combos) {
+    const url =
+      `${liveBase}/chart/4401/export?exportType=${exportType}&fromTime=${from}&toTime=${to}` +
+      `&periodType=${periodType}&period=${period}`;
     try {
       const { body, contentType } = await fetchText(url, { timeoutMs: 25000, retries: 0, headers });
-      const preview = body.slice(0, 300).replace(/\s+/g, ' ');
-      console.log(`  ${exportType.padEnd(6)} ${body.length} bytes  ${contentType}`);
-      console.log(`         ${preview}`);
+      const preview = body.slice(0, 400).replace(/\s+/g, ' ');
+      console.log(`  OK   ${exportType}/${periodType}  ${body.length} bytes  ${contentType}`);
+      console.log(`       ${preview}`);
     } catch (err) {
-      console.log(`  ${exportType.padEnd(6)} FAILED: ${err.message.split('\n')[0]}`);
+      // Only the status matters here; the full URL repeated twenty times is noise.
+      console.log(`  ---  ${exportType}/${periodType}  ${err.status || err.message.split('\n')[0]}`);
     }
   }
 
   // The image confirms the route base even when export rejects every type, and its
   // content-type says plainly that the chart is a picture rather than a series.
-  const imageUrl = `${liveBase}/chart/4401/image/actual`;
+  // The app always passes lastTimestamp; without it the route 400s just like the export.
+  const imageUrl = `${liveBase}/chart/4401/image/actual?lastTimestamp=${to}`;
   try {
     const { body, contentType } = await fetchText(imageUrl, { timeoutMs: 20000, retries: 0, headers });
     console.log(`\n  image  ${body.length} bytes  ${contentType}  <- the chart is rendered server-side`);
@@ -590,7 +604,11 @@ async function main() {
         headers: browserHeaders('https://www.mavir.hu', 'https://www.mavir.hu/web/mavir/rendszerterheles'),
       });
 
-      await discover(url, { keywords: ['DataServlet', 'getData', 'tabId', 'chartId', 'json'], depth: 0 });
+      await discover(url, {
+        keywords: ['getExportFile', 'exportType', 'periodType', 'getChartImageInterval'],
+        depth: 0,
+        radius: 700,
+      });
     }
 
     await probeMavirExport();

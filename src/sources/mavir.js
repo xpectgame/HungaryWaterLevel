@@ -21,19 +21,35 @@ const { fetchJson } = require('../lib/http');
  * sharing a fuel type, and is labelled 'estimated' all the way to the API response.
  *
  * ---------------------------------------------------------------------------
- * ENDPOINT STATUS: UNVERIFIED
+ * THERE IS NO JSON FEED. THE CHART IS A PICTURE.
  * ---------------------------------------------------------------------------
- * The default path below follows MAVIR's known chart-backend pattern
- * (/rtdwweb/webuser/chart/<chartId>/...), but it could not be reached from the
- * environment this was written in, so treat it as a starting hypothesis rather than
- * a confirmed contract. Run `npm run probe -- --mavir` against the live service and
- * adjust via configuration:
+ * The portal frames a separate application, and that application embeds Play's
+ * generated jsRoutes table inline - the complete server-side route list:
  *
- *   MAVIR_BASE_URL, MAVIR_PATH, MAVIR_CHART_ID,
- *   MAVIR_ARRAY_PATH, MAVIR_TIME_FIELD
+ *   GET /chart/{chartId}/image/actual?lastTimestamp=
+ *   GET /chart/{chartId}/image/custom/from/{fromTime}/to/{toTime}
+ *   GET /chart/{chartId}/export?exportType=&fromTime=&toTime=&periodType=&period=
+ *   GET /reload_needed/{lastReloadTime}
  *
- * Series names are mapped case-insensitively and accent-insensitively, so the
- * Hungarian labels ("Atomerőmű", "Földgáz") and English ones both resolve.
+ * The chart is rendered server-side as an image. That is why no data endpoint was ever
+ * found behind it: there is none to find. The only numeric route is the export.
+ *
+ * Chart 4401 is "Erőművi termelés" - power plant generation - out of a catalogue the
+ * servlet lists in full: 4423 import/export, 5229 cross-border flows, 7678 planned and
+ * actual system load, 10260 system data.
+ *
+ * Worth recording how this was found, because it generalises: literal-mining returned
+ * zero candidates. Play builds its URLs by concatenation - "/" + "chart/" + id - so no
+ * single string literal is ever an endpoint. Printing the inline block found in one
+ * pass what mining could not find at all.
+ *
+ * ---------------------------------------------------------------------------
+ * PREFER ENTSO-E
+ * ---------------------------------------------------------------------------
+ * ENTSO-E publishes the same aggregate as document A75, over a documented API, and
+ * publishes per-unit generation as A73 - which this service has no equivalent of and
+ * which the units cooling model needs. See sources/entsoe.js. This adapter is worth
+ * keeping as an independent cross-check, not as the primary source.
  */
 
 const DEFAULTS = {
