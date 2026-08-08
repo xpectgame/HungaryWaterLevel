@@ -505,8 +505,95 @@ async function probeMavirExport() {
   }
 }
 
+/**
+ * Ask the deployed site what it is actually serving.
+ *
+ * Setting DATA_PROVIDER=live is a claim, not a result: the variable may not have been
+ * picked up yet, the poller may never have run, or the upstream may refuse the
+ * deployment's IP the way it refuses this sandbox's. Every one of those looks identical
+ * from the outside - a page with numbers on it - which is exactly the failure this
+ * project keeps guarding against. So read the response's own account of itself.
+ */
+async function probeSite(baseUrl) {
+  const base = baseUrl.replace(/\/+$/, '');
+  console.log(`\n########## deployed site: ${base} ##########`);
+
+  let snapshot;
+  try {
+    snapshot = await fetchJson(`${base}/api/v1/snapshot`, { timeoutMs: 30000, retries: 1 });
+  } catch (err) {
+    console.log(`FAILED: ${err.message}`);
+    return;
+  }
+
+  const meta = snapshot._meta || {};
+  const balance = snapshot.balance || {};
+  const inflow = balance.inflow || {};
+  const outflow = balance.outflow || {};
+
+  console.log(`\n  provider      ${meta.provider}`);
+  console.log(`  synthetic     ${meta.synthetic}${meta.synthetic ? '   <-- NOT live data' : ''}`);
+  console.log(`  last poll     ${meta.lastPollAt || '(never)'}  ok=${meta.lastPollOk}`);
+
+  if (meta.lastPollAt) {
+    const ageMin = Math.round((Date.now() - Date.parse(meta.lastPollAt)) / 60000);
+    console.log(`  poll age      ${ageMin} min${ageMin > 60 ? '   <-- stale; the cron may not be running' : ''}`);
+  }
+
+  console.log(`\n  inflow        ${inflow.totalM3s} m3/s over ${inflow.stationCount} stations` +
+    `  (measured ${inflow.measuredCount}, estimated ${inflow.estimatedCount})`);
+  console.log(`  outflow       ${outflow.totalM3s} m3/s over ${outflow.stationCount} stations` +
+    `  (measured ${outflow.measuredCount}, estimated ${outflow.estimatedCount})`);
+  console.log(`  net           ${balance.net && balance.net.m3s} m3/s, significant=${balance.net && balance.net.significant}`);
+
+  for (const warning of (balance.dataQuality && balance.dataQuality.warnings) || []) {
+    console.log(`  warning       ${warning}`);
+  }
+
+  // The registry's long-term means are the yardstick: every gauge sitting exactly on its
+  // mean is the signature of fixture data, not of a river.
+  console.log('\n  largest stations, against their long-term mean:');
+  const { getStation } = require('../config/stations');
+  const rows = [...(inflow.stations || []), ...(outflow.stations || [])]
+    .sort((a, b) => b.flowM3s - a.flowM3s)
+    .slice(0, 8);
+
+  for (const row of rows) {
+    const mean = (getStation(row.id) || {}).meanFlow;
+    const ratio = mean ? (row.flowM3s / mean) : null;
+    console.log(
+      `    ${row.id.padEnd(26)} ${String(row.flowM3s).padStart(9)} m3/s` +
+        `  mean ${String(mean ?? '-').padStart(6)}` +
+        `  ${ratio === null ? '' : `ratio ${ratio.toFixed(2)}`}  ${row.quality}`,
+    );
+  }
+
+  const ratios = rows
+    .map((row) => {
+      const mean = (getStation(row.id) || {}).meanFlow;
+      return mean ? row.flowM3s / mean : null;
+    })
+    .filter((r) => r !== null);
+
+  if (ratios.length > 0) {
+    const spread = Math.max(...ratios) - Math.min(...ratios);
+    console.log(
+      `\n  ratio spread  ${spread.toFixed(2)}` +
+        (spread < 0.02
+          ? '   <-- every gauge on its mean: that is generated, not measured'
+          : '   (gauges differ from each other, as real rivers do)'),
+    );
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
+
+  const siteArg = args.find((a) => a.startsWith('--site='));
+  if (siteArg) {
+    await probeSite(siteArg.split('=').slice(1).join('='));
+    return;
+  }
 
   if (args.includes('--entsoe')) {
     await probeEntsoe();
