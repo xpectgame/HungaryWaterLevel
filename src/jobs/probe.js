@@ -483,28 +483,50 @@ async function main() {
     console.log('\n########## mavir.hu ##########');
     console.log(`Currently configured: ${cfg.baseUrl}${cfg.path} chartId=${cfg.chartId}`);
 
-    // The real-time figures live on their own page; its bundles are the ones that know
-    // where the data comes from.
-    for (const page of [
-      'https://www.mavir.hu/web/mavir/rendszerterheles',
-      'https://www.mavir.hu/web/mavir/valos-ideju-aggregalt-termeles',
-    ]) {
-      await discover(page);
+    // The portal page carries no data - it is Liferay, and its fourteen inline blocks
+    // are all framework. What it does carry is the iframe, and the iframe is the
+    // application that holds the endpoint:
+    //
+    //   https://rtdwweb.mavir.hu/rtdwweb/webuser/GenerateChartsServlet?hunLang=hu-hu&tabId=tab7679
+    //
+    // tab7679 is system load; the generation mix this project needs is on its own tab.
+    // Going straight at the servlet skips 23 KB of portal boilerplate.
+    const CHART_TABS = [
+      { tab: 'tab7679', what: 'system load (rendszerterhelés)' },
+      { tab: 'tab4402', what: 'real-time generation mix' },
+    ];
+
+    console.log('\n########## mavir chart servlet ##########');
+    for (const { tab, what } of CHART_TABS) {
+      const url = `https://rtdwweb.mavir.hu/rtdwweb/webuser/GenerateChartsServlet?hunLang=hu-hu&tabId=${tab}`;
+      console.log(`\n--- ${tab}: ${what} ---`);
+
+      // The servlet is framed by the portal, so it expects the portal as the referrer.
+      await probeUrl(url, `${tab} body`, {
+        maxChars: 6000,
+        headers: browserHeaders('https://www.mavir.hu', 'https://www.mavir.hu/web/mavir/rendszerterheles'),
+      });
+
+      await discover(url, { keywords: ['DataServlet', 'getData', 'tabId', 'chartId', 'json'], depth: 0 });
     }
 
-    // Discovery found the charts are an iframe into a separate application on its own
-    // host. tab4402 is the real-time generation mix - the series this project needs -
-    // and tab7679 is system load. Probed directly so a transport failure is reported
-    // with its cause rather than as a bare "fetch failed" inside the recursion.
-    // The publication app itself answers - only the chart servlet timed out - so mine
-    // its own scripts. That is the application that actually holds the data endpoints.
-    // rtdwweb.mavir.hu answered once and has since only timed out from this runner,
-    // which reads as datacentre-IP throttling rather than an outage. From a Hungarian
-    // connection it responds - so run `npm run probe -- --mavir` locally if this fails.
+    // The publication app's own root, in case the servlet is only a renderer and the
+    // data lives beside it.
     console.log('\n########## mavir publication app ##########');
     await discover('https://rtdwweb.mavir.hu/rtdwweb/webuser/', {
       keywords: ['getData', 'DataServlet', 'tabId', 'ajax', 'json'],
     });
+
+    // The portal pages, last: they are the least informative and the noisiest, but a
+    // second tab id or a changed frame URL would show up here first.
+    if (args.includes('--portal')) {
+      for (const page of [
+        'https://www.mavir.hu/web/mavir/rendszerterheles',
+        'https://www.mavir.hu/web/mavir/valos-ideju-aggregalt-termeles',
+      ]) {
+        await discover(page, { depth: 1 });
+      }
+    }
   }
 
   console.log('\nRecord what returned JSON in .env, then run `npm run poll` to verify the ingest.');

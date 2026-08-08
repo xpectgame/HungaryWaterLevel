@@ -28,6 +28,16 @@ const INLINE_PRINT_LIMIT = 4000;
 // index.js beside it that names the OpenAPI document is 3 KB.
 const SMALL_SCRIPT_BYTES = 24 * 1024;
 
+/**
+ * Inline blocks that are the page's framework rather than the page.
+ *
+ * MAVIR's portal ships fourteen inline blocks totalling 23 KB - Liferay bootstrapping,
+ * AUI form wiring, Google Analytics - and not one of them names a data endpoint. Printed
+ * in full they bury the one thing worth reading. They are still mined for candidates;
+ * only the printing is suppressed.
+ */
+const BOILERPLATE = /\b(Liferay|AUI\(\)|GoogleAnalyticsObject|dataLayer|gtag|_com_liferay|Analytics\.send)\b/;
+
 const ENDPOINT_HINT = /(api|rest|service|adat|data|station|allomas|measure|meres|hidro|vizrajz|graphql|swagger|openapi|v1|v2)/i;
 
 /**
@@ -257,6 +267,10 @@ async function discover(pageUrl, { probe = true, depth = 1, keywords = [], radiu
       }
       // Short enough to read in full, and that is the point - the configuration is
       // usually four lines and no amount of literal-mining beats seeing it.
+      if (BOILERPLATE.test(block)) {
+        console.log(`\n  --- inline #${i + 1}: ${block.length} bytes of framework boilerplate, not printed ---`);
+        return;
+      }
       console.log(`\n  --- inline #${i + 1} ---`);
       console.log(indent(block.slice(0, INLINE_PRINT_LIMIT)));
       if (block.length > INLINE_PRINT_LIMIT) {
@@ -282,7 +296,7 @@ async function discover(pageUrl, { probe = true, depth = 1, keywords = [], radiu
       // is a library, and a few kilobytes next to it is the configuration that wires the
       // library to this particular service. The small one is worth reading in full -
       // literal-mining a hand-written file is strictly worse than looking at it.
-      if (body.length <= SMALL_SCRIPT_BYTES) {
+      if (body.length <= SMALL_SCRIPT_BYTES && !BOILERPLATE.test(body)) {
         console.log(`\n  --- ${scriptUrl} (${body.length} bytes, shown in full) ---`);
         console.log(indent(body));
         console.log('');

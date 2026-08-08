@@ -274,3 +274,23 @@ test('a missing needle is reported rather than silently printing nothing', () =>
   }
   assert.match(logged.join('\n'), /not found as a literal/);
 });
+
+test('framework boilerplate is mined but not printed', () => {
+  // MAVIR's portal ships fourteen inline blocks totalling 23 KB - Liferay bootstrapping,
+  // AUI form wiring, Google Analytics - and not one names a data endpoint. Printed in
+  // full they bury the single line worth reading.
+  const { extractInlineScripts: extract } = require('../src/jobs/discover');
+  const html = `
+    <script>var Liferay = Liferay || {}; Liferay.ThemeDisplay = {};</script>
+    <script>var chart = { dataUrl: "/rtdwweb/webuser/DataServlet?tabId=tab4402" };</script>`;
+
+  const blocks = extract(html);
+  assert.strictEqual(blocks.length, 2, 'both blocks are still read');
+
+  // The endpoint must survive the noise filter, since mining is what it is for.
+  const found = [...extractCandidates(blocks.join('\n'), 'https://rtdwweb.mavir.hu/').keys()];
+  assert.ok(
+    found.some((u) => u.includes('DataServlet')),
+    `endpoint lost from ${JSON.stringify(found)}`,
+  );
+});
