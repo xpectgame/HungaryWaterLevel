@@ -32,7 +32,20 @@ const { fetchJson } = require('../lib/http');
  *   GET /reload_needed/{lastReloadTime}
  *
  * The chart is rendered server-side as an image. That is why no data endpoint was ever
- * found behind it: there is none to find. The only numeric route is the export.
+ * found behind it: there is none to find. The only numeric route is the export, and it
+ * answers exactly one combination out of the twenty tried:
+ *
+ *   GET /rtdwweb/webuser/chart/4401/export
+ *       ?exportType=xlsx&periodType=hour&period=1&fromTime=<ms>&toTime=<ms>
+ *   -> application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+ *
+ * xlsx only; csv and every other periodType answer 500. Times are epoch milliseconds,
+ * the unit the page's own data-reload-time uses. The base is /rtdwweb/webuser - the
+ * host root answers 403, even though jsRoutes writes its paths from "/".
+ *
+ * RATE LIMITED, HARD. Twenty requests in a few seconds took the whole host to 429,
+ * including the page itself, and it stayed there. One request per poll is the budget;
+ * a retry loop here will lock the source out rather than recover it.
  *
  * Chart 4401 is "Erőművi termelés" - power plant generation - out of a catalogue the
  * servlet lists in full: 4423 import/export, 5229 cross-border flows, 7678 planned and
