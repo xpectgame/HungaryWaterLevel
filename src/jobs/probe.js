@@ -408,6 +408,89 @@ async function probeEntsoe() {
   }
 }
 
+/**
+ * MAVIR's chart routes, read out of the servlet's own jsRoutes block.
+ *
+ * The servlet embeds Play's generated route table inline, which settles two things
+ * mining never could:
+ *
+ *   GET /chart/{id}/image/actual        the chart is a server-rendered IMAGE
+ *   GET /chart/{id}/export?exportType=…&fromTime=…&toTime=…
+ *   GET /reload_needed/{lastReloadTime}
+ *
+ * There is no JSON time series behind the chart, which is why every search for one
+ * failed - the picture is the product. The export route is the only numeric way out.
+ *
+ * Two things still have to be found by asking: which base the routes hang off (the
+ * jsRoutes urls start at "/" while the app is served from /rtdwweb/webuser/), and what
+ * exportType accepts. Neither appears in the page, so both are probed.
+ */
+const MAVIR_CHARTS = {
+  4401: 'Erőművi termelés',
+  4423: 'Import-Export',
+  7678: 'Terv és tény rendszerterhelés',
+  10260: 'Rendszer adatok',
+};
+
+async function probeMavirExport() {
+  console.log('\n########## mavir chart routes ##########');
+
+  const headers = browserHeaders(
+    'https://rtdwweb.mavir.hu',
+    'https://rtdwweb.mavir.hu/rtdwweb/webuser/GenerateChartsServlet?hunLang=hu-hu&tabId=tab4402',
+  );
+
+  // jsRoutes builds "/chart/..." but the app is mounted under /rtdwweb/webuser/, and
+  // absoluteURL() concatenates the host with that leading slash. One of the two is real.
+  const bases = ['https://rtdwweb.mavir.hu', 'https://rtdwweb.mavir.hu/rtdwweb/webuser'];
+
+  console.log('\n--- which base serves the routes ---');
+  let liveBase = null;
+  for (const base of bases) {
+    const url = `${base}/reload_needed/${Date.now() - 900000}`;
+    try {
+      const { body, contentType } = await fetchText(url, { timeoutMs: 15000, retries: 0, headers });
+      console.log(`  OK    ${url}\n        ${contentType} :: ${body.slice(0, 120).replace(/\s+/g, ' ')}`);
+      if (!liveBase) liveBase = base;
+    } catch (err) {
+      console.log(`  FAIL  ${url}  (${err.message.split('\n')[0]})`);
+    }
+  }
+
+  if (!liveBase) {
+    console.log('\nNeither base answered; the routes may sit behind the servlet path only.');
+    return;
+  }
+
+  // Timestamps: the page carries data-reload-time as epoch milliseconds, so that is the
+  // unit the routes are most likely to want.
+  const to = Date.now();
+  const from = to - 6 * 3600 * 1000;
+
+  console.log(`\n--- export, chart 4401 (${MAVIR_CHARTS[4401]}) ---`);
+  for (const exportType of ['csv', 'CSV', 'xlsx', 'excel', 'xls', 'json']) {
+    const url = `${liveBase}/chart/4401/export?exportType=${exportType}&fromTime=${from}&toTime=${to}`;
+    try {
+      const { body, contentType } = await fetchText(url, { timeoutMs: 25000, retries: 0, headers });
+      const preview = body.slice(0, 300).replace(/\s+/g, ' ');
+      console.log(`  ${exportType.padEnd(6)} ${body.length} bytes  ${contentType}`);
+      console.log(`         ${preview}`);
+    } catch (err) {
+      console.log(`  ${exportType.padEnd(6)} FAILED: ${err.message.split('\n')[0]}`);
+    }
+  }
+
+  // The image confirms the route base even when export rejects every type, and its
+  // content-type says plainly that the chart is a picture rather than a series.
+  const imageUrl = `${liveBase}/chart/4401/image/actual`;
+  try {
+    const { body, contentType } = await fetchText(imageUrl, { timeoutMs: 20000, retries: 0, headers });
+    console.log(`\n  image  ${body.length} bytes  ${contentType}  <- the chart is rendered server-side`);
+  } catch (err) {
+    console.log(`\n  image  FAILED: ${err.message.split('\n')[0]}`);
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
 
@@ -509,6 +592,8 @@ async function main() {
 
       await discover(url, { keywords: ['DataServlet', 'getData', 'tabId', 'chartId', 'json'], depth: 0 });
     }
+
+    await probeMavirExport();
 
     // The publication app's own root, in case the servlet is only a renderer and the
     // data lives beside it.
