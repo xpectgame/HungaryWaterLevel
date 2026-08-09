@@ -664,18 +664,25 @@ async function probeLakes() {
   console.log(`${rows.length} published gauges, ${waters.length} distinct waters`);
   console.log(`standing water named in the catalogue: ${waters.filter((w) => LAKES.some((re) => re.test(w))).join(' | ') || '(none)'}`);
 
+  const show = (h) =>
+    console.log(
+      `  Tsz ${String(h.Tsz).padEnd(8)} ${String(h.Nev).padEnd(34)} ` +
+        `${h.Lat != null ? h.Lat.toFixed(4) : '     ?'},${h.Lon != null ? h.Lon.toFixed(4) : '?'} ` +
+        `Npt=${h.Npt ?? '-'} LKV=${h.LKV ?? '-'} LNV=${h.LNV ?? '-'} ` +
+        `KF=${h.KF1 ?? '-'}/${h.KF2 ?? '-'}/${h.KF3 ?? '-'} Fkm=${h.Fkm ?? '-'} vizig=${h.Vizig} [${h.MdrNev}]`,
+    );
+
   for (const re of LAKES) {
     const hits = rows.filter((row) => re.test(String(row.MdrNev ?? '')));
     console.log(`\n${re} -> ${hits.length} gauges`);
-    for (const h of hits) {
-      console.log(
-        `  Tsz ${String(h.Tsz).padEnd(8)} ${String(h.Nev).padEnd(34)} ` +
-          `${h.Lat != null ? h.Lat.toFixed(4) : '     ?'},${h.Lon != null ? h.Lon.toFixed(4) : '?'} ` +
-          `Npt=${h.Npt ?? '-'} LKV=${h.LKV ?? '-'} LNV=${h.LNV ?? '-'} ` +
-          `KF=${h.KF1 ?? '-'}/${h.KF2 ?? '-'}/${h.KF3 ?? '-'} vizig=${h.Vizig} [${h.MdrNev}]`,
-      );
-    }
+    for (const h of hits) show(h);
   }
+
+  // The Tisza-tó is a reservoir, so its level is the Kisköre barrage's upper pool - a
+  // Tisza gauge, not a lake one. The only thing the catalogue files under "Tisza-tó" is
+  // a seepage canal, which is a different body of water entirely.
+  console.log('\nKisköre and other barrage pools on the Tisza:');
+  for (const h of rows.filter((r) => /kisk[őo]re|tiszal[őo]k|b[őo]kény|nagyk[őo]r[űu]/i.test(String(r.Nev ?? '')))) show(h);
 }
 
 /**
