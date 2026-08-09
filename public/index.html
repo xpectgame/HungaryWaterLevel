@@ -630,7 +630,10 @@ function countryLabelAt(country){
   const biggest = country.shapes.reduce((a,b) => (b.length > a.length ? b : a), country.shapes[0]);
   if(!biggest || biggest.length < 8) return null;
   const [x,y] = ringCentre(biggest);
-  if(x < 40 || x > W-40 || y < 24 || y > H-24) return null;
+  // The label is centred on this point, so half of it has to fit too. Romania's centroid
+  // sits close enough to the right edge that "ROMÁNIA" rendered as "MÁNIA".
+  const half = country.name.length * 9 * 0.5 + 12;
+  if(x-half < 6 || x+half > W-6 || y < 24 || y > H-24) return null;
   return [x,y];
 }
 

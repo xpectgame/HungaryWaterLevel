@@ -654,30 +654,26 @@ const LAKE_PATTERN = /balaton|fert[őo]|velencei|tisza-t[óo]|kisk[őo]re|tároz
 async function probeLakes() {
   console.log('\n########## lake gauges ##########');
 
-  for (const vmoType of [11, 12]) {
-    for (const internetOnly of [true, false]) {
-      let rows;
-      try {
-        ({ rows } = await fetchCatalogue(vmoType, { internetOnly }));
-      } catch (err) {
-        console.log(`vmoType ${vmoType} ${internetOnly ? 'InternetVmo' : 'Vmo'}: FAILED ${err.message}`);
-        continue;
-      }
-      if (!Array.isArray(rows) || rows.length === 0) {
-        console.log(`vmoType ${vmoType} ${internetOnly ? 'InternetVmo' : 'Vmo'}: empty`);
-        continue;
-      }
+  // Only the four that matter, and only the fields needed to register a gauge. The full
+  // dump ran to thousands of lines and scrolled off the top of the log, which is worse
+  // than no output: it looks like an answer.
+  const LAKES = [/balaton/i, /velencei/i, /fert[őo]/i, /tisza-t[óo]|kisk[őo]rei/i];
+  const { rows } = await fetchCatalogue(11, { internetOnly: true });
 
-      const waters = [...new Set(rows.map((r) => r.MdrNev).filter(Boolean))];
-      const lakeWaters = waters.filter((w) => LAKE_PATTERN.test(w));
-      const hits = rows.filter((row) => LAKE_PATTERN.test(String(row.MdrNev ?? '')));
+  const waters = [...new Set(rows.map((r) => r.MdrNev).filter(Boolean))];
+  console.log(`${rows.length} published gauges, ${waters.length} distinct waters`);
+  console.log(`standing water named in the catalogue: ${waters.filter((w) => LAKES.some((re) => re.test(w))).join(' | ') || '(none)'}`);
 
+  for (const re of LAKES) {
+    const hits = rows.filter((row) => re.test(String(row.MdrNev ?? '')));
+    console.log(`\n${re} -> ${hits.length} gauges`);
+    for (const h of hits) {
       console.log(
-        `\nvmoType ${vmoType} ${internetOnly ? 'InternetVmo' : 'Vmo'}: ${rows.length} rows, ` +
-          `${waters.length} distinct waters, ${lakeWaters.length} of them standing`,
+        `  Tsz ${String(h.Tsz).padEnd(8)} ${String(h.Nev).padEnd(34)} ` +
+          `${h.Lat != null ? h.Lat.toFixed(4) : '     ?'},${h.Lon != null ? h.Lon.toFixed(4) : '?'} ` +
+          `Npt=${h.Npt ?? '-'} LKV=${h.LKV ?? '-'} LNV=${h.LNV ?? '-'} ` +
+          `KF=${h.KF1 ?? '-'}/${h.KF2 ?? '-'}/${h.KF3 ?? '-'} vizig=${h.Vizig} [${h.MdrNev}]`,
       );
-      console.log(`  standing waters: ${lakeWaters.join(' | ') || '(none)'}`);
-      for (const hit of hits) console.log(`  ${JSON.stringify(hit)}`);
     }
   }
 }
