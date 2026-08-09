@@ -622,8 +622,54 @@ async function probeMavirSheet() {
   }
 }
 
+/**
+ * The record and flood levels the catalogue already carries, for our stations only.
+ *
+ * LKV and LNV are the lowest and highest stage ever measured at the section; KF1 to KF3
+ * are the three flood-alert grades; Npt is the gauge datum. They are the context this
+ * project has been missing: "112 m3/s" says nothing, "8 cm above the lowest ever
+ * recorded here" says everything.
+ *
+ * They are stage in centimetres, which is why the poll now asks for stage as well.
+ * Printed as a paste-ready block because they are reference values that change rarely -
+ * a record is broken, a grade is revised - and fetching them on every poll would spend
+ * a request on data that is static between such events.
+ */
+async function probeThresholds() {
+  console.log('\n########## stage thresholds (LKV / LNV / flood grades) ##########');
+  const { EXTERNAL_IDS } = require('../sources/vizugy');
+  const byTsz = new Map(Object.entries(EXTERNAL_IDS).map(([id, tsz]) => [String(tsz), id]));
+
+  for (const internetOnly of [true, false]) {
+    try {
+      const { rows } = await fetchCatalogue(11, { internetOnly });
+      const hits = rows.filter((row) => byTsz.has(String(row.Tsz ?? row.Torzsszam)));
+      console.log(`\n${internetOnly ? 'InternetVmo' : 'Vmo'}: ${hits.length} of ${byTsz.size} stations found`);
+
+      for (const row of hits) {
+        const id = byTsz.get(String(row.Tsz ?? row.Torzsszam));
+        const has = ['LKV', 'LNV', 'KF1', 'KF2', 'KF3', 'Npt'].some((k) => row[k] !== undefined && row[k] !== null);
+        if (!has) continue;
+        console.log(
+          `  '${id}': { lkv: ${row.LKV ?? 'null'}, lnv: ${row.LNV ?? 'null'},` +
+            ` kf1: ${row.KF1 ?? 'null'}, kf2: ${row.KF2 ?? 'null'}, kf3: ${row.KF3 ?? 'null'},` +
+            ` datum: ${row.Npt ?? 'null'} },`,
+        );
+      }
+    } catch (err) {
+      console.log(`FAILED: ${err.message}`);
+    }
+  }
+  console.log('\nAll centimetres of stage, relative to the gauge datum (Npt, metres above sea level).');
+}
+
 async function main() {
   const args = process.argv.slice(2);
+
+  if (args.includes('--thresholds')) {
+    await probeThresholds();
+    return;
+  }
 
   if (args.includes('--mavir-sheet')) {
     await probeMavirSheet();

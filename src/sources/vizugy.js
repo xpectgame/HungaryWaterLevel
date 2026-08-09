@@ -46,6 +46,7 @@ const DEFAULTS = {
   authBaseUrl: 'https://data.vizugy.hu/AuthApi/auth',
   seriesPath: '/TS/TsShort',
   hafCode: 87, // Felszíni vízhozam, m3/s
+  stageCode: 68, // Felszíni vízállás, cm - the unit the record and flood levels use
   atCode: 100, // operatív
   // How far back to ask. The feed is hourly, so a day is ample and still cheap;
   // it also carries the poll through an upstream gap without reporting a station
@@ -139,6 +140,7 @@ function config(env = process.env) {
     authBaseUrl: env.VIZUGY_AUTH_BASE_URL || DEFAULTS.authBaseUrl,
     seriesPath: env.VIZUGY_SERIES_PATH || DEFAULTS.seriesPath,
     hafCode: num(env.VIZUGY_HAF_CODE, DEFAULTS.hafCode),
+    stageCode: num(env.VIZUGY_STAGE_CODE, DEFAULTS.stageCode),
     atCode: num(env.VIZUGY_AT_CODE, DEFAULTS.atCode),
     lookbackHours: num(env.VIZUGY_LOOKBACK_HOURS, DEFAULTS.lookbackHours),
     timeoutMs: num(env.VIZUGY_TIMEOUT_MS, DEFAULTS.timeoutMs),
@@ -178,14 +180,24 @@ function buildRequest(stations, cfg, now = new Date()) {
   const endTime = new Date(now.getTime() + 60 * 60 * 1000); // clock skew headroom
   const startTime = new Date(now.getTime() - cfg.lookbackHours * 60 * 60 * 1000);
 
-  return stations.map((station, index) => ({
+  const ask = (station, index, code) => ({
     ItemId: index,
     Torzsszam: Number(EXTERNAL_IDS[station.id]),
-    AdatFajtaKod: cfg.hafCode,
+    AdatFajtaKod: code,
     AdatTipusKod: cfg.atCode,
     StartTime: startTime.toISOString(),
     EndTime: endTime.toISOString(),
-  }));
+  });
+
+  // Discharge and stage in one request. Each entry carries its own AdatFajtaKod, so
+  // asking for both costs nothing extra - and stage is what the record lows and the
+  // flood grades are expressed in, so without it those thresholds cannot be compared
+  // to anything. Stage entries are indexed above the discharge block so one ItemId
+  // still identifies exactly one series.
+  return [
+    ...stations.map((station, index) => ask(station, index, cfg.hafCode)),
+    ...stations.map((station, index) => ask(station, stations.length + index, cfg.stageCode)),
+  ];
 }
 
 /**
@@ -274,6 +286,8 @@ async function fetchAll(env = process.env) {
 
     stations.forEach((station, index) => {
       const sample = latestSample(byItemId.get(index));
+      const stage = latestSample(byItemId.get(stations.length + index));
+
       if (!sample) {
         errors.push({ stationId: station.id, error: 'no discharge sample in the requested window' });
         return;
@@ -281,6 +295,9 @@ async function fetchAll(env = process.env) {
       readings[station.id] = {
         stationId: station.id,
         flowM3s: sample.flowM3s,
+        // Stage is a bonus, not a requirement: a gauge can publish discharge and not
+        // stage, and losing the discharge over that would be the wrong trade.
+        stageCm: stage ? stage.flowM3s : null,
         timestamp: sample.timestamp,
         source: 'vizugy',
         quality: 'measured',

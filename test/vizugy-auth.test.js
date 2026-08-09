@@ -182,11 +182,32 @@ test('every station goes into one request, indexed so the response maps back', (
   const stations = vizugy.mappedStations();
   const body = vizugy.buildRequest(stations, cfg);
 
-  assert.strictEqual(body.length, stations.length);
+  // Two series per station - discharge and stage - in the same POST. Each entry carries
+  // its own AdatFajtaKod, so asking for both costs no extra request.
+  assert.strictEqual(body.length, stations.length * 2);
   assert.deepStrictEqual(
     body.map((entry) => entry.ItemId),
-    stations.map((_, index) => index),
+    body.map((_, index) => index),
+    'ItemId must stay dense and unique, or one series answers for another',
   );
+
+  const discharge = body.slice(0, stations.length);
+  const stage = body.slice(stations.length);
+  assert.ok(discharge.every((e) => e.AdatFajtaKod === 87), 'the first block is discharge');
+  assert.ok(stage.every((e) => e.AdatFajtaKod === 68), 'the second block is stage');
+  assert.deepStrictEqual(
+    discharge.map((e) => e.Torzsszam),
+    stage.map((e) => e.Torzsszam),
+    'the two blocks must run in the same station order',
+  );
+});
+
+test('stage is carried alongside discharge, and its absence does not lose the flow', () => {
+  // A gauge can publish discharge and not stage. Dropping the reading over the missing
+  // extra would be the wrong trade - the balance needs the discharge.
+  const entry = (id, adat) => ({ ItemId: id, TsItemList: [{ UTCTime: '2026-08-08T12:00:00Z', Adat: adat }] });
+  assert.strictEqual(vizugy.latestSample(entry(0, 812.4)).flowM3s, 812.4);
+  assert.strictEqual(vizugy.latestSample(undefined), null);
 });
 
 test('the newest sample wins regardless of the order they arrive in', () => {
