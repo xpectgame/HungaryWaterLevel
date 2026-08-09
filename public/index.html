@@ -342,6 +342,34 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .barhead .mid span{position:absolute;left:66.7%;transform:translateX(-50%);white-space:nowrap}
 @media (max-width:640px){ .barhead{grid-template-columns:minmax(80px,1fr) 1fr auto;font-size:10px} }
 
+/* --- what is happening ---------------------------------------------------
+   Two visually distinct kinds on purpose. A derived entry is arithmetic on our
+   own gauges and carries the numbers; a note is a person's claim and carries a
+   link. A reader must never have to work out which one they are reading. */
+.feed{display:grid;gap:0}
+.ev{display:grid;grid-template-columns:auto 1fr;gap:0 14px;padding:13px 0;border-top:1px solid var(--line)}
+.ev:first-child{border-top:0}
+.ev .when{font-size:11.5px;color:var(--ink-faint);font-family:var(--mono);white-space:nowrap;padding-top:2px}
+.ev .t{font-weight:600;font-size:14px}
+.ev .d{font-size:13px;color:var(--ink-soft);margin-top:3px}
+.ev .tag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  padding:1px 7px;border-radius:99px;background:var(--sunk);color:var(--ink-soft);margin-right:7px;
+  vertical-align:1px}
+.ev.sev-3 .tag{background:#fdeef1;color:#8d1329}
+.ev.sev-2 .tag{background:#fdf1e8;color:#8a3d12}
+.ev.note{background:linear-gradient(90deg,rgba(14,143,158,.05),transparent);
+  border-left:3px solid var(--flow-dim);padding-left:12px;margin-left:-15px}
+.ev.note .tag{background:var(--flow);color:#fff}
+.ev.note a{color:var(--flow)}
+.regions{display:grid;gap:7px;margin-top:4px}
+.reg{display:grid;grid-template-columns:minmax(120px,1fr) 2fr minmax(96px,auto);gap:12px;align-items:center;font-size:13px}
+.reg .nm{color:var(--ink-soft)}
+.reg .track{position:relative;height:9px;border-radius:5px;background:var(--sunk)}
+.reg .track i{display:block;height:100%;border-radius:5px}
+.reg .track .norm{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.5;
+  border-radius:1px;box-shadow:0 0 0 1px rgba(255,255,255,.85)}
+.reg .n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12.5px}
+
 /* --- lakes --- */
 .lakes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(268px,1fr))}
 .lake{border:1px solid var(--line);border-radius:12px;padding:14px 15px;background:linear-gradient(180deg,#fbfeff,#f2fafc)}
@@ -463,6 +491,7 @@ footer a{color:var(--ink-soft)}
     <a href="#s-terkep">Térkép</a>
     <a href="#s-szelvenyek">Szelvények</a>
     <a href="#s-rendszerek">Folyórendszerek</a>
+    <a href="#s-hirek">Mi történik</a>
     <a href="#s-tavak">Tavak</a>
     <a href="#s-vizallas">Vízállás</a>
     <a href="#s-eromuvek">Erőművek</a>
@@ -576,6 +605,18 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
+<section class="card" id="s-hirek" style="margin-bottom:18px">
+  <h3>Mi történik, és miért</h3>
+  <p style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">
+    Honnan hiányzik a víz — a beáramlás a határon túli forrásvidék szerint bontva, aszerint
+    rendezve, hogy hol marad el a legtöbb m³/s a sokéves átlagtól. Ez nem elmélet arról,
+    hogy mi az oka: ez az, amit a határszelvényeinken mérünk.
+  </p>
+  <div id="regions" class="regions"></div>
+  <div id="feed" class="feed" style="margin-top:18px"></div>
+  <p style="font-size:12.5px;color:var(--ink-faint);margin-top:14px" id="feed-note"></p>
+</section>
+
 <section class="card" id="s-tavak" style="margin-bottom:18px">
   <h3>Tavaink</h3>
   <p id="lakes-lead" style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">&nbsp;</p>
@@ -681,6 +722,22 @@ footer a{color:var(--ink-soft)}
       <p>Egy fenntartás: a sokéves átlag egész évre vonatkozik, nem augusztusra. A magyar folyók
       nyár végén amúgy is az évi átlaguk alatt járnak, tehát a nyári hónapokban a 100% alatti
       érték önmagában még nem rendkívüli — a mértéke az, ami az.</p></details>
+
+    <details><summary>Honnan tudja az oldal, hogy „mi miért történik"?</summary>
+      <p>Kétféle tétel van a <em>Mi történik</em> szekcióban, és szándékosan másképp néznek ki.</p>
+      <p>A <strong>levezetett tételek</strong> a saját méréseinkből jönnek, és mindig közlik a
+      számokat, amikből származnak: hány napja van egy szelvény az átlaga alatt, mennyit
+      változott egy nap alatt, átlépett-e egy készültségi szintet, hány millió köbmétert
+      veszített egy tó. Az oksági részük odáig terjed, ameddig a mérés: meg tudjuk mondani,
+      hogy a Szlovákia felől érkező szelvényekből hiányzik a legtöbb víz, mert ezt mérjük —
+      de azt nem, hogy mi volt az időjárás az Alpokban, mert azt nem mérjük.</p>
+      <p>A <strong>szerkesztői jegyzetek</strong> azok, amiket ember ír, forráslinkkel és
+      dátummal. Ide tartozik minden külső magyarázat: karbantartás, üzemzavar, határon túli
+      esemény. Ezeknek kötelező a forrás — forrás nélküli állítást az oldal nem közöl —, és
+      soha nem keverednek össze a mért tételekkel.</p>
+      <p>Egy dolgot az adat elvből nem tud: a Paks-blokkokat külön. A közzétett termelési mix
+      országos, nem blokkonkénti, ezért ha esik az atomerőművi termelés, azt kiírjuk, hogy
+      körülbelül hány blokknyi — de azt nem, hogy melyik.</p></details>
 
     <details><summary>Miért nem szerepelnek a tavak a mérlegben?</summary>
       <p>Mert a mérleg arról szól, mennyi víz lép át a határon, a tó pedig nem lép sehova.
@@ -1413,6 +1470,82 @@ const DRY_BANDS = [
 const dryBand = (ratio) => DRY_BANDS.find((b) => ratio < b.under) || DRY_BANDS[DRY_BANDS.length-1];
 const ratioClass = (ratio) => ratio==null ? 'wet-0' : dryBand(ratio).cls;
 
+/* --- what is happening ---------------------------------------------------
+
+   Derived entries and editorial notes are drawn differently and never merged.
+   One is arithmetic on our own gauges with the numbers attached; the other is a
+   person's claim with a link. A reader has to be able to tell them apart without
+   reading carefully, because they carry very different weight.
+-------------------------------------------------------------------------- */
+const EVENT_TAG = {
+  'low-run':'tartósan kevés', fall:'apadás', rise:'áradás',
+  'flood-grade':'árvízvédelem', lake:'tó', nuclear:'erőmű',
+};
+
+function relativeTime(iso){
+  const ms = Date.now() - Date.parse(iso);
+  if(!isFinite(ms)) return '';
+  const h = Math.round(ms/3600000);
+  if(h < 1) return 'most';
+  if(h < 24) return h+' órája';
+  const d = Math.round(h/24);
+  return d === 1 ? 'tegnap' : d+' napja';
+}
+
+function renderFeed(data){
+  const feed = $('feed');
+  if(!data){ feed.innerHTML=''; return; }
+
+  const items = [
+    ...(data.notes||[]).map(n => ({ note:true, at:n.from, html:
+      `<div class="when">${new Date(n.from).toLocaleDateString('hu-HU')}</div>`+
+      `<div><div class="t"><span class="tag">szerkesztői jegyzet</span>${n.title}</div>`+
+      `<div class="d">${n.body||''}${n.source&&n.source.url
+        ? ` <a href="${n.source.url}" target="_blank" rel="noopener noreferrer">${n.source.label||'forrás'} ↗</a>` : ''}</div></div>` })),
+    ...(data.events||[]).map(e => ({ sev:e.severity, at:e.at, html:
+      `<div class="when">${relativeTime(e.at)}</div>`+
+      `<div><div class="t"><span class="tag">${EVENT_TAG[e.kind]||e.kind}</span>${e.title}</div>`+
+      `<div class="d">${e.detail}</div></div>` })),
+  ];
+
+  if(!items.length){
+    feed.innerHTML = `<p style="font-size:13px;color:var(--ink-soft);margin:0">`+
+      `Egyelőre nincs elég eltárolt előzmény ahhoz, hogy változást tudjunk kimutatni. `+
+      `Ez az első néhány nap után telik meg.</p>`;
+  } else {
+    feed.innerHTML = items.map(i =>
+      `<div class="ev ${i.note?'note':'sev-'+(i.sev||1)}">${i.html}</div>`).join('');
+  }
+  $('feed-note').textContent = data.note || '';
+}
+
+/**
+ * Where the water is short, by the country it arrives from.
+ *
+ * The closest thing to a "why" the measurements support. It cannot say what the weather
+ * did in the Alps, but it can say that everything arriving from that direction is at two
+ * thirds of normal while the eastern sections are at four fifths - and that is the shape
+ * of the answer people are actually asking for.
+ */
+function renderRegions(regions){
+  const el = $('regions');
+  if(!regions || !regions.length){ el.innerHTML=''; return; }
+  const scale = 1.4; // full track = 140% of normal, tick at 100%
+
+  el.innerHTML = regions.map(r => {
+    const ratio = r.ratioToMean;
+    const band = ratio!=null ? dryBand(ratio) : null;
+    const width = ratio!=null ? Math.max(1, Math.min(ratio, scale)/scale*100) : 0;
+    return `<div class="reg" title="${r.stationCount} szelvény · most ${fmt(r.flowM3s,0)} m³/s, átlagosan ${fmt(r.longTermMeanM3s,0)}">`+
+      `<div class="nm">${r.region} felől<br><span style="font-size:11px;color:var(--ink-faint)">${r.stationCount} szelvény</span></div>`+
+      `<div class="track"><i style="width:${width.toFixed(1)}%;background:var(--flow)" class="${band?band.cls:''}"></i>`+
+        `<i class="norm" style="left:${(100/scale).toFixed(1)}%"></i></div>`+
+      `<div class="n"><b class="${band?band.cls:''}">${ratio!=null?fmt(ratio*100,0)+'%':'–'}</b>`+
+      `<br><span style="color:var(--ink-faint);font-size:11px">${r.shortfallM3s>0?'−'+fmt(r.shortfallM3s,0):'+'+fmt(-r.shortfallM3s,0)} m³/s</span></div>`+
+    `</div>`;
+  }).join('');
+}
+
 /* --- lakes -------------------------------------------------------------- */
 
 /**
@@ -2112,14 +2245,16 @@ async function refresh(){
     // Stations are fetched every cycle, not once at load: the registry half is static,
     // but `current` carries the live stage, and a tab left open all afternoon would
     // otherwise show this morning's water level under a clock ticking in real time.
-    const [s, st, lk] = await Promise.all([
+    const [s, st, lk, ev] = await Promise.all([
       fetch('/api/v1/snapshot',{cache:'no-store'}).then(r=>r.json()),
       fetch('/api/v1/stations',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
       fetch('/api/v1/lakes',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+      fetch('/api/v1/events',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
     ]);
     snapshot = s;
     if(st && st.stations) stations = st.stations;
     if(lk && lk.lakes){ lakes = lk.lakes; renderLakes(lk); }
+    if(ev){ renderRegions(ev.regions); renderFeed(ev); }
 
     $('synthetic').classList.toggle('hidden', !(s._meta && s._meta.synthetic));
     paint(s);

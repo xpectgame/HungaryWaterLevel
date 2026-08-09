@@ -246,6 +246,12 @@ test('the frontend is served from the app root', async () => {
     // The hypothetical view must never be able to appear without the warning that it is
     // one: the banner and the striped background are the only things separating it from
     // a screenshot of today's readings.
+    assert.match(html, /id="feed"/, 'the events feed must be present');
+    assert.match(html, /\/api\/v1\/events/, 'the page must poll the events endpoint');
+    // Derived measurements and a person's sourced claim must not share a style.
+    assert.match(html, /\.ev\.note/, 'editorial notes need their own visual treatment');
+    assert.match(html, /szerkesztői jegyzet/, 'editorial notes must be labelled as written by a person');
+
     assert.match(html, /id="mode-normal"/, 'the scenario switch must be present');
     assert.match(html, /id="whatif"/, 'the hypothetical must carry its warning banner');
     assert.match(html, /body\.what-if/, 'the hypothetical must be visually marked');
