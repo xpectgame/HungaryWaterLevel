@@ -326,6 +326,32 @@ const RIVER_SPLIT = {
   Mur: { at: [16.85, 46.30], before: 'Mura', after: 'Dráva' },
 };
 
+/**
+ * Roughly where each river leaves the frame, so a line can be pointed downstream.
+ *
+ * Natural Earth does not promise a direction, and it does not deliver one: the Danube
+ * arrives as two features, and "Donau" - the reach above Bratislava - is digitised
+ * upstream, running east to west. The frontend animates the dash pattern along the path,
+ * so that one segment showed the Danube flowing backwards past Pozsony.
+ *
+ * Only the animated rivers need this; the rest are static strokes where direction is
+ * invisible. The test is distance to the outlet, not a compass bearing, because the
+ * Danube runs east to Budapest and then south - no single direction describes it.
+ */
+const RIVER_OUTLET = {
+  Duna: [18.9, 45.0],
+  Tisza: [20.1, 45.0],
+  Dráva: [18.93, 45.55],
+  Mura: [16.85, 46.3],
+};
+
+function orientDownstream(name, line) {
+  const outlet = RIVER_OUTLET[name];
+  if (!outlet || line.length < 2) return line;
+  const to = (p) => Math.hypot(p[0] - outlet[0], p[1] - outlet[1]);
+  return to(line[0]) < to(line[line.length - 1]) ? line.slice().reverse() : line;
+}
+
 function splitLine(line, rule) {
   let best = -1;
   let bestDistance = Infinity;
@@ -488,8 +514,13 @@ async function build() {
   const emit = (name, run) => {
     const rank = RIVER_RANK[name] || 3;
     // A main stem is worth more vertices than a tributary drawn one pixel wide.
-    const simplified = simplify(run, rank === 1 ? 0.0015 : 0.004);
-    if (simplified.length >= 2) out.rivers.push({ name, rank, pts: round(simplified) });
+    const simplified = simplify(orientDownstream(name, run), rank === 1 ? 0.0015 : 0.004);
+    if (simplified.length < 2) return;
+    const pts = round(simplified);
+    // A run whose ends round to the same point has no direction and nothing to draw.
+    const [a, b] = [pts[0], pts[pts.length - 1]];
+    if (a[0] === b[0] && a[1] === b[1] && pts.length < 6) return;
+    out.rivers.push({ name, rank, pts });
   };
 
   for (const f of await allRivers()) {

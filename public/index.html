@@ -148,18 +148,31 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .lake{fill:var(--shallow);opacity:.55;stroke:var(--flow);stroke-width:.5}
 
 .river{fill:none;stroke-linecap:round;stroke-linejoin:round}
-.river-bed{stroke:rgba(14,143,158,.16)}
 /* Context watercourses: present so the country reads as a river network, quiet enough
    that the three the balance actually turns on stay the subject. */
 .river-minor{stroke:rgba(14,143,158,.30);stroke-width:.7}
 .river-mid{stroke:rgba(14,143,158,.45);stroke-width:1.3}
-/* The dash marches along the river. Duration is set per river from its own
-   discharge, so a low river visibly crawls and a high one runs. */
-.river-flow{stroke:var(--flow);stroke-dasharray:5 21;animation:drift linear infinite}
-/* The offset is exactly one dash period, so the loop closes on itself with no jump.
-   styleRivers varies the dash and the gap but always to the same total, for this
-   reason: a period that changed with the river would stutter once per cycle. */
-@keyframes drift{to{stroke-dashoffset:-26}}
+
+/* A gauged river is four strokes, because one was not water.
+   The old version drew a nearly invisible channel with short round dashes sliding
+   along it, and short round dashes are beads on a wire - which is exactly what they
+   looked like. Now the channel itself is solid and visibly wet, and the motion is a
+   pair of long thin highlights drifting over it, the way a current shows on a real
+   surface. */
+.river-bank{stroke:var(--flow);opacity:.13}
+.river-body{stroke:var(--flow);opacity:.55}
+.river-streak{stroke:#eaf7fa;fill:none;stroke-linecap:round}
+/* Three layers, three periods, three speeds. One layer at one period is a row of
+   evenly spaced marks travelling in step - road markings, not water. Periods that do
+   not divide into each other (92, 71, 137) beat against one another, so the surface
+   pattern takes minutes to repeat and never looks stamped. Each has its own keyframe
+   because the offset must equal that layer's own period, or the loop jumps. */
+.river-streak.s1{opacity:.55;animation:drift-a linear infinite}
+.river-streak.s2{opacity:.32;animation:drift-b linear infinite;animation-delay:-3.1s}
+.river-streak.s3{opacity:.2;animation:drift-c linear infinite;animation-delay:-7.4s}
+@keyframes drift-a{to{stroke-dashoffset:-92}}
+@keyframes drift-b{to{stroke-dashoffset:-71}}
+@keyframes drift-c{to{stroke-dashoffset:-137}}
 .river-label{font-size:6.5px;fill:var(--flow);opacity:.8;pointer-events:none;letter-spacing:.04em}
 
 /* A lake is not a gauge, so it does not get a gauge's dot. The rounded square reads as
@@ -812,8 +825,9 @@ function drawBase(){
   for(const r of geo.rivers){
     const d = path(r.pts);
     if(GAUGED_RIVER[r.name]){
-      $('layer-rivers').appendChild(svgEl('path',{ d, class:'river river-bed', 'data-bed':r.name, 'stroke-width':7 }));
-      $('layer-rivers').appendChild(svgEl('path',{ d, class:'river river-flow', 'data-flow':r.name, 'stroke-width':2.4 }));
+      for(const cls of ['river-bank','river-body','river-streak s3','river-streak s1','river-streak s2']){
+        $('layer-rivers').appendChild(svgEl('path',{ d, class:'river '+cls, 'data-river':r.name }));
+      }
     } else {
       $('layer-rivers').appendChild(svgEl('path',{ d, class:'river '+(r.rank===2?'river-mid':'river-minor') }));
     }
@@ -905,16 +919,30 @@ function styleRivers(byId){
 
     // Every segment of the river, not one: Natural Earth splits a main stem wherever a
     // tributary meets it, so the Danube arrives as several separate lines.
-    for(const bed of document.querySelectorAll(`[data-bed="${name}"]`)) bed.setAttribute('stroke-width',(w+3.5).toFixed(1));
-    for(const fl of document.querySelectorAll(`[data-flow="${name}"]`)){
-      fl.setAttribute('stroke-width', w.toFixed(1));
-      // The dash grows with the channel but the period stays at 26, which is what the
-      // keyframe offset assumes. A fixed 5-unit dash on an 11-unit-wide Danube drew a
-      // string of lozenges rather than a current.
-      const dash = Math.max(2, Math.min(11, w * 0.8));
-      fl.setAttribute('stroke-dasharray', `${dash.toFixed(1)} ${(26 - dash).toFixed(1)}`);
-      fl.style.animationDuration = duration;
-      fl.style.opacity = flow==null ? .25 : .95;
+    //
+    // The streaks are a fraction of the channel width and never wider than about two
+    // units: a highlight as wide as the river is not a highlight, it is the river
+    // moving in one piece, and that was the toy-car effect.
+    const layer = {
+      'river-bank':  { width: w + 4 },
+      'river-body':  { width: w },
+      // A broad, faint, slow glint underneath; a crisp thin line at the surface speed;
+      // a fine fast one on top. Together they read as depth rather than as one object.
+      'river-streak s3': { width: Math.max(1.0, Math.min(2.8, w * 0.30)), dash: 7,  period: 137, speed: 0.62 },
+      'river-streak s1': { width: Math.max(0.8, Math.min(1.9, w * 0.20)), dash: 34, period: 92,  speed: 1 },
+      'river-streak s2': { width: Math.max(0.5, Math.min(1.1, w * 0.11)), dash: 11, period: 71,  speed: 1.45 },
+    };
+
+    for(const el of document.querySelectorAll(`[data-river="${name}"]`)){
+      const spec = layer[el.getAttribute('class').replace('river ','')];
+      if(!spec) continue;
+      el.setAttribute('stroke-width', spec.width.toFixed(2));
+      if(!spec.dash) continue;
+      // Each layer's period matches its own keyframe offset, so every one loops
+      // seamlessly at its own pace.
+      el.setAttribute('stroke-dasharray', `${spec.dash} ${spec.period - spec.dash}`);
+      el.style.animationDuration = (parseFloat(duration) / spec.speed).toFixed(2) + 's';
+      el.style.opacity = flow==null ? .22 : '';
     }
   }
 }
