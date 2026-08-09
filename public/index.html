@@ -161,6 +161,37 @@ svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y
 .bar.clickable:hover,.bar.clickable:focus-visible{background:var(--sunk);outline:none}
 .bar.on{background:var(--sunk)}
 
+/* --- river systems --- */
+.systems{display:grid;gap:10px}
+.sys{display:grid;grid-template-columns:minmax(110px,1fr) 2fr minmax(120px,auto);gap:12px;align-items:center}
+.sys .nm{font-weight:600}
+.sys .nm small{display:block;font-weight:400;color:var(--ink-faint);font-size:11.5px}
+.sys .track{height:12px;border-radius:6px;background:var(--sunk);overflow:hidden;display:flex}
+.sys .track i{display:block;height:100%;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+.sys .n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+.sys .n small{color:var(--ink-faint);display:block;font-size:11px}
+
+/* --- scale comparisons --- */
+.scale{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.scale .item{border-left:2px solid var(--flow-dim);padding-left:12px}
+.scale .q{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:600;color:var(--flow)}
+.scale .t{font-size:13px;color:var(--ink-soft);margin-top:2px}
+
+/* --- methodology --- */
+.method details{border-top:1px solid var(--line);padding:10px 0}
+.method details:first-child{border-top:none}
+.method summary{cursor:pointer;font-weight:600;font-size:14px;list-style:none}
+.method summary::-webkit-details-marker{display:none}
+.method summary::before{content:'+';display:inline-block;width:16px;color:var(--flow);font-weight:700}
+.method details[open] summary::before{content:'−'}
+.method p{font-size:13.5px;color:var(--ink-soft);margin:8px 0 0 16px}
+
+/* --- station detail --- */
+.det-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.det-val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:30px;font-weight:600;color:var(--flow)}
+.det-meta{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-soft);margin-top:6px}
+.det-meta b{color:var(--ink);font-family:var(--mono)}
+
 /* --- prose --- */
 .note-block{background:var(--sunk);border-left:2px solid var(--flow-dim);border-radius:0 12px 12px 0;
   padding:14px 16px;margin-bottom:18px;font-size:13.5px;color:var(--ink-soft)}
@@ -260,6 +291,27 @@ footer a{color:var(--ink-soft)}
 </section>
 
 <section class="card" style="margin-bottom:18px">
+  <h3>Folyórendszerek</h3>
+  <div id="systems" class="systems"></div>
+  <p style="font-size:13px;color:var(--ink-soft);margin-top:12px">
+    Az emberek folyókban gondolkodnak, nem szelvényekben. Minden rendszer a hozzá tartozó
+    határszelvények összege — a belső mércék (Budapest, Szolnok, Nagymaros) sehol nem
+    számítanak bele, mert azt a vizet a belépésnél már megszámoltuk.
+  </p>
+</section>
+
+<section class="card" style="margin-bottom:18px" id="detailcard">
+  <h3>Egy szelvény közelről</h3>
+  <div id="detail"><p style="font-size:13.5px;color:var(--ink-soft);margin:0">
+    Kattints egy pontra a térképen vagy egy sorra a listákban.</p></div>
+</section>
+
+<section class="card" style="margin-bottom:18px">
+  <h3>Mire elég ennyi víz?</h3>
+  <div id="scale" class="scale"></div>
+</section>
+
+<section class="card" style="margin-bottom:18px">
   <h3>Erőművek és hűtővizük</h3>
   <div id="plantlist" class="bars"></div>
   <p style="font-size:13px;color:var(--ink-soft);margin-top:10px">
@@ -281,6 +333,38 @@ footer a{color:var(--ink-soft)}
 </section>
 
 <div class="note-block" id="explainer"></div>
+
+<section class="card" style="margin-bottom:18px">
+  <h3>Módszertan — mit számolunk, és mit nem</h3>
+  <div class="method">
+    <details open><summary>Mi a „mérleg”?</summary>
+      <p>A határon belépő vízhozamok összege mínusz a kilépőké. Nem tartalmazza a csapadékot,
+      a párolgást és a felszín alatti mozgást, tehát a különbség <em>nem</em> „eltűnt víz” —
+      nagyrészt a hazai lefolyás és a mérési hiba adja ki.</p></details>
+
+    <details><summary>Miért nem Rajka a Duna belépése?</summary>
+      <p>Mert Rajka a čunovói terelés alatt van: ott csak az Öreg-Dunában maradó vízpótlás folyik.
+      A bősi csatorna Szapnál tér vissza. Egy augusztusi napon Rajka 411 m³/s-ot mutatott,
+      Nagymaros ugyanakkor 802-t, és a köztük lévő egyetlen számon tartott mellékfolyó, az Ipoly,
+      0,6-ot hozott. A hiányzó ~390 m³/s a csatorna. Ezért a Duna belépése <strong>Komárom</strong>
+      (1768 fkm): a visszatorkollás alatt, a Vág felett. Rajkát továbbra is mutatjuk, de sosem összegezzük.</p></details>
+
+    <details><summary>Mennyire pontos ez?</summary>
+      <p>A vízhozam nem közvetlenül mért érték: vízállásból származik egy vízhozamgörbén keresztül,
+      ami jó folyón is 5–10% hibát hordoz, kicsin és duzzasztott szelvényen többet. A hibák négyzetesen
+      adódnak össze, és ha a különbség a hibasávon belül van, azt mondjuk: nem különböztethető meg a nullától.</p></details>
+
+    <details><summary>Mi hiányzik?</summary>
+      <p>A Vág és a Garam a határszakaszon, Komárom alatt csatlakozik, és az OVF nem méri őket —
+      a kisvízfolyásokkal együtt egy becsült tagba kerülnek (~260 m³/s), ami külön látszik.
+      A Lajtára nincs használható szelvény. Rajka és Tiszasziget időnként nem ad vízhozamot.</p></details>
+
+    <details><summary>Miért nem vonjuk ki a hűtővizet?</summary>
+      <p>Mert az erőmű nem fogyasztja el: a kivett víz több mint 99%-a visszakerül a folyóba,
+      pár fokkal melegebben. Ténylegesen csak az elpárolgó rész hiányzik, ami nagyságrenddel kisebb.
+      A kivétel és a fogyasztás összekeverése a leggyakoribb hiba ebben a témában.</p></details>
+  </div>
+</section>
 
 <footer>
   Adatforrás: <a href="https://data.vizugy.hu" rel="noopener">OVF / data.vizugy.hu</a> vízrajzi adatok,
@@ -426,6 +510,7 @@ function drawNodes(){
     g.addEventListener('pointerenter', e => showTip(e, st, flow));
     g.addEventListener('pointermove', moveTip);
     g.addEventListener('pointerleave', hideTip);
+    g.addEventListener('click', () => showStation(st.id));
     nodes.appendChild(g);
   }
 
@@ -554,10 +639,16 @@ function renderBars(list, el, cls){
   el.innerHTML = list.slice().sort((a,b)=>b.flowM3s-a.flowM3s).map(s=>{
     const pct = Math.max(0.6, (s.flowM3s/max)*100);
     const est = s.quality!=='measured' ? ' <small>becsült</small>' : '';
-    return `<div class="bar ${cls}"><div class="nm" title="${s.name}">${s.name}</div>`+
+    return `<div class="bar clickable ${cls}" data-station="${s.id}" tabindex="0" role="button"><div class="nm" title="${s.name}">${s.name}</div>`+
       `<div class="track"><div class="fill" style="width:${pct.toFixed(1)}%"></div></div>`+
       `<div class="n">${fmt(s.flowM3s,1)}${est}</div></div>`;
   }).join('');
+
+  for(const row of el.querySelectorAll('[data-station]')){
+    const open = () => showStation(row.dataset.station);
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', (e) => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } });
+  }
 }
 
 function renderSpark(history){
@@ -652,6 +743,104 @@ function selectPlant(id){
   for(const el of document.querySelectorAll('.plant')) el.classList.toggle('selected', el.dataset.plant===selectedPlant);
 }
 
+/**
+ * Rivers, not gauges.
+ *
+ * Only border sections are summed. The interior gauges people recognise - Budapest,
+ * Szolnok, Nagymaros - carry water that was already counted where it entered, so adding
+ * them would count the same Danube twice.
+ */
+const SYSTEMS = [
+  { id:'duna',  label:'Duna-rendszer', note:'Duna, Rába, Ipoly, Lajta, Répce, Pinka', rivers:['Duna','Rába','Ipoly','Lajta','Répce','Pinka'] },
+  { id:'tisza', label:'Tisza-rendszer', note:'Tisza, Szamos, Bodrog, Körösök, Maros, Sajó, Hernád', rivers:['Tisza','Szamos','Túr','Kraszna','Bodrog','Sajó','Bódva','Hernád','Sebes-Körös','Fekete-Körös','Fehér-Körös','Berettyó','Maros'] },
+  { id:'drava', label:'Dráva-rendszer', note:'Dráva, Mura', rivers:['Dráva','Mura'] },
+];
+
+function renderSystems(b){
+  const bucket = (river) => (SYSTEMS.find((sys) => sys.rivers.includes(river)) || {}).id;
+  const totals = {};
+  for(const sys of SYSTEMS) totals[sys.id] = { in:0, out:0 };
+
+  for(const st of b.inflow.stations){ const k=bucket(st.river); if(k) totals[k].in += st.flowM3s; }
+  for(const st of b.outflow.stations){ const k=bucket(st.river); if(k) totals[k].out += st.flowM3s; }
+
+  const max = Math.max(...SYSTEMS.map((s) => Math.max(totals[s.id].in, totals[s.id].out)), 1);
+
+  $('systems').innerHTML = SYSTEMS.map((sys) => {
+    const t = totals[sys.id];
+    const net = t.in - t.out;
+    return `<div class="sys"><div class="nm">${sys.label}<small>${sys.note}</small></div>`+
+      `<div class="track">`+
+        `<i style="width:${((t.in/max)*100).toFixed(1)}%;background:var(--flow)"></i>`+
+        `<i style="width:${((t.out/max)*100).toFixed(1)}%;background:var(--silt)"></i>`+
+      `</div>`+
+      `<div class="n">${fmt(t.in,0)} <span style="color:var(--ink-faint)">be</span>`+
+      `<small>${fmt(t.out,0)} ki · ${net>=0?'+':''}${fmt(net,0)}</small></div></div>`;
+  }).join('');
+}
+
+/**
+ * What the number means to someone who does not think in cubic metres per second.
+ *
+ * Every comparison here is derived from the live figure rather than written down, so
+ * they move with the river instead of quietly going stale.
+ */
+function renderScale(b){
+  const perSec = b.inflow.totalM3s;
+  const perDay = b.inflow.dailyM3;
+  const items = [
+    { q: fmt(perDay/1e6,0), u:'millió m³', t:'ennyi lép be egy nap alatt, ha a mostani hozam kitart' },
+    { q: fmt(1900/(perDay/1e6),1), u:'nap', t:'ennyi idő alatt folyna át a Balaton teljes térfogata (1900 millió m³)' },
+    { q: fmt(perDay*1000/100, 0), u:'ember', t:'ennyi ember napi 100 literes vízfogyasztását fedezné ez a mennyiség' },
+    { q: fmt(perSec/2.5, 0), u:'úszómedence', t:'percenként ennyi 50 méteres medencényi víz halad át a határon' },
+  ];
+  $('scale').innerHTML = items.map((i) =>
+    `<div class="item"><div class="q">${i.q} <span style="font-size:13px;color:var(--ink-faint)">${i.u}</span></div>`+
+    `<div class="t">${i.t}</div></div>`).join('');
+}
+
+/** One gauge, with its own history and its place in the whole. */
+async function showStation(id){
+  const st = stations.find((s) => s.id === id);
+  if(!st || !snapshot) return;
+  const live = new Map(currentStationFlows()).get(id);
+  const mean = st.longTermMeanM3s;
+
+  const role = st.role==='inflow' ? 'belépő szelvény' : st.role==='outflow' ? 'kilépő szelvény' : 'belső mérce, nem összegezzük';
+  const ratio = live && mean ? live.flowM3s/mean : null;
+
+  $('detail').innerHTML =
+    `<div class="det-head"><div><div style="font-weight:600;font-size:16px">${st.name}</div>`+
+    `<div style="font-size:12.5px;color:var(--ink-faint)">${role}${st.upstreamCountry?' · '+st.upstreamCountry+' felől':''}</div></div>`+
+    `<div class="det-val">${live?fmt(live.flowM3s,1):'–'} <span style="font-size:14px;color:var(--ink-faint)">m³/s</span></div></div>`+
+    `<div class="det-meta">`+
+      (mean?`<span>sokéves átlag <b>${fmt(mean,0)}</b> m³/s</span>`:'')+
+      (ratio!=null?`<span>most az átlag <b>${fmt(ratio*100,0)}%</b>-a</span>`:'')+
+      (st.riverKm?`<span>folyamkilométer <b>${st.riverKm}</b></span>`:'')+
+      (st.uncertaintyPct?`<span>bizonytalanság <b>±${st.uncertaintyPct}%</b></span>`:'')+
+      (live&&live.quality!=='measured'?`<span style="color:var(--ember)">becsült érték</span>`:'')+
+    `</div>`+
+    (st.note?`<p style="font-size:13px;color:var(--ink-soft);margin:10px 0 0">${st.note}</p>`:'')+
+    `<svg class="spark" id="det-spark" viewBox="0 0 800 120" preserveAspectRatio="none" style="margin-top:12px"></svg>`+
+    `<p id="det-note" style="font-size:12.5px;color:var(--ink-faint);margin:6px 0 0">előzmény betöltése…</p>`;
+
+  $('detailcard').scrollIntoView({ behavior:'smooth', block:'nearest' });
+
+  try{
+    const h = await fetch(`/api/v1/stations/${encodeURIComponent(id)}/timeseries?days=2&limit=300`).then(r=>r.json());
+    const pts = (h.series||h.readings||[]).filter((p) => Number.isFinite(p.flowM3s));
+    const svg = $('det-spark');
+    if(pts.length < 2){ $('det-note').textContent = 'Még nincs elég tárolt előzmény ehhez a szelvényhez.'; return; }
+
+    const W=800,H=120, lo=Math.min(...pts.map(p=>p.flowM3s))*0.95, hi=Math.max(...pts.map(p=>p.flowM3s))*1.05;
+    const y = (v) => H - ((v-lo)/(hi-lo||1))*H;
+    const d = pts.map((p,i) => (i?'L':'M') + ((i/(pts.length-1))*W).toFixed(1) + ' ' + y(p.flowM3s).toFixed(1)).join(' ');
+    svg.innerHTML = `<path class="area" d="${d} L${W} ${H} L0 ${H} Z"/><path d="${d}"/>`;
+    const hrs = Math.round((Date.parse(pts[pts.length-1].timestamp)-Date.parse(pts[0].timestamp))/3600000);
+    $('det-note').textContent = `${pts.length} mérés az elmúlt ${hrs} órából.`;
+  }catch{ $('det-note').textContent = 'Az előzményt nem sikerült betölteni.'; }
+}
+
 function renderExplainer(s){
   const b=s.balance;
   const warn = b.dataQuality.warnings||[];
@@ -686,6 +875,8 @@ async function refresh(){
     renderBars(s.balance.outflow.stations, $('bars-out'), 'out');
     renderExplainer(s);
     renderMix(s.power);
+    renderSystems(s.balance);
+    renderScale(s.balance);
     drawNodes();
 
     const at = s._meta && s._meta.lastPollAt;
