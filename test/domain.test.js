@@ -122,6 +122,47 @@ test('ungauged inflow is reported separately and can be switched off', () => {
   assert.strictEqual(withUngauged.inflow.gaugedM3s, without.inflow.gaugedM3s);
 });
 
+test('every discharge is reported against what is normal there', () => {
+  // The whole point: 1671 m3/s at Komárom is either a drought or a Tuesday, and only the
+  // ratio says which. A row without it is a number nobody can read.
+  const balance = computeBalance(meanReadings());
+
+  for (const side of ['inflow', 'outflow']) {
+    for (const row of balance[side].stations) {
+      assert.ok(row.longTermMeanM3s > 0, `${row.id} has no long-term mean`);
+      assert.ok(Number.isFinite(row.ratioToMean), `${row.id} has no ratio to its mean`);
+    }
+    assert.ok(balance[side].longTermMeanM3s > 0);
+  }
+
+  // Fed exactly the long-term means, everything must read as exactly normal.
+  assert.strictEqual(balance.inflow.ratioToMean, 1);
+  assert.strictEqual(balance.outflow.ratioToMean, 1);
+});
+
+test('the normal for the inflow side includes the ungauged term it is compared against', () => {
+  // Both sides of the comparison have to contain the same things. Leaving the ungauged
+  // ~260 m3/s out of the reference while keeping it in the total would make every
+  // reading look about 8% wetter than normal, for free.
+  const withUngauged = computeBalance(meanReadings());
+  const without = computeBalance(meanReadings(), { includeUngauged: false });
+
+  assert.ok(withUngauged.inflow.longTermMeanM3s > without.inflow.longTermMeanM3s);
+  assert.strictEqual(withUngauged.inflow.ratioToMean, 1);
+  assert.strictEqual(without.inflow.ratioToMean, 1);
+});
+
+test('a drought reads as a drought in the ratio', () => {
+  const half = {};
+  for (const [id, reading] of Object.entries(meanReadings())) {
+    half[id] = { ...reading, flowM3s: reading.flowM3s * 0.5 };
+  }
+  const balance = computeBalance(half);
+
+  assert.ok(balance.inflow.ratioToMean < 0.55, `expected about half, got ${balance.inflow.ratioToMean}`);
+  assert.ok(balance.inflow.stations.every((s) => Math.abs(s.ratioToMean - 0.5) < 0.01));
+});
+
 test('lagged method falls back to instant when no history is available', () => {
   const balance = computeBalance(meanReadings(), { method: 'lagged' });
   assert.strictEqual(balance.requestedMethod, 'lagged');

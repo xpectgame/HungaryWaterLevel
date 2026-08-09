@@ -105,6 +105,12 @@ function computeBalance(readings, opts = {}) {
   const netM3s = inflowTotal - outflowTotal;
   const netSigma = Math.hypot(inflowSigma, outflowSigma);
 
+  // The long-term normal for each side. The ungauged term is included on the inflow so
+  // the reference is comparable with the total it is drawn against - leaving it out
+  // would make every reading look ~260 m3/s wetter than normal for free.
+  const inflowNormal = inflow.climatologyM3s + (includeUngauged ? UNGAUGED_INFLOW.meanFlow : 0);
+  const outflowNormal = outflow.climatologyM3s;
+
   // Two sigma is the line between "the rivers are telling us something" and "this is
   // rating-curve noise". Most of the time it is the latter.
   const significant = Math.abs(netM3s) > 2 * netSigma;
@@ -118,6 +124,8 @@ function computeBalance(readings, opts = {}) {
       gaugedM3s: round(inflow.totalM3s, 1),
       ungaugedM3s: round(ungaugedM3s, 1),
       uncertaintyM3s: round(inflowSigma, 1),
+      longTermMeanM3s: round(inflowNormal, 1),
+      ratioToMean: inflowNormal > 0 ? round(inflowTotal / inflowNormal, 3) : null,
       dailyM3: Math.round(inflowTotal * SECONDS_PER_DAY),
       stationCount: inflow.stationCount,
       measuredCount: inflow.measuredCount,
@@ -128,6 +136,8 @@ function computeBalance(readings, opts = {}) {
     outflow: {
       totalM3s: round(outflowTotal, 1),
       uncertaintyM3s: round(outflowSigma, 1),
+      longTermMeanM3s: round(outflowNormal, 1),
+      ratioToMean: outflowNormal > 0 ? round(outflowTotal / outflowNormal, 3) : null,
       dailyM3: Math.round(outflowTotal * SECONDS_PER_DAY),
       stationCount: outflow.stationCount,
       measuredCount: outflow.measuredCount,
@@ -213,6 +223,11 @@ function sumSide(stations, { get, now, method, historyLookup }) {
       river: station.river,
       flowM3s: round(flow, 2),
       uncertaintyM3s: round(sigma, 2),
+      // What this section normally carries, and where today sits against it. Carried on
+      // every row because a discharge without it is unreadable: 411 m3/s at Rajka is
+      // either a drought or a Tuesday, and only the ratio says which.
+      longTermMeanM3s: station.meanFlow,
+      ratioToMean: station.meanFlow > 0 ? round(flow / station.meanFlow, 3) : null,
       quality,
       lagHours,
       shareOfSide: 0, // filled in below
@@ -227,6 +242,9 @@ function sumSide(stations, { get, now, method, historyLookup }) {
   return {
     totalM3s: total,
     sigmaM3s: Math.sqrt(variance),
+    // What this side of the balance carries in an average year. The reference every
+    // chart needs to draw a "normal" line against.
+    climatologyM3s: climatologyTotal,
     // How wet the network is versus its long-term average - used to scale ungauged inflow.
     climatologyRatio: climatologyTotal > 0 ? total / climatologyTotal : 1,
     stationCount: stations.length,

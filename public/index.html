@@ -192,11 +192,25 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .bar .n small{color:var(--ink-faint)}
 
 /* --- sparkline --- */
-.spark{width:100%;height:64px;display:block}
+/* Taller than it was: once the chart has to contain both the last two days and where a
+   normal year would sit, 64 px squeezed the whole gap - which is the point of it - into
+   a couple of pixels. */
+.spark{width:100%;height:118px;display:block}
 .spark path{fill:none;stroke:var(--flow);stroke-width:1.6}
 .spark .area{fill:url(#sparkfill);stroke:none}
 .spark .out{stroke:var(--silt)}
 .spark .stage{stroke:var(--deep);stroke-width:1.2;stroke-dasharray:4 4;opacity:.75}
+/* Where a normal year would sit. Dotted, and behind the data, so it reads as a
+   reference rather than as a second measurement - and so it cannot be mistaken for the
+   stage line, which is dashed. Three textures, three meanings: solid is discharge,
+   dashed is stage, dotted is the long-term average. */
+.spark .norm{stroke-width:1.2;stroke-dasharray:1.5 4;stroke-linecap:round;fill:none;opacity:.8}
+.spark .norm.norm-in{stroke:var(--flow)}
+.spark .norm.norm-out{stroke:var(--silt)}
+.spark .norm-label{font-family:var(--sans);font-size:9px;stroke:none;opacity:.9}
+.spark .norm-label.norm-in{fill:var(--flow)}
+.spark .norm-label.norm-out{fill:var(--silt)}
+.spark{overflow:visible}
 
 /* --- generation mix --- */
 .mixbar{display:flex;height:26px;border-radius:7px;overflow:hidden;background:var(--sunk)}
@@ -215,8 +229,14 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .sys{display:grid;grid-template-columns:minmax(110px,1fr) 2fr minmax(120px,auto);gap:12px;align-items:center}
 .sys .nm{font-weight:600}
 .sys .nm small{display:block;font-weight:400;color:var(--ink-faint);font-size:11.5px}
-.sys .track{height:12px;border-radius:6px;background:var(--sunk);overflow:hidden;display:flex}
-.sys .track i{display:block;height:100%;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+/* Two lanes stacked, one per direction, so they are compared rather than summed. */
+.sys .track{display:grid;gap:3px;background:none;height:auto;overflow:visible}
+.sys .lane{position:relative;height:9px;border-radius:5px;background:var(--sunk)}
+.sys .lane i{display:block;height:100%;border-radius:5px;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+.sys .lane.in i{background:linear-gradient(90deg,var(--flow-dim),var(--flow))}
+.sys .lane.out i{background:linear-gradient(90deg,var(--silt-dim),var(--silt))}
+.sys .norm{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.55;
+  border-radius:1px;box-shadow:0 0 0 1px rgba(255,255,255,.85)}
 .sys .n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
 .sys .n small{color:var(--ink-faint);display:block;font-size:11px}
 
@@ -225,6 +245,35 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .scale .item{border-left:2px solid var(--flow-dim);padding-left:12px}
 .scale .q{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:600;color:var(--flow)}
 .scale .t{font-size:13px;color:var(--ink-soft);margin-top:2px}
+
+/* --- how today compares with a normal year ------------------------------
+   One scale, used everywhere a ratio to the long-term mean is printed, so the
+   same colour always means the same thing. Deliberately plain words: this is a
+   ratio to the long-term mean, not an official drought index. */
+.dry-3{color:#8d1329;font-weight:600}   /* under 40% of normal */
+.dry-2{color:var(--ember);font-weight:600}
+.dry-1{color:var(--silt)}
+.wet-0{color:var(--ink-faint)}          /* about normal */
+.wet-1{color:var(--flow)}
+
+/* The tick marking a normal year, and the fill measured against it. */
+.bar .track{position:relative;overflow:visible}
+.bar .norm{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.5;
+  border-radius:1px;box-shadow:0 0 0 1px rgba(255,255,255,.85)}
+.bar .over{position:absolute;right:-9px;top:50%;transform:translateY(-50%);
+  font-size:9px;color:var(--flow);font-style:normal}
+.bar .n small{display:block;font-size:10.5px;font-family:var(--sans);line-height:1.3}
+/* The fill carries the same colour scale as the number beside it, so a row reads at a
+   glance without going via the legend. */
+.bar.dry-3 .fill{background:linear-gradient(90deg,#e3a6b3,#b3243c)}
+.bar.dry-2 .fill{background:linear-gradient(90deg,var(--ember-dim),var(--ember))}
+.bar.dry-1 .fill{background:linear-gradient(90deg,var(--silt-dim),var(--silt))}
+.bar.wet-0 .fill,.bar.wet-1 .fill{background:linear-gradient(90deg,var(--flow-dim),var(--flow))}
+.barhead{display:grid;grid-template-columns:minmax(96px,1.3fr) 1fr minmax(74px,auto);gap:10px;
+  font-size:11px;color:var(--ink-faint);margin-bottom:7px}
+.barhead .mid{position:relative}
+.barhead .mid span{position:absolute;left:66.7%;transform:translateX(-50%);white-space:nowrap}
+@media (max-width:640px){ .barhead{grid-template-columns:minmax(80px,1fr) 1fr auto;font-size:10px} }
 
 /* --- lakes --- */
 .lakes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(268px,1fr))}
@@ -348,6 +397,7 @@ footer a{color:var(--ink-soft)}
 </div>
 <div class="banner note hidden" id="stale"></div>
 <div class="banner ok" id="flood">&nbsp;</div>
+<div class="banner ok" id="drought">&nbsp;</div>
 
 <!-- the whole story in three numbers -->
 <section class="headline">
@@ -407,11 +457,13 @@ footer a{color:var(--ink-soft)}
 
 <section class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
   <div class="card">
-    <h3>Belépő szelvények</h3>
+    <h3>Belépő szelvények — a saját átlagukhoz mérve</h3>
+    <div class="barhead"><span></span><span class="mid"><span>▏sokéves átlag</span></span><span></span></div>
     <div class="bars" id="bars-in"></div>
   </div>
   <div class="card">
-    <h3>Kilépő szelvények</h3>
+    <h3>Kilépő szelvények — a saját átlagukhoz mérve</h3>
+    <div class="barhead"><span></span><span class="mid"><span>▏sokéves átlag</span></span><span></span></div>
     <div class="bars" id="bars-out"></div>
   </div>
 </section>
@@ -515,6 +567,22 @@ footer a{color:var(--ink-soft)}
       <p>A Vág és a Garam a határszakaszon, Komárom alatt csatlakozik, és az OVF nem méri őket —
       a kisvízfolyásokkal együtt egy becsült tagba kerülnek (~260 m³/s), ami külön látszik.
       A Lajtára nincs használható szelvény. Rajka és Tiszasziget időnként nem ad vízhozamot.</p></details>
+
+    <details open><summary>Mihez képest „kevés”? És aszály ez?</summary>
+      <p>Minden vízhozam mellett ott áll, hogy az adott szelvény sokéves átlagának hány százaléka —
+      a diagramokon ezt jelöli a vonás, illetve a pontozott vonal. Az átlagok az OVF/VITUKI
+      vízrajzi évkönyvekből valók, két értékes jegy pontossággal, és szelvényenként külön:
+      a Duna 2050 m³/s-os átlagához mérve a mai 1671 kevés, ugyanez a szám a Tiszán árvíz lenne.
+      Ezért mérjük mindegyiket a sajátjához, nem egymáshoz.</p>
+      <p>A szavak, amiket használunk — átlag felett, átlagos, átlag alatt, kisvíz, súlyos kisvíz —
+      a mi egyszerű skálánk erre az egy arányra: 130%, 85%, 60% és 40% a határok.
+      <strong>Ez nem hivatalos aszályindex.</strong> Egy valódi aszálymutató a talajnedvességet,
+      a csapadékhiányt és az évszakot is nézi, és ezek egyike sincs ebben az adatban. Azt tudjuk
+      megmondani, hogy a folyók mennyi vizet hoznak a szokásoshoz képest — azt nem, hogy ez
+      hivatalosan aszálynak minősül-e.</p>
+      <p>Egy fenntartás: a sokéves átlag egész évre vonatkozik, nem augusztusra. A magyar folyók
+      nyár végén amúgy is az évi átlaguk alatt járnak, tehát a nyári hónapokban a 100% alatti
+      érték önmagában még nem rendkívüli — a mértéke az, ami az.</p></details>
 
     <details><summary>Miért nem szerepelnek a tavak a mérlegben?</summary>
       <p>Mert a mérleg arról szól, mennyi víz lép át a határon, a tó pedig nem lép sehova.
@@ -1062,10 +1130,19 @@ function renderHeadline(b){
   setNumber($('inflow'), b.inflow.totalM3s, 0);
   setNumber($('outflow'), b.outflow.totalM3s, 0);
 
-  $('inflow-meta').textContent =
-    `${b.inflow.stationCount} szelvény · ±${fmt(b.inflow.uncertaintyM3s,0)} m³/s`
-    + (b.inflow.ungaugedM3s ? ` · ebből ${fmt(b.inflow.ungaugedM3s,0)} becsült` : '');
-  $('outflow-meta').textContent = `${b.outflow.stationCount} szelvény · ±${fmt(b.outflow.uncertaintyM3s,0)} m³/s`;
+  // The comparison first, the bookkeeping second. "3642 m³/s" tells a reader nothing;
+  // "a sokéves átlag 61%-a" tells them everything they came for.
+  const side = (key, metaId) => {
+    const s = b[key];
+    const el = $(metaId);
+    if(s.ratioToMean == null){ el.textContent = `${s.stationCount} szelvény`; return; }
+    const band = dryBand(s.ratioToMean);
+    el.innerHTML =
+      `<b class="${band.cls}">a sokéves átlag ${fmt(s.ratioToMean*100,0)}%-a</b>`+
+      `<br>${fmt(s.longTermMeanM3s,0)} m³/s lenne a normális · ${s.stationCount} szelvény · ±${fmt(s.uncertaintyM3s,0)}`;
+  };
+  side('inflow','inflow-meta');
+  side('outflow','outflow-meta');
 
   const net = $('net');
   net.className = 'net ' + (b.net.significant ? b.net.direction : 'insignificant');
@@ -1074,6 +1151,27 @@ function renderHeadline(b){
     ? (b.net.direction==='draining' ? 'több távozik, mint amennyi érkezik' : 'több érkezik, mint amennyi távozik')
     : 'a különbség a mérési hibán belül van';
 }
+
+/* --- normal, and how far from it ----------------------------------------
+
+   Every discharge on this page is now printed against what that section carries
+   in an average year, because the raw number is unreadable without it: 411 m³/s
+   at Rajka is either a drought or a Tuesday, and only the ratio tells you which.
+
+   The bands below are our own plain-language scale over that one ratio. They are
+   NOT an official drought classification - a real one weighs soil moisture, the
+   precipitation deficit and the time of year, and none of that is in this data.
+   Said out loud on the page, in the methodology, rather than implied here.
+-------------------------------------------------------------------------- */
+const DRY_BANDS = [
+  { under: 0.40, cls:'dry-3', word:'súlyos kisvíz' },
+  { under: 0.60, cls:'dry-2', word:'kisvíz' },
+  { under: 0.85, cls:'dry-1', word:'átlag alatt' },
+  { under: 1.30, cls:'wet-0', word:'átlagos' },
+  { under: Infinity, cls:'wet-1', word:'átlag felett' },
+];
+const dryBand = (ratio) => DRY_BANDS.find((b) => ratio < b.under) || DRY_BANDS[DRY_BANDS.length-1];
+const ratioClass = (ratio) => ratio==null ? 'wet-0' : dryBand(ratio).cls;
 
 /* --- lakes -------------------------------------------------------------- */
 
@@ -1284,6 +1382,47 @@ function renderFloodBanner(){
     : `<strong>Árvízvédelmi készültség ${active.length} szelvényen:</strong> ${list}`;
 }
 
+/**
+ * The one sentence that says whether this is a normal week.
+ *
+ * The page was full of correct numbers that a reader could look straight through: 3642
+ * m³/s is unreadable, and the fact that it is well under what the border normally
+ * carries was visible only to someone who already knew what normal was. This states it,
+ * counts how many sections are running low, and refuses to call it a drought - that word
+ * belongs to an index built on soil moisture and rainfall deficit, which is not this data.
+ */
+function renderDroughtBanner(b){
+  const el = $('drought');
+  const ratio = b.inflow.ratioToMean;
+  if(ratio == null){ el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+
+  const band = dryBand(ratio);
+  // The threshold and the sentence come from one constant. They disagreed once - the
+  // list was built at 60% and described as "doesn't even reach half", so it named a
+  // section running at 54% as proof of something it did not show.
+  const LOW = 0.6;
+  const low = b.inflow.stations.filter(s => s.ratioToMean != null && s.ratioToMean < LOW);
+  const pct = fmt(ratio*100, 0);
+
+  if(ratio >= 0.85){
+    el.className = 'banner ok';
+    el.innerHTML = `<strong>A határon beérkező vízmennyiség a sokéves átlag ${pct}%-a</strong> — `+
+      `nagyjából annyi, amennyi ilyenkor szokásos.`;
+    return;
+  }
+
+  el.className = 'banner ' + (ratio < 0.6 ? 'warn' : 'note');
+  el.innerHTML =
+    `<strong>Kevés a víz: a beáramlás a sokéves átlag ${pct}%-a</strong> (${band.word}). `+
+    `Egy átlagos évben ilyenkor ${fmt(b.inflow.longTermMeanM3s,0)} m³/s érkezne a határon, most `+
+    `${fmt(b.inflow.totalM3s,0)}.`+
+    (low.length ? ` ${low.length} határszelvény a saját átlagának a ${fmt(LOW*100,0)}%-át sem éri el: `+
+      low.slice(0,4).map(s=>`${s.name.split('–').pop().trim()} ${fmt(s.ratioToMean*100,0)}%`).join(', ')+
+      (low.length>4?` és még ${low.length-4}`:'')+'.' : '')+
+    `<br><span style="opacity:.85">Ez a sokéves átlaghoz mért arány, nem hivatalos aszályindex — az a talajnedvességet és a csapadékhiányt is nézi.</span>`;
+}
+
 function renderCards(s){
   const b=s.balance, p=s.power, c=s.context||{};
   const daily = b.inflow.dailyM3;
@@ -1300,14 +1439,40 @@ function renderCards(s){
   ).join('');
 }
 
+/**
+ * One bar per section, measured against that section's own normal year.
+ *
+ * The bar used to be scaled to the largest flow in the list, which meant it said only
+ * "the Danube is bigger than the Pinka" - something nobody needed a chart for. Worse,
+ * on that scale a mark showing the Pinka's own average landed half a pixel from the
+ * left edge, so the one comparison this page exists to make was invisible on 16 of the
+ * 20 rows.
+ *
+ * So the track is now the ratio to the long-term mean: the tick sits at 100% and a bar
+ * reaching it is a normal river. Every row is directly comparable, whatever its size,
+ * and how big each river actually is stays where it belongs - in the m³/s beside it,
+ * and in the sort order.
+ */
+const RATIO_SCALE = 1.5; // full track = 150% of normal, so the 100% tick sits at two thirds
+
 function renderBars(list, el, cls){
-  const max = Math.max(...list.map(s=>s.flowM3s), 1);
   el.innerHTML = list.slice().sort((a,b)=>b.flowM3s-a.flowM3s).map(s=>{
-    const pct = Math.max(0.6, (s.flowM3s/max)*100);
     const est = s.quality!=='measured' ? ' <small>becsült</small>' : '';
-    return `<div class="bar clickable ${cls}" data-station="${s.id}" tabindex="0" role="button"><div class="nm" title="${s.name}">${s.name}</div>`+
-      `<div class="track"><div class="fill" style="width:${pct.toFixed(1)}%"></div></div>`+
-      `<div class="n">${fmt(s.flowM3s,1)}${est}</div></div>`;
+    const ratio = s.ratioToMean;
+    const band = ratio!=null ? dryBand(ratio) : null;
+
+    // No mean, no comparison: show the bar empty rather than implying a full one.
+    const width = ratio!=null ? Math.max(0.8, Math.min(ratio, RATIO_SCALE)/RATIO_SCALE*100) : 0;
+    const over = ratio!=null && ratio > RATIO_SCALE ? '<i class="over">▸</i>' : '';
+
+    return `<div class="bar clickable ${cls} ${band?band.cls:''}" data-station="${s.id}" tabindex="0" role="button" `+
+      `title="${s.name}: ${fmt(s.flowM3s,1)} m³/s, sokéves átlag ${fmt(s.longTermMeanM3s,0)} m³/s">`+
+      `<div class="nm">${s.name}</div>`+
+      `<div class="track"><div class="fill" style="width:${width.toFixed(1)}%"></div>`+
+        `<i class="norm" style="left:${(100/RATIO_SCALE).toFixed(1)}%"></i>${over}</div>`+
+      `<div class="n">${fmt(s.flowM3s,1)}${est}`+
+      (ratio!=null?`<small class="${band.cls}">${fmt(ratio*100,0)}% az átlagnak</small>`:'')+
+      `</div></div>`;
   }).join('');
 
   for(const row of el.querySelectorAll('[data-station]')){
@@ -1322,7 +1487,14 @@ function renderSpark(history){
   if(!history || history.length<2){ $('spark-note').textContent='Még nincs elég előzmény a rajzoláshoz — ez az első néhány óra után jelenik meg.'; return; }
   const W=800,H=120;
   const xs = history.map((_,i)=> (i/(history.length-1))*W);
-  const all = history.flatMap(h=>[h.inflowM3s,h.outflowM3s]).filter(v=>v!=null&&isFinite(v));
+
+  // The normal line has to be inside the drawn range, or the chart silently crops the
+  // very comparison it exists to make: two days of drought have a tiny spread, and a
+  // reference 40% higher would sit somewhere off the top of the box.
+  const normalIn = snapshot && snapshot.balance.inflow.longTermMeanM3s;
+  const normalOut = snapshot && snapshot.balance.outflow.longTermMeanM3s;
+  const all = history.flatMap(h=>[h.inflowM3s,h.outflowM3s]).filter(v=>v!=null&&isFinite(v))
+    .concat([normalIn, normalOut].filter(v=>Number.isFinite(v)));
   const lo=Math.min(...all)*0.92, hi=Math.max(...all)*1.05;
   const y = v => H - ((v-lo)/(hi-lo||1))*H;
 
@@ -1330,11 +1502,29 @@ function renderSpark(history){
   const area = line('inflowM3s')+` L${W} ${H} L0 ${H} Z`;
 
   svg.appendChild(svgEl('path',{ class:'area', d:area }));
+
+  // Labels at opposite ends: the two normals are within 120 m³/s of each other, so both
+  // written at the left margin printed one across the other.
+  for(const [value, cls, label, anchor] of [
+    [normalIn,'norm-in','átlagos beáramlás','start'],
+    [normalOut,'norm-out','átlagos kiáramlás','end'],
+  ]){
+    if(!Number.isFinite(value)) continue;
+    const yy = y(value);
+    svg.appendChild(svgEl('path',{ class:'norm '+cls, d:`M0 ${yy.toFixed(1)} L${W} ${yy.toFixed(1)}` }));
+    const t = svgEl('text',{ x: anchor==='end' ? W-6 : 6, y:(yy-5).toFixed(1),
+      class:'norm-label '+cls, 'text-anchor':anchor });
+    t.textContent = `${label}: ${fmt(value,0)} m³/s`;
+    svg.appendChild(t);
+  }
+
   svg.appendChild(svgEl('path',{ d:line('inflowM3s') }));
   svg.appendChild(svgEl('path',{ class:'out', d:line('outflowM3s') }));
 
   const hrs = Math.round((Date.parse(history[history.length-1].timestamp)-Date.parse(history[0].timestamp))/3600000);
-  $('spark-note').innerHTML = `Beáramlás <span style="color:var(--flow)">———</span> és kiáramlás <span style="color:var(--silt)">———</span> az elmúlt ${hrs} órában.`;
+  $('spark-note').innerHTML = `Beáramlás <span style="color:var(--flow)">———</span> és kiáramlás `+
+    `<span style="color:var(--silt)">———</span> az elmúlt ${hrs} órában. A pontozott vonalak azt mutatják, `+
+    `hol lenne a sokéves átlag.`;
 }
 
 // Colours belong to the electricity system, so they stay warm; water keeps the cool
@@ -1432,23 +1622,38 @@ const SYSTEMS = [
 function renderSystems(b){
   const bucket = (river) => (SYSTEMS.find((sys) => sys.rivers.includes(river)) || {}).id;
   const totals = {};
-  for(const sys of SYSTEMS) totals[sys.id] = { in:0, out:0 };
+  for(const sys of SYSTEMS) totals[sys.id] = { in:0, out:0, normalIn:0 };
 
-  for(const st of b.inflow.stations){ const k=bucket(st.river); if(k) totals[k].in += st.flowM3s; }
+  for(const st of b.inflow.stations){
+    const k=bucket(st.river); if(!k) continue;
+    totals[k].in += st.flowM3s;
+    totals[k].normalIn += st.longTermMeanM3s || 0;
+  }
   for(const st of b.outflow.stations){ const k=bucket(st.river); if(k) totals[k].out += st.flowM3s; }
 
-  const max = Math.max(...SYSTEMS.map((s) => Math.max(totals[s.id].in, totals[s.id].out)), 1);
+  // The normal is in the scale too, so the mark stays on the track in a dry year.
+  const max = Math.max(...SYSTEMS.map((s) =>
+    Math.max(totals[s.id].in, totals[s.id].out, totals[s.id].normalIn)), 1);
 
   $('systems').innerHTML = SYSTEMS.map((sys) => {
     const t = totals[sys.id];
     const net = t.in - t.out;
+    const ratio = t.normalIn > 0 ? t.in / t.normalIn : null;
+    const mark = t.normalIn > 0
+      ? `<i class="norm" style="left:${((t.normalIn/max)*100).toFixed(1)}%" title="sokéves átlag: ${fmt(t.normalIn,0)} m³/s"></i>`
+      : '';
+    // Two lanes, not two segments of one bar. Laid end to end they read as a sum -
+    // the Duna row looked like a single 3775 m³/s bar - and a tick for the normal
+    // inflow then landed somewhere past the outflow, meaning nothing.
     return `<div class="sys"><div class="nm">${sys.label}<small>${sys.note}</small></div>`+
       `<div class="track">`+
-        `<i style="width:${((t.in/max)*100).toFixed(1)}%;background:var(--flow)"></i>`+
-        `<i style="width:${((t.out/max)*100).toFixed(1)}%;background:var(--silt)"></i>`+
+        `<div class="lane in"><i style="width:${((t.in/max)*100).toFixed(1)}%"></i>${mark}</div>`+
+        `<div class="lane out"><i style="width:${((t.out/max)*100).toFixed(1)}%"></i></div>`+
       `</div>`+
       `<div class="n">${fmt(t.in,0)} <span style="color:var(--ink-faint)">be</span>`+
-      `<small>${fmt(t.out,0)} ki · ${net>=0?'+':''}${fmt(net,0)}</small></div></div>`;
+      `<small>${fmt(t.out,0)} ki · ${net>=0?'+':''}${fmt(net,0)}</small>`+
+      (ratio!=null?`<small class="${ratioClass(ratio)}">${fmt(ratio*100,0)}% az átlagnak</small>`:'')+
+      `</div></div>`;
   }).join('');
 }
 
@@ -1547,7 +1752,10 @@ async function showStation(id){
     const svg = $('det-spark');
     if(pts.length < 2){ $('det-note').textContent = 'Még nincs elég tárolt előzmény ehhez a szelvényhez.'; return; }
 
-    const W=800,H=120, lo=Math.min(...pts.map(p=>p.flowM3s))*0.95, hi=Math.max(...pts.map(p=>p.flowM3s))*1.05;
+    // The station's own long-term mean is included in the range so the reference line
+    // cannot fall outside the chart drawn to show the distance to it.
+    const values = pts.map(p=>p.flowM3s).concat(Number.isFinite(mean) ? [mean] : []);
+    const W=800,H=120, lo=Math.min(...values)*0.95, hi=Math.max(...values)*1.05;
     const x = (i) => ((i/(pts.length-1))*W).toFixed(1);
     const y = (v) => H - ((v-lo)/(hi-lo||1))*H;
     const d = pts.map((p,i) => (i?'L':'M') + x(i) + ' ' + y(p.flowM3s).toFixed(1)).join(' ');
@@ -1564,10 +1772,18 @@ async function showStation(id){
       stagePath = `<path class="stage" d="${pts.map((p,i)=>(i?'L':'M')+x(i)+' '+sy(p.waterLevelCm).toFixed(1)).join(' ')}"/>`;
     }
 
-    svg.innerHTML = `<path class="area" d="${d} L${W} ${H} L0 ${H} Z"/><path d="${d}"/>${stagePath}`;
+    let normPath = '';
+    if(Number.isFinite(mean)){
+      const ny = y(mean).toFixed(1);
+      normPath = `<path class="norm norm-in" d="M0 ${ny} L${W} ${ny}"/>`+
+        `<text class="norm-label norm-in" x="6" y="${(y(mean)-4).toFixed(1)}">sokéves átlag: ${fmt(mean,0)} m³/s</text>`;
+    }
+
+    svg.innerHTML = `<path class="area" d="${d} L${W} ${H} L0 ${H} Z"/>${normPath}<path d="${d}"/>${stagePath}`;
     const hrs = Math.round((Date.parse(pts[pts.length-1].timestamp)-Date.parse(pts[0].timestamp))/3600000);
     $('det-note').innerHTML = `${pts.length} mérés az elmúlt ${hrs} órából — vízhozam <span style="color:var(--flow)">———</span>`+
-      (stagePath ? ` és vízállás <span style="color:var(--deep)">- - -</span>, külön skálán.` : '.');
+      (stagePath ? ` és vízállás <span style="color:var(--deep)">- - -</span>, külön skálán` : '')+
+      (Number.isFinite(mean) ? `. A pontozott vonal a sokéves átlag.` : '.');
   }catch{ $('det-note').textContent = 'Az előzményt nem sikerült betölteni.'; }
 }
 
@@ -1620,6 +1836,7 @@ async function refresh(){
     renderBars(s.balance.inflow.stations, $('bars-in'), '');
     renderBars(s.balance.outflow.stations, $('bars-out'), 'out');
     renderExplainer(s);
+    renderDroughtBanner(s.balance);
     renderMix(s.power);
     renderSystems(s.balance);
     renderScale(s.balance);
