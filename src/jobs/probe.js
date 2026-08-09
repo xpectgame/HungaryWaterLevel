@@ -635,6 +635,75 @@ async function probeMavirSheet() {
  * a record is broken, a grade is revised - and fetching them on every poll would spend
  * a request on data that is static between such events.
  */
+/**
+ * Find the gauges that measure standing water.
+ *
+ * The balance is built out of rivers, but "how is Hungary's water doing" is a question
+ * most people answer by looking at the Balaton. Lake gauges are in the same catalogue as
+ * river ones, so this is a search rather than a new integration - but which vmoType
+ * carries them is not documented anywhere we can read, so it sweeps a range and prints
+ * whatever it finds whole.
+ */
+const LAKE_PATTERN = /balaton|fert[őo]|velence|tisza-t[óo]|kisk[őo]re|si[óo]fok|ag[áa]rd|sukor[óo]|poroszl[óo]|keszthely|szemes|f[űu]zf[őo]|abda|tó\b|tavak/i;
+
+async function probeLakes() {
+  console.log('\n########## lake gauges ##########');
+
+  for (const vmoType of [11, 12, 13, 14, 15, 16, 21, 31]) {
+    for (const internetOnly of [true, false]) {
+      let rows;
+      try {
+        ({ rows } = await fetchCatalogue(vmoType, { internetOnly }));
+      } catch (err) {
+        console.log(`vmoType ${vmoType} ${internetOnly ? 'InternetVmo' : 'Vmo'}: FAILED ${err.message}`);
+        continue;
+      }
+      if (!Array.isArray(rows) || rows.length === 0) {
+        console.log(`vmoType ${vmoType} ${internetOnly ? 'InternetVmo' : 'Vmo'}: empty`);
+        continue;
+      }
+
+      const hits = rows.filter((row) =>
+        [row.Nev, row.MdrNev, row.Telepules].some((field) => LAKE_PATTERN.test(String(field ?? ''))),
+      );
+      console.log(
+        `\nvmoType ${vmoType} ${internetOnly ? 'InternetVmo' : 'Vmo'}: ${rows.length} rows, ${hits.length} look like standing water`,
+      );
+      // The distinct watercourse names are the fastest way to see what a list actually is.
+      const waters = [...new Set(rows.map((r) => r.MdrNev).filter(Boolean))];
+      console.log(`  waters (${waters.length}): ${waters.slice(0, 24).join(' | ')}${waters.length > 24 ? ' …' : ''}`);
+      for (const hit of hits.slice(0, 30)) console.log(`  ${JSON.stringify(hit)}`);
+    }
+  }
+}
+
+/**
+ * What kinds of measurement exist at all.
+ *
+ * We use 87 (discharge) and 68 (stage) because those are the two we needed. A lake has
+ * no discharge, and the interesting series there are level and water temperature - so
+ * before assuming a code, ask.
+ */
+async function probeDataTypes() {
+  console.log('\n########## data type catalogue ##########');
+  const token = await createTokenProvider().getToken();
+
+  for (const path of ['/Vra/AdatFajta', '/Vra/AdatFajtak', '/Vra/AdatTipus', '/Vra/Mertekegyseg']) {
+    const url = `${VRAQUERY_BASE}${path}`;
+    try {
+      const rows = await fetchJson(url, {
+        timeoutMs: 30000,
+        headers: { Authorization: `Bearer ${token}`, ...browserHeaders('https://data.vizugy.hu') },
+      });
+      const list = Array.isArray(rows) ? rows : [rows];
+      console.log(`\n${url}: ${list.length} entries`);
+      for (const row of list.slice(0, 60)) console.log(`  ${JSON.stringify(row)}`);
+    } catch (err) {
+      console.log(`\n${url}: FAILED ${err.message}`);
+    }
+  }
+}
+
 async function probeThresholds() {
   console.log('\n########## stage thresholds (LKV / LNV / flood grades) ##########');
   const { EXTERNAL_IDS } = require('../sources/vizugy');
@@ -668,6 +737,16 @@ async function main() {
 
   if (args.includes('--thresholds')) {
     await probeThresholds();
+    return;
+  }
+
+  if (args.includes('--lakes')) {
+    await probeLakes();
+    return;
+  }
+
+  if (args.includes('--datatypes')) {
+    await probeDataTypes();
     return;
   }
 

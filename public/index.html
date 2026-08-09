@@ -92,15 +92,49 @@ h1 em{font-style:normal;color:var(--flow)}
 .maphead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
 .maphead h2{font-size:15px;font-weight:600;letter-spacing:.02em}
 .maphead .hint{font-size:12px;color:var(--ink-faint)}
-svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y}
-.border-outline{fill:url(#basin);stroke:var(--flow-dim);stroke-width:1.2;opacity:1}
+/* A tap on the map must open a gauge, never start a text selection. Long-press on a
+   label used to raise the copy/callout menu, which is why reading a value on a phone
+   meant holding still and fighting the browser. */
+svg.map{width:100%;height:auto;display:block;overflow:hidden;touch-action:pan-y;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+svg.map text{user-select:none;-webkit-user-select:none}
+
+/* Neighbours are drawn, not implied: the water on this map comes from six countries,
+   and a Hungary floating on white cannot show that. They are a flat, cooler grey so the
+   country itself is the only lit surface - contrast, not colour, does the separating. */
+.frame{fill:#f2f6f8}
+.abroad{fill:#e4ebee;stroke:#d0dee3;stroke-width:.6}
+.abroad-label{font-size:9px;letter-spacing:.22em;text-transform:uppercase;fill:#b3c8d0;pointer-events:none}
+.border-outline{fill:url(#basin);stroke:var(--deep);stroke-width:1.4;opacity:1;stroke-linejoin:round}
+.lake{fill:var(--shallow);opacity:.55;stroke:var(--flow);stroke-width:.5}
+.lake-label{font-size:6.5px;fill:var(--deep);opacity:.8;pointer-events:none;font-style:italic}
+
 .river{fill:none;stroke-linecap:round;stroke-linejoin:round}
 .river-bed{stroke:rgba(14,143,158,.16)}
+/* Context watercourses: present so the country reads as a river network, quiet enough
+   that the three the balance actually turns on stay the subject. */
+.river-minor{stroke:rgba(14,143,158,.30);stroke-width:.7}
+.river-mid{stroke:rgba(14,143,158,.45);stroke-width:1.3}
 /* The dash marches along the river. Duration is set per river from its own
    discharge, so a low river visibly crawls and a high one runs. */
-.river-flow{stroke:var(--flow);stroke-dasharray:5 15;animation:drift linear infinite}
-@keyframes drift{to{stroke-dashoffset:-40}}
+.river-flow{stroke:var(--flow);stroke-dasharray:5 21;animation:drift linear infinite}
+/* The offset is exactly one dash period, so the loop closes on itself with no jump.
+   styleRivers varies the dash and the gap but always to the same total, for this
+   reason: a period that changed with the river would stutter once per cycle. */
+@keyframes drift{to{stroke-dashoffset:-26}}
+.river-label{font-size:6.5px;fill:var(--flow);opacity:.8;pointer-events:none;letter-spacing:.04em}
+
+.place circle{fill:#fff;stroke:var(--ink-faint);stroke-width:.9}
+.place text{font-size:7px;fill:var(--ink-soft);pointer-events:none}
+.place.capital circle{fill:var(--ink);stroke:#fff;stroke-width:1}
+.place.capital text{font-size:8.5px;font-weight:600;fill:var(--ink)}
+.place.foreign circle{stroke:#b9ced6}
+.place.foreign text{fill:#9db6bf}
+
 .node{cursor:pointer}
+/* An invisible disc under every marker. A 3-pixel dot is not a touch target, and the
+   alternative - drawing everything bigger - would bury the map under its own markers. */
+.hit{fill:transparent;stroke:none}
 .node circle{transition:r .5s cubic-bezier(.2,.8,.2,1), opacity .4s}
 .node .halo{fill:var(--flow);opacity:.14}
 .node .core{fill:var(--flow);stroke:#fff;stroke-width:1.2}
@@ -108,7 +142,9 @@ svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y
 .node.interior .core{fill:var(--ink-faint)} .node.interior .halo{opacity:.06}
 .node text{font-family:var(--sans);font-size:6.5px;fill:var(--ink-soft);pointer-events:none}
 .plant{cursor:pointer}
-.plant polygon,.plant path,.plant circle:not(.heat){fill:var(--ember);stroke:#fff;stroke-width:.9}
+/* Classed rather than `circle:not(.heat)`: that selector also caught the invisible
+   touch target added underneath, and painted a 15-unit solid ember disc over the map. */
+.plant polygon,.plant path,.plant circle.glyph{fill:var(--ember);stroke:#fff;stroke-width:.9}
 .plant .hub{fill:#fff;stroke:var(--ember);stroke-width:1.1}
 .plant.selected .heat{opacity:.34}
 .plant .heat{fill:var(--ember);opacity:.16}
@@ -123,6 +159,11 @@ svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y
 #tip .t-name{font-weight:600;margin-bottom:2px}
 #tip .t-val{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--flow);font-size:16px}
 #tip .t-sub{color:var(--ink-faint);font-size:11.5px;margin-top:3px}
+/* Only ever present on a pinned (touch) tip: on a hovering pointer there is nothing to
+   press, because the click that would press it already opens the same thing. */
+#tip .t-more{display:block;width:100%;margin-top:9px;padding:8px 10px;border:1px solid var(--line);
+  border-radius:8px;background:var(--sunk);color:var(--flow);font:inherit;font-size:12.5px;
+  font-weight:600;cursor:pointer}
 
 /* --- cards --- */
 .grid{display:grid;gap:12px;margin-bottom:18px}
@@ -290,21 +331,24 @@ footer a{color:var(--ink-soft)}
 <section class="mapcard">
   <div class="maphead">
     <h2>A folyók most</h2>
-    <div class="hint">A sodrás sebessége a tényleges vízhozamot követi. Vidd rá az egeret egy pontra.</div>
+    <div class="hint">A sodrás sebessége a tényleges vízhozamot követi. Koppints vagy kattints egy pontra.</div>
   </div>
-  <svg class="map" id="map" viewBox="0 0 800 470" role="img" aria-label="Magyarország folyói és vízrajzi szelvényei">
+  <svg class="map" id="map" viewBox="0 0 800 518" role="img" aria-label="Magyarország folyói és vízrajzi szelvényei">
     <defs>
       <linearGradient id="basin" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#eaf5f8" stop-opacity="1"/>
-        <stop offset="100%" stop-color="#dceef3" stop-opacity="1"/>
+        <stop offset="0%" stop-color="#fbfeff" stop-opacity="1"/>
+        <stop offset="100%" stop-color="#e2f2f7" stop-opacity="1"/>
       </linearGradient>
       <linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="#0e8f9e" stop-opacity=".28"/>
         <stop offset="100%" stop-color="#0e8f9e" stop-opacity="0"/>
       </linearGradient>
     </defs>
+    <g id="layer-abroad"></g>
     <g id="layer-country"></g>
     <g id="layer-rivers"></g>
+    <g id="layer-lakes"></g>
+    <g id="layer-places"></g>
     <g id="layer-borderflow"></g>
     <g id="layer-plants"></g>
     <g id="layer-nodes"></g>
@@ -314,6 +358,7 @@ footer a{color:var(--ink-soft)}
     <span><i class="key" style="background:var(--silt)"></i>kilépő szelvény</span>
     <span><i class="key" style="background:var(--ink-faint)"></i>belső mérce (nem összegezzük)</span>
     <span><i class="key" style="background:var(--ember)"></i>erőmű, hűtővíz-kivétellel</span>
+    <span style="color:var(--ink-faint)">Határok, folyók, tavak: Natural Earth (10 m)</span>
   </div>
 </section>
 
@@ -452,33 +497,37 @@ footer a{color:var(--ink-soft)}
 /* --------------------------------------------------------------------------
    Geometry.
 
-   A stylised outline and the three main rivers, drawn in degrees and projected
-   into the viewBox. Tiles were the alternative and were rejected: a tile layer
-   makes this look like every other map with pins on it, needs a third party at
-   runtime, and cannot animate the one thing that matters here - the water
-   moving along the channel at the speed it is actually moving.
+   The real border, rivers, lakes and towns, from Natural Earth, built into
+   public/geo.json by scripts/build-geo.js and served from our own origin. Tiles
+   were the alternative and were rejected: a tile layer makes this look like every
+   other map with pins on it, needs a third party at runtime, and cannot animate
+   the one thing that matters here - the water moving along the channel at the
+   speed it is actually moving.
+
+   The projection is Mercator, not a plain lon/lat stretch. At 47 degrees north a
+   degree of longitude is 76 km against a degree of latitude's 111: drawing them
+   at the same scale flattens the country by nearly half, and the shape stops
+   being recognisable as Hungary.
 -------------------------------------------------------------------------- */
-const BBOX = { west:15.9, east:23.1, south:45.6, north:48.75 };
-const PAD = 26;
+const W = 800;
+let geo = null, VIEW = { west:15.7, east:23.3, south:45.55, north:48.85 }, H = 518, SCALE = 1;
+
+const mercY = lat => Math.log(Math.tan(Math.PI/4 + (lat*Math.PI/180)/2));
+
+function fitProjection(view){
+  VIEW = view;
+  SCALE = W / ((view.east - view.west) * Math.PI/180);
+  H = Math.round((mercY(view.north) - mercY(view.south)) * SCALE);
+  $('map').setAttribute('viewBox', `0 0 ${W} ${H}`);
+}
+
 function px(lon,lat){
-  const x = PAD + (lon-BBOX.west)/(BBOX.east-BBOX.west) * (800-2*PAD);
-  const y = PAD + (BBOX.north-lat)/(BBOX.north-BBOX.south) * (470-2*PAD);
-  return [x,y];
+  return [ (lon - VIEW.west) * Math.PI/180 * SCALE, (mercY(VIEW.north) - mercY(lat)) * SCALE ];
 }
 const path = pts => pts.map((p,i)=> (i?'L':'M') + px(p[0],p[1]).map(v=>v.toFixed(1)).join(' ')).join(' ');
 
-const BORDER = [[17.16,48.01],[17.75,47.75],[18.75,47.82],[19.53,48.27],[20.33,48.56],[21.44,48.58],
- [22.15,48.40],[22.90,48.10],[22.30,47.75],[21.95,47.20],[21.65,46.95],[21.50,46.70],[21.20,46.25],
- [20.75,46.25],[20.25,46.13],[19.55,46.17],[18.90,45.92],[18.30,45.78],[17.60,45.85],[16.90,46.25],
- [16.45,46.50],[16.11,46.87],[16.45,47.00],[16.28,47.62],[16.65,47.68],[17.05,47.70],[17.16,48.01]];
-
-const RIVERS = [
-  { id:'duna', name:'Duna', station:'duna-komarom', pts:[[17.20,48.00],[17.62,47.86],[18.12,47.74],
-      [18.74,47.79],[18.96,47.79],[19.05,47.50],[18.93,46.96],[18.86,46.58],[18.96,46.18],[18.69,45.99]] },
-  { id:'tisza', name:'Tisza', station:'tisza-szeged', pts:[[22.82,48.10],[22.32,48.13],[21.41,48.12],
-      [21.05,47.93],[20.55,47.55],[20.19,47.17],[20.14,46.71],[20.14,46.25],[20.15,46.17]] },
-  { id:'drava', name:'Dráva', station:'drava-ortilos', pts:[[16.89,46.29],[17.46,45.96],[18.22,45.80],[18.72,45.92]] },
-];
+/** The three rivers whose live discharge drives the animation, by geo.json name. */
+const GAUGED_RIVER = { 'Duna':'duna-komarom', 'Tisza':'tisza-szeged', 'Dráva':'drava-ortilos' };
 
 /* -------------------------------------------------------------------------- */
 const $ = id => document.getElementById(id);
@@ -515,15 +564,111 @@ function setNumber(el, value, decimals=0){
 /* -------------------------------------------------------------------------- */
 let stations = [], plants = [], snapshot = null;
 
+/**
+ * Draw everything that does not change: countries, water, towns.
+ *
+ * Order is the whole trick. Neighbours first so Hungary sits on something, then the
+ * country fill, then rivers from smallest to largest so a main stem is never crossed by
+ * a creek drawn over it, then lakes, then the labels that have to survive all of it.
+ */
 function drawBase(){
-  $('layer-country').appendChild(svgEl('path',{ d: path(BORDER)+' Z', class:'border-outline' }));
+  if(!geo) return;
+  fitProjection(geo.view);
 
-  for(const r of RIVERS){
+  $('layer-abroad').appendChild(svgEl('rect',{ x:0, y:0, width:W, height:H, class:'frame' }));
+  for(const c of geo.neighbours){
+    for(const ring of c.shapes){
+      $('layer-abroad').appendChild(svgEl('path',{ d: path(ring)+' Z', class:'abroad' }));
+    }
+    const pos = countryLabelAt(c);
+    if(pos){
+      const t = svgEl('text',{ x:pos[0].toFixed(1), y:pos[1].toFixed(1), class:'abroad-label', 'text-anchor':'middle' });
+      t.textContent = c.name;
+      $('layer-abroad').appendChild(t);
+    }
+  }
+  for(const ring of geo.hungary){
+    $('layer-country').appendChild(svgEl('path',{ d: path(ring)+' Z', class:'border-outline' }));
+  }
+
+  // Rivers arrive sorted context-first. A gauged river gets a bed and a moving dash;
+  // everything else is one static stroke.
+  for(const r of geo.rivers){
     const d = path(r.pts);
-    const g = svgEl('g');
-    g.appendChild(svgEl('path',{ d, class:'river river-bed', 'stroke-width':7, id:'bed-'+r.id }));
-    g.appendChild(svgEl('path',{ d, class:'river river-flow', 'stroke-width':2.4, id:'flow-'+r.id }));
-    $('layer-rivers').appendChild(g);
+    if(GAUGED_RIVER[r.name]){
+      $('layer-rivers').appendChild(svgEl('path',{ d, class:'river river-bed', 'data-bed':r.name, 'stroke-width':7 }));
+      $('layer-rivers').appendChild(svgEl('path',{ d, class:'river river-flow', 'data-flow':r.name, 'stroke-width':2.4 }));
+    } else {
+      $('layer-rivers').appendChild(svgEl('path',{ d, class:'river '+(r.rank===2?'river-mid':'river-minor') }));
+    }
+  }
+
+  for(const l of geo.lakes){
+    for(const ring of l.shapes){
+      $('layer-lakes').appendChild(svgEl('path',{ d: path(ring)+' Z', class:'lake' }));
+    }
+    const c = ringCentre(l.shapes[0]);
+    const t = svgEl('text',{ x:c[0].toFixed(1), y:(c[1]+2).toFixed(1), class:'lake-label', 'text-anchor':'middle' });
+    t.textContent = l.name;
+    $('layer-lakes').appendChild(t);
+  }
+}
+
+function ringCentre(ring){
+  const pts = ring.map(p => px(p[0],p[1]));
+  return [ pts.reduce((s,p)=>s+p[0],0)/pts.length, pts.reduce((s,p)=>s+p[1],0)/pts.length ];
+}
+
+/**
+ * Where a neighbour's name goes, or null if there is nowhere sensible.
+ *
+ * The centroid of a country clipped to this frame is usually well outside it - most of
+ * Romania is off the right edge, so its centroid lands past the border. Only the largest
+ * ring is considered, and only if its centre falls comfortably inside the picture.
+ */
+function countryLabelAt(country){
+  const biggest = country.shapes.reduce((a,b) => (b.length > a.length ? b : a), country.shapes[0]);
+  if(!biggest || biggest.length < 8) return null;
+  const [x,y] = ringCentre(biggest);
+  if(x < 40 || x > W-40 || y < 24 || y > H-24) return null;
+  return [x,y];
+}
+
+/**
+ * Towns, so a gauge has somewhere to be near.
+ *
+ * "Felsőberecki" locates nothing on its own; the same dot next to Miskolc and
+ * Nyíregyháza is a place. Foreign towns are drawn paler - they are orientation, not
+ * subject - but they are drawn, because the Danube arriving from Bratislava and the
+ * Tisza from Ungvár is the actual story.
+ */
+function drawPlaces(){
+  const layer = $('layer-places');
+  layer.textContent = '';
+  if(!geo) return;
+
+  for(const p of geo.places){
+    const [x,y] = px(p.lon, p.lat);
+    const capital = p.name==='Budapest';
+    const size = capital ? 8.5 : 7;
+    const gap = capital ? 4.5 : 3.2;
+
+    const g = svgEl('g',{ class:'place'+(capital?' capital':'')+(p.abroad?' foreign':'') });
+    g.appendChild(svgEl('circle',{ cx:x.toFixed(1), cy:y.toFixed(1), r: capital?2.6:1.7 }));
+
+    // Right of the dot by default; flipped left when that would run off the frame or
+    // land on something already drawn. A town whose name fits nowhere keeps its dot.
+    let tx = x + gap, anchor = 'start';
+    if(!claimLabel(tx, y+2.4, p.name, size)){
+      const width = p.name.length * size * 0.54;
+      tx = x - gap - width;
+      if(claimLabel(tx, y+2.4, p.name, size)) anchor = 'start';
+      else { layer.appendChild(g); continue; }
+    }
+    const t = svgEl('text',{ x:tx.toFixed(1), y:(y+(capital?3:2.4)).toFixed(1), 'text-anchor':anchor });
+    t.textContent = p.name;
+    g.appendChild(t);
+    layer.appendChild(g);
   }
 }
 
@@ -532,52 +677,126 @@ function drawBase(){
    Width is the honest encoding of quantity; speed is what makes a drought
    legible at a glance without reading a single number. */
 function styleRivers(byId){
-  for(const r of RIVERS){
-    const s = byId.get(r.station);
+  for(const [name, stationId] of Object.entries(GAUGED_RIVER)){
+    const s = byId.get(stationId);
     const flow = s ? s.flowM3s : null;
-    const bed = $('bed-'+r.id), fl = $('flow-'+r.id);
-    if(!bed||!fl) continue;
-
     const w = flow==null ? 4 : Math.max(3, Math.min(16, 3 + Math.sqrt(flow)/6));
-    bed.setAttribute('stroke-width', (w+3.5).toFixed(1));
-    fl.setAttribute('stroke-width', w.toFixed(1));
-
     // A river at its long-term mean drifts in about three seconds; a tenth of
     // that crawls. Clamped so nothing ever stops dead or strobes.
     const ratio = flow==null ? 0.3 : Math.max(0.04, Math.min(2.5, flow/1500));
-    fl.style.animationDuration = (Math.max(0.9, Math.min(16, 2.4/ratio))).toFixed(2)+'s';
-    fl.style.opacity = flow==null ? .25 : .95;
+    const duration = Math.max(0.9, Math.min(16, 2.4/ratio)).toFixed(2)+'s';
+
+    // Every segment of the river, not one: Natural Earth splits a main stem wherever a
+    // tributary meets it, so the Danube arrives as several separate lines.
+    for(const bed of document.querySelectorAll(`[data-bed="${name}"]`)) bed.setAttribute('stroke-width',(w+3.5).toFixed(1));
+    for(const fl of document.querySelectorAll(`[data-flow="${name}"]`)){
+      fl.setAttribute('stroke-width', w.toFixed(1));
+      // The dash grows with the channel but the period stays at 26, which is what the
+      // keyframe offset assumes. A fixed 5-unit dash on an 11-unit-wide Danube drew a
+      // string of lozenges rather than a current.
+      const dash = Math.max(2, Math.min(11, w * 0.8));
+      fl.setAttribute('stroke-dasharray', `${dash.toFixed(1)} ${(26 - dash).toFixed(1)}`);
+      fl.style.animationDuration = duration;
+      fl.style.opacity = flow==null ? .25 : .95;
+    }
   }
+}
+
+/**
+ * Greedy label placement.
+ *
+ * With real towns on the map there are now three families of label competing for the
+ * same few hundred pixels, and overlapping text is worse than missing text: it makes
+ * both unreadable and neither obviously wrong. A label that collides with one already
+ * placed is dropped, biggest first, so what survives is the important half.
+ */
+let labelBoxes = [];
+const overlaps = (a,b) => !(a.x > b.x+b.w || a.x+a.w < b.x || a.y > b.y+b.h || a.y+a.h < b.y);
+
+function claimLabel(x, y, text, size){
+  const box = { x, y: y - size, w: text.length * size * 0.54, h: size * 1.15 };
+  if(box.x + box.w > W - 4 || labelBoxes.some((b) => overlaps(box,b))) return false;
+  labelBoxes.push(box);
+  return true;
+}
+
+/** Reserve the space a marker occupies, so no label is written across a circle. */
+function blockArea(x, y, r){
+  labelBoxes.push({ x:x-r, y:y-r, w:r*2, h:r*2 });
 }
 
 function drawNodes(){
   const nodes = $('layer-nodes'); nodes.textContent='';
+  const plantLayer = $('layer-plants'); plantLayer.textContent='';
   const flows = $('layer-borderflow'); flows.textContent='';
   const byId = new Map(currentStationFlows());
 
-  for(const st of stations){
-    if(!st.location) continue;
-    const [x,y] = px(st.location.lon, st.location.lat);
+  /* Sizes, in viewBox units.
+
+     The Danube at mean flow and a border creek differ by three orders of magnitude, so
+     the radius goes as the square root and is capped: past a point a bigger circle stops
+     meaning "more water" and starts meaning "covers Komárom". Interior gauges are drawn
+     three-quarter size, because they carry water that was already counted upstream and
+     should not out-shout the sections that are actually in the balance. */
+  const radiusOf = (flow, role) => {
+    const base = flow == null ? 2.4 : Math.max(2.2, Math.min(9.5, 2.2 + Math.sqrt(flow)/4.2));
+    return role === 'interior' ? base * 0.72 : base;
+  };
+  const plantSizeOf = (w) => (w == null ? 3 : Math.max(3, Math.min(7.5, 3 + Math.sqrt(w) * 0.62)));
+
+  // Largest flow first, so when two gauges collide the one carrying more water keeps
+  // its name.
+  const ordered = stations.filter(s=>s.location).slice().sort((a,b) => {
+    const fa = byId.get(a.id), fb = byId.get(b.id);
+    return ((fb&&fb.flowM3s)||0) - ((fa&&fa.flowM3s)||0);
+  });
+  const flowOf = (st) => {
     const live = byId.get(st.id);
-    const flow = live ? live.flowM3s : null;
-    const role = st.role;
+    return live ? live.flowM3s : (st.current ? st.current.flowM3s : null);
+  };
 
-    const g = svgEl('g',{ class:'node '+role, transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
-    const r = flow==null ? 3 : Math.max(2.6, Math.min(13, 2.6+Math.sqrt(flow)/3.2));
-    g.appendChild(svgEl('circle',{ class:'halo', r:(r*2.1).toFixed(1) }));
+  /* Two passes, because a label must dodge every marker and not just the ones drawn
+     before it. First everything claims the space it physically covers, then the text
+     competes for what is left. */
+  labelBoxes = [];
+  for(const c of geo ? geo.neighbours : []){
+    const pos = countryLabelAt(c);
+    if(pos) blockArea(pos[0], pos[1], 26);
+  }
+  for(const st of ordered){
+    const [x,y] = px(st.location.lon, st.location.lat);
+    blockArea(x, y, radiusOf(flowOf(st), st.role));
+  }
+  for(const p of plants){
+    if(!p.location) continue;
+    const [x,y] = px(p.location.lon, p.location.lat);
+    blockArea(x, y, plantSizeOf(p.water && p.water.withdrawalM3s));
+  }
+
+  // Towns are placed first among the labels: they are the fixed frame a reader uses to
+  // find everything else.
+  drawPlaces();
+
+  for(const st of ordered){
+    const [x,y] = px(st.location.lon, st.location.lat);
+    const flow = flowOf(st);
+    const r = radiusOf(flow, st.role);
+
+    const g = svgEl('g',{ class:'node '+st.role, transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
+    g.appendChild(svgEl('circle',{ class:'halo', r:(r*1.9).toFixed(1) }));
     g.appendChild(svgEl('circle',{ class:'core', r:r.toFixed(1) }));
+    // 14 units is roughly a fingertip once the 800-unit viewBox is scaled to a phone.
+    g.appendChild(svgEl('circle',{ class:'hit', r: Math.max(14, r*1.9).toFixed(1) }));
 
-    // Only the big ones get a label, or the map turns into a word cloud.
-    if(flow!=null && flow>60){
+    // "Duna – Komárom" is labelled "Komárom": the river is already drawn under it.
+    const label = st.name.split('–').pop().trim();
+    if(flow!=null && flow>60 && claimLabel(x+r+4, y+2.5, label, 6.5)){
       const t = svgEl('text',{ x:(r+4).toFixed(1), y:'2.5' });
-      t.textContent = st.name.split('–').pop().trim();
+      t.textContent = label;
       g.appendChild(t);
     }
 
-    g.addEventListener('pointerenter', e => showTip(e, st, flow));
-    g.addEventListener('pointermove', moveTip);
-    g.addEventListener('pointerleave', hideTip);
-    g.addEventListener('click', () => showStation(st.id));
+    bindMarker(g, () => renderStationTip(st, flow), () => showStation(st.id));
     nodes.appendChild(g);
   }
 
@@ -587,18 +806,18 @@ function drawNodes(){
     const mw = p.generation && p.generation.powerMw;
     const w = p.water && p.water.withdrawalM3s;
     const g = svgEl('g',{ class:'plant '+(p.type||''), 'data-plant':p.id, transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
-    const size = w==null ? 3.4 : Math.max(3.4, Math.min(11, 3.4+Math.sqrt(w)*0.9));
-    g.appendChild(svgEl('circle',{ class:'heat', r:(size*2).toFixed(1) }));
+    const size = plantSizeOf(w);
+    g.appendChild(svgEl('circle',{ class:'heat', r:(size*1.8).toFixed(1) }));
     g.appendChild(plantGlyph(p.type, size));
-    if(w!=null && w>5){
+    g.appendChild(svgEl('circle',{ class:'hit', r: Math.max(14, size*1.8).toFixed(1) }));
+    const name = p.name.split(/[ (]/)[0];
+    if(w!=null && w>5 && claimLabel(x+size+4, y-3, name, 6.5)){
       const t = svgEl('text',{ x:(size+4).toFixed(1), y:'-3' });
-      t.textContent = p.name.split(/[ (]/)[0];
+      t.textContent = name;
       g.appendChild(t);
     }
-    g.addEventListener('pointerenter', e => showPlantTip(e, p, mw, w));
-    g.addEventListener('pointermove', moveTip);
-    g.addEventListener('pointerleave', hideTip);
-    $('layer-plants').appendChild(g);
+    bindMarker(g, () => renderPlantTip(p, mw, w), () => showPlant(p.id));
+    plantLayer.appendChild(g);
   }
 
   styleRivers(byId);
@@ -627,7 +846,7 @@ function plantGlyph(type, r){
     return svgEl('polygon',{ points:`${-r*0.8},${-r} ${r*0.8},${-r} ${r},${r} ${-r},${r}` });
   }
   if(type==='biomass'){
-    return svgEl('circle',{ r:r.toFixed(2) });
+    return svgEl('circle',{ r:r.toFixed(2), class:'glyph' });
   }
   // Gas and everything else: a flame-ish drop.
   return svgEl('path',{ d:`M 0,${-r*1.2} C ${r*0.9},${-r*0.2} ${r*0.7},${r} 0,${r} C ${-r*0.7},${r} ${-r*0.9},${-r*0.2} 0,${-r*1.2} Z` });
@@ -639,8 +858,62 @@ function currentStationFlows(){
   return all.map(s => [s.id, s]);
 }
 
-/* --- tooltip --- */
-function showTip(e, st, flow){
+/* --- tooltip -------------------------------------------------------------
+
+   Two input models, not one pretending to be the other. A mouse hovers, so the
+   tooltip follows the cursor and vanishes on the way out. A finger cannot hover:
+   the old build showed the tooltip only while the screen was held, so reading a
+   number on a phone meant keeping still and losing to the copy menu. On touch a
+   tap pins the tooltip beside the marker and gives it a way through to the full
+   detail, and the next tap anywhere dismisses it.
+-------------------------------------------------------------------------- */
+let tipPinned = false;
+let pointerKind = 'mouse';
+
+function tipEl(){ return $('tip'); }
+
+/** Wire one marker for both input models. `render` fills the tip, `open` goes deeper. */
+function bindMarker(g, render, open){
+  const isMouse = (e) => (e.pointerType || 'mouse') === 'mouse';
+  g.addEventListener('pointerdown', (e) => { pointerKind = e.pointerType || 'mouse'; });
+  g.addEventListener('pointerenter', (e) => { if(isMouse(e) && !tipPinned){ render(); moveTip(e); tipEl().style.opacity='1'; } });
+  g.addEventListener('pointermove', (e) => { if(isMouse(e) && !tipPinned) moveTip(e); });
+  g.addEventListener('pointerleave', (e) => { if(isMouse(e) && !tipPinned) hideTip(); });
+  g.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if(pointerKind === 'mouse'){ open(); return; }
+    render();
+    pinTip(g, open);
+  });
+}
+
+/** Anchor the tip to the marker rather than to the finger, which is covering it. */
+function pinTip(g, open){
+  const t = tipEl();
+  t.insertAdjacentHTML('beforeend', '<button type="button" class="t-more">Részletek megnyitása →</button>');
+  t.style.opacity = '1';
+  t.style.pointerEvents = 'auto';
+  tipPinned = true;
+
+  const r = g.getBoundingClientRect();
+  const x = Math.min(Math.max(8, r.left + r.width/2 - t.offsetWidth/2), innerWidth - t.offsetWidth - 8);
+  const above = r.top - t.offsetHeight - 12;
+  t.style.left = x + 'px';
+  t.style.top = (above > 8 ? above : Math.min(r.bottom + 12, innerHeight - t.offsetHeight - 8)) + 'px';
+
+  t.querySelector('.t-more').addEventListener('click', (ev) => { ev.stopPropagation(); hideTip(); open(); });
+}
+
+// Any tap that is not on the tip or another marker puts it away.
+document.addEventListener('pointerdown', (e) => {
+  if(!tipPinned) return;
+  const t = tipEl();
+  if(t.contains(e.target)) return;
+  if(e.target instanceof Element && e.target.closest('.node,.plant')) return;
+  hideTip();
+}, true);
+
+function renderStationTip(st, flow){
   const mean = st.longTermMeanM3s;
   const ratio = (flow!=null && mean) ? flow/mean : null;
   const stage = st.current && st.current.stage;
@@ -653,15 +926,13 @@ function showTip(e, st, flow){
     (stage?`<div class="t-sub">vízállás <b>${fmt(stage.cm,0)} cm</b>`+
       (stage.grade?` · <b style="color:var(--alarm)">${stage.gradeName}</b>`
         : stage.aboveRecordLowCm!=null?` · ${fmt(stage.aboveRecordLowCm,0)} cm-rel a minimum fölött`:'')+`</div>`:'');
-  moveTip(e); $('tip').style.opacity='1';
 }
-function showPlantTip(e,p,mw,w){
+function renderPlantTip(p,mw,w){
   $('tip').innerHTML =
     `<div class="t-name">${p.name}</div>`+
     `<div class="t-val" style="color:var(--ember)">${fmt(w,1)} <span style="font-size:12px;color:var(--ink-faint)">m³/s hűtővíz</span></div>`+
     `<div class="t-sub">${mw!=null?fmt(mw,0)+' MW · ':''}${p.capacityMw} MW beépített`+
     (p.generation&&p.generation.confidence?` · ${p.generation.confidence==='measured'?'mért':'becsült'}`:'')+`</div>`;
-  moveTip(e); $('tip').style.opacity='1';
 }
 function moveTip(e){
   const t=$('tip'), pad=14;
@@ -669,7 +940,12 @@ function moveTip(e){
   const y=Math.max(8, e.clientY-t.offsetHeight-pad);
   t.style.left=x+'px'; t.style.top=y+'px';
 }
-function hideTip(){ $('tip').style.opacity='0'; }
+function hideTip(){
+  const t=$('tip');
+  t.style.opacity='0';
+  t.style.pointerEvents='none';
+  tipPinned=false;
+}
 
 /* --- render --- */
 function renderHeadline(b){
@@ -907,6 +1183,13 @@ function selectPlant(id){
   for(const el of document.querySelectorAll('.plant')) el.classList.toggle('selected', el.dataset.plant===selectedPlant);
 }
 
+/** Selecting from the map has to take the reader to the row it selected. */
+function showPlant(id){
+  if(selectedPlant !== id) selectPlant(id);
+  const row = document.querySelector(`#plantlist [data-plant="${id}"]`);
+  (row || $('plantlist')).scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
 /**
  * Rivers, not gauges.
  *
@@ -1073,13 +1356,21 @@ function renderExplainer(s){
 }
 
 /* --- data --- */
-// Only the plant registry is genuinely static. Stations used to be loaded here too and
-// then never again; they now come down with every refresh, because `current.stage` on
-// them is live.
+// Only the plant registry and the map's geometry are genuinely static. Stations used to
+// be loaded here too and then never again; they now come down with every refresh,
+// because `current.stage` on them is live.
 async function loadStatic(){
-  const pl = await fetch('/api/v1/powerplants').then(r=>r.json()).catch(()=>({plants:[]}));
+  const [pl, g] = await Promise.all([
+    fetch('/api/v1/powerplants').then(r=>r.json()).catch(()=>({plants:[]})),
+    // Same origin, built at deploy time. If it is missing the page still works: the
+    // numbers are the product and the map is how they are read, not the other way round.
+    fetch('/geo.json').then(r=>r.ok?r.json():null).catch(()=>null),
+  ]);
   plants = (pl.plants||[]).filter(p=>p.status==='operating');
+  geo = g;
   renderPlants();
+  if(geo) drawBase();
+  else $('map').closest('.mapcard').classList.add('hidden');
 }
 
 async function refresh(){
@@ -1137,8 +1428,8 @@ function tick(){
 }
 
 (async function start(){
-  drawBase();
   tick(); setInterval(tick,1000);
+  // drawBase needs the geometry, so it runs inside loadStatic once geo.json has landed.
   await loadStatic();
   await refresh();
   refreshHistory();
