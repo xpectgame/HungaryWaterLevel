@@ -644,12 +644,17 @@ async function probeMavirSheet() {
  * carries them is not documented anywhere we can read, so it sweeps a range and prints
  * whatever it finds whole.
  */
-const LAKE_PATTERN = /balaton|fert[őo]|velence|tisza-t[óo]|kisk[őo]re|si[óo]fok|ag[áa]rd|sukor[óo]|poroszl[óo]|keszthely|szemes|f[űu]zf[őo]|abda|tó\b|tavak/i;
+const LAKE_PATTERN = /balaton|fert[őo]|velencei|tisza-t[óo]|kisk[őo]re|tározó|-t[óo]\b|^t[óo]\b/i;
 
+/**
+ * Standing water lives in vmoType 11 alongside the rivers - 13 turned out to be
+ * groundwater wells and 14 meteorology, neither of which measures a lake surface. What
+ * distinguishes a lake gauge is its MdrNev: "Balaton" rather than "Duna".
+ */
 async function probeLakes() {
   console.log('\n########## lake gauges ##########');
 
-  for (const vmoType of [11, 12, 13, 14, 15, 16, 21, 31]) {
+  for (const vmoType of [11, 12]) {
     for (const internetOnly of [true, false]) {
       let rows;
       try {
@@ -663,16 +668,16 @@ async function probeLakes() {
         continue;
       }
 
-      const hits = rows.filter((row) =>
-        [row.Nev, row.MdrNev, row.Telepules].some((field) => LAKE_PATTERN.test(String(field ?? ''))),
-      );
-      console.log(
-        `\nvmoType ${vmoType} ${internetOnly ? 'InternetVmo' : 'Vmo'}: ${rows.length} rows, ${hits.length} look like standing water`,
-      );
-      // The distinct watercourse names are the fastest way to see what a list actually is.
       const waters = [...new Set(rows.map((r) => r.MdrNev).filter(Boolean))];
-      console.log(`  waters (${waters.length}): ${waters.slice(0, 24).join(' | ')}${waters.length > 24 ? ' …' : ''}`);
-      for (const hit of hits.slice(0, 30)) console.log(`  ${JSON.stringify(hit)}`);
+      const lakeWaters = waters.filter((w) => LAKE_PATTERN.test(w));
+      const hits = rows.filter((row) => LAKE_PATTERN.test(String(row.MdrNev ?? '')));
+
+      console.log(
+        `\nvmoType ${vmoType} ${internetOnly ? 'InternetVmo' : 'Vmo'}: ${rows.length} rows, ` +
+          `${waters.length} distinct waters, ${lakeWaters.length} of them standing`,
+      );
+      console.log(`  standing waters: ${lakeWaters.join(' | ') || '(none)'}`);
+      for (const hit of hits) console.log(`  ${JSON.stringify(hit)}`);
     }
   }
 }
