@@ -187,6 +187,36 @@ test('GET /api/v1/stations/:id/timeseries returns an ordered series', async () =
 
     const times = body.series.map((s) => Date.parse(s.timestamp));
     assert.deepStrictEqual(times, [...times].sort((a, b) => a - b));
+    // Stage travels with the series, not only with the latest reading, so the detail
+    // chart can draw it.
+    assert.ok('waterLevelCm' in body.series[0]);
+  });
+});
+
+test('a station reading carries its stage in context', async () => {
+  await withServer(async ({ get }) => {
+    const { body } = await get('/api/v1/stations/duna-budapest');
+    const stage = body.current.stage;
+
+    assert.ok(Number.isFinite(stage.cm));
+    assert.strictEqual(stage.recordLowCm, 33);
+    assert.strictEqual(stage.recordHighCm, 891);
+    assert.strictEqual(stage.aboveRecordLowCm, stage.cm - 33);
+    assert.strictEqual(stage.thresholds.kf1, 620);
+    // The whole chain: poll wrote waterLevelCm, the store kept it, the route interpreted
+    // it. A rename anywhere along it drops the field silently, which is how the first
+    // version of this shipped.
+    assert.ok(['normal', 'grade-1', 'grade-2', 'grade-3', 'record-low', 'record-high'].includes(stage.band));
+  });
+});
+
+test('a gauge outside the reference table still reports its level', async () => {
+  await withServer(async ({ get }) => {
+    // Tiszabecs has no entry in the catalogue the thresholds come from. The fixture
+    // reproduces that gap rather than inventing a level for it.
+    const { body } = await get('/api/v1/stations/tisza-tiszabecs');
+    assert.strictEqual(body.current.stage, null);
+    assert.ok(Number.isFinite(body.current.flowM3s), 'the discharge must survive the missing stage');
   });
 });
 

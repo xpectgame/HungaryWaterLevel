@@ -229,6 +229,14 @@ test('the frontend is served from the app root', async () => {
     // every copy edit and tells you nothing about whether the page works.
     assert.match(html, /<svg[^>]+id="map"/, 'the map element must be present');
     assert.match(html, /\/api\/v1\/snapshot/, 'the page must poll the live endpoint');
+    // Stage is live data, so the page has to refetch the station endpoint rather than
+    // reading it once at load and letting the water level go stale under a live clock.
+    assert.match(html, /id="levels"/, 'the stage section must be present');
+    assert.match(
+      html,
+      /fetch\('\/api\/v1\/stations',\{cache:'no-store'\}\)/,
+      'stations must be refetched uncached on every cycle, not only at load',
+    );
 
     // Resource loads only - <script src>, <link href>, <img src>. An anchor to the data
     // source is a link a reader follows, not something the page needs to render.

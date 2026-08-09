@@ -68,6 +68,7 @@ h1 em{font-style:normal;color:var(--flow)}
 .banner{border-radius:12px;padding:12px 15px;margin-bottom:18px;font-size:14px;border:1px solid}
 .banner.warn{background:#fdeef1;border-color:#eab8c3;color:#8d1329}
 .banner.note{background:#fdf1e8;border-color:#e8c3a6;color:#8a3d12}
+.banner.ok{background:#eaf6f8;border-color:var(--line);color:var(--ink-soft)}
 .hidden{display:none !important}
 
 /* --- the three headline figures --- */
@@ -148,6 +149,7 @@ svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y
 .spark path{fill:none;stroke:var(--flow);stroke-width:1.6}
 .spark .area{fill:url(#sparkfill);stroke:none}
 .spark .out{stroke:var(--silt)}
+.spark .stage{stroke:var(--deep);stroke-width:1.2;stroke-dasharray:4 4;opacity:.75}
 
 /* --- generation mix --- */
 .mixbar{display:flex;height:26px;border-radius:7px;overflow:hidden;background:var(--sunk)}
@@ -176,6 +178,43 @@ svg.map{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y
 .scale .item{border-left:2px solid var(--flow-dim);padding-left:12px}
 .scale .q{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:600;color:var(--flow)}
 .scale .t{font-size:13px;color:var(--ink-soft);margin-top:2px}
+
+/* --- stage against the gauge's own record range --- */
+.levels{display:grid;gap:11px}
+.lvl{display:grid;grid-template-columns:minmax(120px,1.1fr) 2.4fr minmax(112px,auto);gap:12px;align-items:center;
+  cursor:pointer;border-radius:8px;padding:3px 5px;margin:-3px -5px;transition:background .15s}
+.lvl:hover,.lvl:focus-visible{background:var(--sunk);outline:none}
+.lvl .nm{font-size:13px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The scale runs from the record low to the record high, so the marker's position is
+   literally "where this river stands in its own recorded history". */
+.lvl .rail{position:relative;height:16px;border-radius:8px;background:linear-gradient(90deg,#e9f4f7,#cfe7ee);
+  border:1px solid var(--line)}
+/* Classed, not a bare `i`: `.lvl .rail i` outranks `.lvl .mk` on specificity, so the
+   fill's gradient and full height were silently repainting the marker and the ticks -
+   which is why the level line rendered as a pale stub of the fill. */
+.lvl .rail .f{position:absolute;top:0;bottom:0;left:0;border-radius:8px 0 0 8px;
+  background:linear-gradient(90deg,var(--flow-dim),var(--shallow));
+  opacity:.42;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+/* Flood grades are administrative marks on the same scale, drawn as hairlines so the
+   water level is read against them without either one becoming decoration. */
+.lvl .tick{position:absolute;top:0;bottom:0;width:1.5px;background:rgba(194,82,28,.42)}
+.lvl .tick.k3{background:rgba(179,36,60,.55)}
+/* The marker overhangs the rail on both sides so it reads as a level line rather than
+   as the end of the fill - clipped inside the rail the two were indistinguishable. */
+.lvl .mk{position:absolute;top:-5px;width:3px;height:24px;border-radius:2px;background:var(--ink);
+  box-shadow:0 0 0 1px #fff;transition:left .9s cubic-bezier(.2,.8,.2,1)}
+.lvl .n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;font-size:13px}
+.lvl .n small{display:block;font-size:10.5px;color:var(--ink-faint);font-family:var(--sans)}
+.lvl.grade-1 .mk,.lvl.grade-2 .mk{background:var(--ember)}
+.lvl.grade-3 .mk,.lvl.record-high .mk{background:var(--alarm)}
+.lvl.record-low .mk{background:var(--silt)}
+.lvl .flag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  padding:1px 6px;border-radius:99px;background:var(--sunk);color:var(--ink-soft);margin-left:6px}
+.lvl.grade-1 .flag,.lvl.grade-2 .flag{background:#fdf1e8;color:#8a3d12}
+.lvl.grade-3 .flag,.lvl.record-high .flag{background:#fdeef1;color:#8d1329}
+.lvl.record-low .flag{background:#f7f1e4;color:#6d541f}
+.lvl-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-faint);margin-top:12px}
+.lvl-legend i{display:inline-block;width:2px;height:11px;vertical-align:-1px;margin-right:5px}
 
 /* --- methodology --- */
 .method details{border-top:1px solid var(--line);padding:10px 0}
@@ -228,6 +267,7 @@ footer a{color:var(--ink-soft)}
   Hihetőnek látszanak, és pontosan ezért van itt ez a sáv.
 </div>
 <div class="banner note hidden" id="stale"></div>
+<div class="banner ok" id="flood">&nbsp;</div>
 
 <!-- the whole story in three numbers -->
 <section class="headline">
@@ -300,6 +340,24 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
+<section class="card" style="margin-bottom:18px">
+  <h3>Vízállás — hol tart a folyó a saját történetéhez képest</h3>
+  <div id="levels" class="levels"></div>
+  <div class="lvl-legend">
+    <span><i style="background:var(--ink)"></i>mostani vízállás</span>
+    <span><i style="background:rgba(194,82,28,.42)"></i>I. és II. fokú készültség</span>
+    <span><i style="background:rgba(179,36,60,.55)"></i>III. fokú készültség</span>
+    <span>a sáv bal széle a valaha mért legkisebb, jobb széle a legnagyobb vízállás</span>
+  </div>
+  <p style="font-size:13px;color:var(--ink-soft);margin-top:12px">
+    A centiméter mindig a mérce saját nullpontjához mérve értendő, ezért két szelvény
+    vízállása egymással soha nem összehasonlítható — mindegyik csak a maga múltjával.
+    A készültségi szintek nem természeti határok: az adott szakasz védművei alapján
+    állapítják meg őket. Pakson például a III. fok 9 centivel a valaha mért legmagasabb
+    vízállás fölött van — 2013-ban ennyi hiányzott hozzá.
+  </p>
+</section>
+
 <section class="card" style="margin-bottom:18px" id="detailcard">
   <h3>Egy szelvény közelről</h3>
   <div id="detail"><p style="font-size:13.5px;color:var(--ink-soft);margin:0">
@@ -358,6 +416,15 @@ footer a{color:var(--ink-soft)}
       <p>A Vág és a Garam a határszakaszon, Komárom alatt csatlakozik, és az OVF nem méri őket —
       a kisvízfolyásokkal együtt egy becsült tagba kerülnek (~260 m³/s), ami külön látszik.
       A Lajtára nincs használható szelvény. Rajka és Tiszasziget időnként nem ad vízhozamot.</p></details>
+
+    <details><summary>Mit jelent a centiméter a vízállásnál?</summary>
+      <p>Minden mérce a saját nullpontjához mér, ami egy rögzített tengerszint feletti magasság
+      (Budapesten 94,97 mBf). Ezért 300 cm két folyón két egészen különböző dolgot jelent, és
+      ezért mutatjuk mindegyiket a saját szélsőértékei között: a valaha mért legkisebb és
+      legnagyobb vízállás közötti sávon. A készültségi szinteket a vízügyi igazgatóság
+      állapítja meg szakaszonként, a védművek alapján — ezek nem a folyó tulajdonságai,
+      hanem döntések, és a védmű átépítésekor változnak. Ahol a szolgálat nem tesz közzé
+      ilyen szintet (például Rajkánál), ott mi sem találunk ki egyet.</p></details>
 
     <details><summary>Miért nem vonjuk ki a hűtővizet?</summary>
       <p>Mert az erőmű nem fogyasztja el: a kivett víz több mint 99%-a visszakerül a folyóba,
@@ -576,12 +643,16 @@ function currentStationFlows(){
 function showTip(e, st, flow){
   const mean = st.longTermMeanM3s;
   const ratio = (flow!=null && mean) ? flow/mean : null;
+  const stage = st.current && st.current.stage;
   $('tip').innerHTML =
     `<div class="t-name">${st.name}</div>`+
     `<div class="t-val">${fmt(flow,1)} <span style="font-size:12px;color:var(--ink-faint)">m³/s</span></div>`+
     `<div class="t-sub">${st.role==='inflow'?'belépő':st.role==='outflow'?'kilépő':'belső mérce'}`+
     (mean?` · sokéves átlag ${fmt(mean,0)}`:'')+
-    (ratio!=null?` · <b>${fmt(ratio*100,0)}%</b>`:'')+`</div>`;
+    (ratio!=null?` · <b>${fmt(ratio*100,0)}%</b>`:'')+`</div>`+
+    (stage?`<div class="t-sub">vízállás <b>${fmt(stage.cm,0)} cm</b>`+
+      (stage.grade?` · <b style="color:var(--alarm)">${stage.gradeName}</b>`
+        : stage.aboveRecordLowCm!=null?` · ${fmt(stage.aboveRecordLowCm,0)} cm-rel a minimum fölött`:'')+`</div>`:'');
   moveTip(e); $('tip').style.opacity='1';
 }
 function showPlantTip(e,p,mw,w){
@@ -616,6 +687,99 @@ function renderHeadline(b){
   $('verdict').textContent = b.net.significant
     ? (b.net.direction==='draining' ? 'több távozik, mint amennyi érkezik' : 'több érkezik, mint amennyi távozik')
     : 'a különbség a mérési hibán belül van';
+}
+
+/* --- stage --- */
+
+const BAND_FLAG = {
+  'grade-1':'I. fokú', 'grade-2':'II. fokú', 'grade-3':'III. fokú',
+  'record-high':'rekord magas', 'record-low':'rekord alacsony',
+};
+
+/**
+ * One gauge's level on the scale of everything it has ever recorded.
+ *
+ * The rail is drawn from LKV to LNV, which is a range measured in metres, and the
+ * marker sits where today falls inside it. That is the comparison a centimetre reading
+ * needs to mean anything: 412 cm is nothing, "a nyári középvíz alatt, 39 centivel a
+ * valaha mért legkisebb fölött" is a sentence.
+ */
+function renderLevels(){
+  const rows = stations
+    .map((st) => ({ st, stage: st.current && st.current.stage }))
+    .filter((r) => r.stage && r.stage.position !== null)
+    // Floods first, then records, then simply the highest-standing rivers. What is
+    // unusual should never be below the fold.
+    .sort((a,b) => rank(b.stage) - rank(a.stage) || b.stage.position - a.stage.position);
+
+  const el = $('levels');
+  if(!rows.length){ el.innerHTML = `<p style="font-size:13px;color:var(--ink-soft);margin:0">Vízállás-adat egyelőre nincs a tárolóban.</p>`; return; }
+
+  el.innerHTML = rows.map(({st,stage}) => {
+    const pos = Math.max(0, Math.min(1, stage.position)) * 100;
+    const t = stage.thresholds || {};
+    const span = stage.recordHighCm - stage.recordLowCm;
+    const tickAt = (cm, cls) => (cm==null ? '' :
+      `<i class="tick ${cls}" style="left:${(((cm-stage.recordLowCm)/span)*100).toFixed(2)}%"></i>`);
+    const flag = BAND_FLAG[stage.band] ? `<span class="flag">${BAND_FLAG[stage.band]}</span>` : '';
+
+    return `<div class="lvl ${stage.band}" data-station="${st.id}" tabindex="0" role="button" `+
+      `title="${st.name}: ${fmt(stage.cm,0)} cm — valaha mért legkisebb ${fmt(stage.recordLowCm,0)}, legnagyobb ${fmt(stage.recordHighCm,0)} cm">`+
+      `<div class="nm">${st.name}${flag}</div>`+
+      `<div class="rail"><i class="f" style="width:${pos.toFixed(1)}%"></i>`+
+        tickAt(t.kf1,'k1')+tickAt(t.kf2,'k2')+tickAt(t.kf3,'k3')+
+        `<i class="mk" style="left:calc(${pos.toFixed(1)}% - 1.5px)"></i>`+
+      `</div>`+
+      `<div class="n">${fmt(stage.cm,0)} cm<small>${describeAgainstRecords(stage)}</small></div>`+
+    `</div>`;
+  }).join('');
+
+  for(const row of el.querySelectorAll('[data-station]')){
+    const open = () => showStation(row.dataset.station);
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', (e) => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } });
+  }
+}
+
+function rank(stage){
+  return { 'record-high':5, 'grade-3':4, 'grade-2':3, 'grade-1':2, 'record-low':1 }[stage.band] || 0;
+}
+
+/** The short line under the centimetres: whichever record this level is nearer to. */
+function describeAgainstRecords(stage){
+  if(stage.band==='record-high') return 'új rekordmagasság';
+  if(stage.band==='record-low') return 'új rekordmélység';
+  return stage.position < 0.5
+    ? `+${fmt(stage.aboveRecordLowCm,0)} a mélyponthoz`
+    : `−${fmt(stage.belowRecordHighCm,0)} a csúcshoz`;
+}
+
+/**
+ * The one sentence about flood readiness that belongs above the fold.
+ *
+ * Silence is the normal state and has to read as a deliberate "no", not as a missing
+ * feature - otherwise the day it does say something, nobody knows whether to believe it.
+ */
+function renderFloodBanner(){
+  const active = stations
+    .map((st) => ({ st, stage: st.current && st.current.stage }))
+    .filter((r) => r.stage && r.stage.grade)
+    .sort((a,b) => b.stage.grade - a.stage.grade);
+
+  const el = $('flood');
+  if(!active.length){
+    el.className = 'banner ok';
+    el.innerHTML = `<strong>Sehol nincs árvízvédelmi készültség.</strong> A figyelt szelvények mindegyike a I. fokú szint alatt áll.`;
+    return;
+  }
+  el.className = 'banner ' + (active[0].stage.grade >= 3 ? 'warn' : 'note');
+  // Each gauge carries its own grade. A single headline naming the highest one and then
+  // listing every gauge under it said "III. fokú" about a section standing at I.
+  const list = active.map(({st,stage}) =>
+    `${st.name} <b>${'I'.repeat(stage.grade===3?3:stage.grade===2?2:1)}. fokú</b> (${fmt(stage.cm,0)} cm)`).join(' · ');
+  el.innerHTML = active.length === 1
+    ? `<strong>${active[0].stage.gradeName}:</strong> ${active[0].st.name} — ${fmt(active[0].stage.cm,0)} cm`
+    : `<strong>Árvízvédelmi készültség ${active.length} szelvényen:</strong> ${list}`;
 }
 
 function renderCards(s){
@@ -799,12 +963,48 @@ function renderScale(b){
     `<div class="t">${i.t}</div></div>`).join('');
 }
 
+/**
+ * The stage paragraph in the close-up: the records, the grades, and where today sits.
+ *
+ * Written as prose rather than another rail because at this zoom the exact numbers are
+ * what a reader came for, and because a gauge with no published thresholds has to be
+ * able to say so in words.
+ */
+function stageDetail(stage){
+  if(!stage) return '';
+  if(!stage.thresholds){
+    return `<p style="font-size:13px;color:var(--ink-soft);margin:10px 0 0">`+
+      `A vízállás <b>${fmt(stage.cm,0)} cm</b>. Ehhez a mércéhez a szolgálat nem tesz közzé `+
+      `szélsőérték- és készültségi szinteket, ezért a szám önmagában áll.</p>`;
+  }
+  const t = stage.thresholds;
+  const grades = t.gradesPublished
+    ? `A készültségi szintek itt <b>${t.kf1}</b>, <b>${t.kf2}</b> és <b>${t.kf3}</b> cm-nél kezdődnek — `+
+      (stage.grade ? `jelenleg <b>${stage.gradeName}</b> van érvényben.` : 'ezek most mind a vízszint fölött vannak.')
+    : 'Erre a szelvényre nincs kihirdetett árvízvédelmi készültségi szint.';
+
+  return `<p style="font-size:13px;color:var(--ink-soft);margin:10px 0 0">`+
+    `A valaha mért legkisebb vízállás <b>${fmt(stage.recordLowCm,0)}</b> cm, a legnagyobb `+
+    `<b>${fmt(stage.recordHighCm,0)}</b> cm. A mai érték ${
+      stage.band==='record-low' ? 'ennél is alacsonyabb — új mélypont.'
+      : stage.band==='record-high' ? 'ennél is magasabb — új tetőpont.'
+      : `<b>${fmt(stage.aboveRecordLowCm,0)}</b> cm-rel a mélypont fölött és `+
+        `<b>${fmt(stage.belowRecordHighCm,0)}</b> cm-rel a csúcs alatt van.`
+    } ${grades}</p>`;
+}
+
 /** One gauge, with its own history and its place in the whole. */
 async function showStation(id){
   const st = stations.find((s) => s.id === id);
   if(!st || !snapshot) return;
-  const live = new Map(currentStationFlows()).get(id);
+  // The balance only carries the summed sections, so an interior gauge - Budapest,
+  // Nagymaros, Szolnok, the ones people actually click - had no flow to show. The
+  // station endpoint has one for every gauge; fall back to the balance only for the
+  // climatological substitutes it fills in when a gauge is stale.
+  const live = (st.current && Number.isFinite(st.current.flowM3s) ? st.current : null)
+    || new Map(currentStationFlows()).get(id);
   const mean = st.longTermMeanM3s;
+  const stage = st.current && st.current.stage;
 
   const role = st.role==='inflow' ? 'belépő szelvény' : st.role==='outflow' ? 'kilépő szelvény' : 'belső mérce, nem összegezzük';
   const ratio = live && mean ? live.flowM3s/mean : null;
@@ -816,11 +1016,17 @@ async function showStation(id){
     `<div class="det-meta">`+
       (mean?`<span>sokéves átlag <b>${fmt(mean,0)}</b> m³/s</span>`:'')+
       (ratio!=null?`<span>most az átlag <b>${fmt(ratio*100,0)}%</b>-a</span>`:'')+
+      (stage?`<span>vízállás <b>${fmt(stage.cm,0)}</b> cm</span>`:'')+
+      (stage&&stage.surfaceMasl!=null?`<span>vízszint <b>${fmt(stage.surfaceMasl,2)}</b> mBf</span>`:'')+
       (st.riverKm?`<span>folyamkilométer <b>${st.riverKm}</b></span>`:'')+
       (st.uncertaintyPct?`<span>bizonytalanság <b>±${st.uncertaintyPct}%</b></span>`:'')+
       (live&&live.quality!=='measured'?`<span style="color:var(--ember)">becsült érték</span>`:'')+
     `</div>`+
-    (st.note?`<p style="font-size:13px;color:var(--ink-soft);margin:10px 0 0">${st.note}</p>`:'')+
+    stageDetail(stage)+
+    // Hungarian only. The English `note` is documentation for whoever maintains the
+    // registry, and printing it here put an English sentence in the middle of a
+    // Hungarian paragraph.
+    (st.noteHu?`<p style="font-size:13px;color:var(--ink-soft);margin:10px 0 0">${st.noteHu}</p>`:'')+
     `<svg class="spark" id="det-spark" viewBox="0 0 800 120" preserveAspectRatio="none" style="margin-top:12px"></svg>`+
     `<p id="det-note" style="font-size:12.5px;color:var(--ink-faint);margin:6px 0 0">előzmény betöltése…</p>`;
 
@@ -833,11 +1039,26 @@ async function showStation(id){
     if(pts.length < 2){ $('det-note').textContent = 'Még nincs elég tárolt előzmény ehhez a szelvényhez.'; return; }
 
     const W=800,H=120, lo=Math.min(...pts.map(p=>p.flowM3s))*0.95, hi=Math.max(...pts.map(p=>p.flowM3s))*1.05;
+    const x = (i) => ((i/(pts.length-1))*W).toFixed(1);
     const y = (v) => H - ((v-lo)/(hi-lo||1))*H;
-    const d = pts.map((p,i) => (i?'L':'M') + ((i/(pts.length-1))*W).toFixed(1) + ' ' + y(p.flowM3s).toFixed(1)).join(' ');
-    svg.innerHTML = `<path class="area" d="${d} L${W} ${H} L0 ${H} Z"/><path d="${d}"/>`;
+    const d = pts.map((p,i) => (i?'L':'M') + x(i) + ' ' + y(p.flowM3s).toFixed(1)).join(' ');
+
+    // Stage on the same x-axis but its own y-scale. The two are the same measurement
+    // seen twice - stage is what the gauge reads, discharge is that stage put through a
+    // rating curve - so the lines should track each other, and a place where they part
+    // company is worth seeing.
+    const lv = pts.filter((p) => Number.isFinite(p.waterLevelCm));
+    let stagePath = '';
+    if(lv.length >= 2 && lv.length === pts.length){
+      const slo=Math.min(...lv.map(p=>p.waterLevelCm)), shi=Math.max(...lv.map(p=>p.waterLevelCm));
+      const sy = (v) => H - ((v-slo*0.98)/((shi*1.02-slo*0.98)||1))*H;
+      stagePath = `<path class="stage" d="${pts.map((p,i)=>(i?'L':'M')+x(i)+' '+sy(p.waterLevelCm).toFixed(1)).join(' ')}"/>`;
+    }
+
+    svg.innerHTML = `<path class="area" d="${d} L${W} ${H} L0 ${H} Z"/><path d="${d}"/>${stagePath}`;
     const hrs = Math.round((Date.parse(pts[pts.length-1].timestamp)-Date.parse(pts[0].timestamp))/3600000);
-    $('det-note').textContent = `${pts.length} mérés az elmúlt ${hrs} órából.`;
+    $('det-note').innerHTML = `${pts.length} mérés az elmúlt ${hrs} órából — vízhozam <span style="color:var(--flow)">———</span>`+
+      (stagePath ? ` és vízállás <span style="color:var(--deep)">- - -</span>, külön skálán.` : '.');
   }catch{ $('det-note').textContent = 'Az előzményt nem sikerült betölteni.'; }
 }
 
@@ -852,20 +1073,26 @@ function renderExplainer(s){
 }
 
 /* --- data --- */
+// Only the plant registry is genuinely static. Stations used to be loaded here too and
+// then never again; they now come down with every refresh, because `current.stage` on
+// them is live.
 async function loadStatic(){
-  const [st, pl] = await Promise.all([
-    fetch('/api/v1/stations').then(r=>r.json()),
-    fetch('/api/v1/powerplants').then(r=>r.json()).catch(()=>({plants:[]})),
-  ]);
-  stations = st.stations||[];
+  const pl = await fetch('/api/v1/powerplants').then(r=>r.json()).catch(()=>({plants:[]}));
   plants = (pl.plants||[]).filter(p=>p.status==='operating');
   renderPlants();
 }
 
 async function refresh(){
   try{
-    const s = await fetch('/api/v1/snapshot',{cache:'no-store'}).then(r=>r.json());
+    // Stations are fetched every cycle, not once at load: the registry half is static,
+    // but `current` carries the live stage, and a tab left open all afternoon would
+    // otherwise show this morning's water level under a clock ticking in real time.
+    const [s, st] = await Promise.all([
+      fetch('/api/v1/snapshot',{cache:'no-store'}).then(r=>r.json()),
+      fetch('/api/v1/stations',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+    ]);
     snapshot = s;
+    if(st && st.stations) stations = st.stations;
 
     $('synthetic').classList.toggle('hidden', !(s._meta && s._meta.synthetic));
 
@@ -877,6 +1104,8 @@ async function refresh(){
     renderMix(s.power);
     renderSystems(s.balance);
     renderScale(s.balance);
+    renderLevels();
+    renderFloodBanner();
     drawNodes();
 
     const at = s._meta && s._meta.lastPollAt;

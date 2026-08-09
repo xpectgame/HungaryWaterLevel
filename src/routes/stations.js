@@ -2,6 +2,7 @@
 
 const express = require('express');
 const { listStations, getStation, UNGAUGED_INFLOW } = require('../config/stations');
+const { describeStage } = require('../domain/stage');
 const { parseRange } = require('../lib/params');
 const { asyncRoute } = require('../lib/async-route');
 const { withMeta } = require('./balance');
@@ -57,7 +58,12 @@ module.exports = function stationRoutes(ctx) {
           from: new Date(fromMs).toISOString(),
           to: new Date(toMs).toISOString(),
           count: series.length,
-          series: series.map((r) => ({ timestamp: r.timestamp, flowM3s: r.flowM3s, quality: r.quality })),
+          series: series.map((r) => ({
+            timestamp: r.timestamp,
+            flowM3s: r.flowM3s,
+            waterLevelCm: r.waterLevelCm ?? null,
+            quality: r.quality,
+          })),
         },
         ctx,
       ),
@@ -89,6 +95,7 @@ function decorate(station, reading) {
     travelTimeToBorderHours: station.travelTimeHours ?? null,
     uncertaintyPct: station.uncertaintyPct,
     note: station.note || null,
+    noteHu: station.noteHu || null,
     current: reading
       ? {
           flowM3s: reading.flowM3s,
@@ -96,6 +103,10 @@ function decorate(station, reading) {
           quality: reading.quality,
           source: reading.source,
           ratioToMean: station.meanFlow > 0 ? round(reading.flowM3s / station.meanFlow, 3) : null,
+          // Stage arrives from the same request as discharge but is absent more often -
+          // a gauge can publish one and not the other. Null here means "not published
+          // this cycle", never "zero".
+          stage: describeStage(reading.waterLevelCm, station.id),
         }
       : null,
   };

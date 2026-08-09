@@ -28,6 +28,13 @@
  * same-timestamp inflow/outflow comparison physically wrong during a flood wave.
  * See domain/balance.js for how it is applied.
  *
+ * `note` is written for whoever maintains this file; `noteHu` is the same fact written
+ * for a reader of the public page, which is in Hungarian. They are kept as two fields
+ * rather than one because they have two audiences: the English one may say "Cunovo
+ * diversion" and leave it there, the Hungarian one has to earn its place on a page next
+ * to a live number. A station may have either, both, or neither; the page prefers noteHu
+ * and shows nothing rather than falling back to English prose in a Hungarian paragraph.
+ *
  * uncertaintyPct is the relative 1-sigma uncertainty of the discharge value itself.
  * Discharge is not measured directly - it is read off a stage-discharge rating curve,
  * and that curve carries 5-10% error on a good river and more on a small, weir-affected
@@ -60,6 +67,7 @@ const STATIONS = [
     uncertaintyPct: 8,
     note:
       'Old Danube riverbed below the Cunovo diversion. Carries only the released flow, not the Danube.',
+    noteHu: 'A čunovói terelés alatti Öreg-Duna szelvénye. Csak a mederbe engedett vízpótlást szállítja, nem a teljes Dunát.',
   },
   {
     id: 'duna-komarom',
@@ -75,6 +83,7 @@ const STATIONS = [
     uncertaintyPct: 5,
     note:
       'The Danube inflow section. Below the Gabcikovo canal rejoining near Szap (~1811 fkm) and above the Vag, so it carries the whole river as it reaches Hungary. Rajka, 80 km upstream, carries only the old riverbed.',
+    noteHu: 'A Duna belépő szelvénye. A bősi csatorna Szap környéki (kb. 1811 fkm) visszatorkollása alatt és a Vág felett van, tehát az egész folyót viszi, ahogy Magyarországra ér. A 80 km-rel feljebb lévő Rajka csak az Öreg-Duna vízpótlását méri.',
     // The Vag (~150 m3/s) and Garam (~55) join the border reach below here and are not
     // gauged by OVF, so they fall into UNGAUGED_INFLOW rather than being counted.
     ungaugedBelow: ['Vág', 'Garam'],
@@ -139,6 +148,7 @@ const STATIONS = [
     travelTimeHours: 70,
     uncertaintyPct: 12,
     note: 'Ipoly is a border river for most of its length; this is the upstream entry section.',
+    noteHu: 'Az Ipoly hosszan határfolyó; ez a felső belépő szelvény.',
   },
 
   // ---------------------------------------------------------------------------
@@ -157,6 +167,7 @@ const STATIONS = [
     travelTimeHours: 200,
     uncertaintyPct: 6,
     note: 'Upper Tisza entry section. Extremely flashy - can exceed 3000 m3/s during Carpathian floods.',
+    noteHu: 'A Felső-Tisza belépő szelvénye. Rendkívül gyorsan reagál — kárpáti árhullámnál 3000 m³/s fölé is mehet.',
   },
   {
     id: 'tur-garbolc',
@@ -182,6 +193,7 @@ const STATIONS = [
     travelTimeHours: 175,
     uncertaintyPct: 7,
     note: 'Third largest inflow after the Danube and Tisza. Frequently omitted from simplified balances.',
+    noteHu: 'A Duna és a Tisza után a harmadik legnagyobb hozzáfolyás. Az egyszerűsített mérlegekből gyakran kimarad.',
   },
   {
     id: 'kraszna-agerdomajor',
@@ -307,6 +319,7 @@ const STATIONS = [
     travelTimeHours: 12,
     uncertaintyPct: 6,
     note: 'Standard Maros gauge, a short distance inside the border; enters the Tisza just above Szeged.',
+    noteHu: 'A Maros szokásos szelvénye, kevéssel a határ után; Szeged fölött ömlik a Tiszába.',
   },
 
   // ---------------------------------------------------------------------------
@@ -325,6 +338,7 @@ const STATIONS = [
     travelTimeHours: 28,
     uncertaintyPct: 6,
     note: 'Sits ~1 km below the Mura confluence, so this value already contains the Mura.',
+    noteHu: 'Nagyjából 1 km-rel a Mura torkolata alatt van, tehát ez az érték a Murát már tartalmazza.',
   },
 
   // ---------------------------------------------------------------------------
@@ -356,6 +370,7 @@ const STATIONS = [
     travelTimeHours: 0,
     uncertaintyPct: 6,
     note: 'The Dráva leaves Hungary separately and joins the Danube inside Croatia, downstream of Mohács.',
+    noteHu: 'A Dráva külön lép ki az országból, és csak Horvátországban, Mohács alatt éri el a Dunát.',
   },
   {
     id: 'tisza-tiszasziget',
@@ -373,6 +388,7 @@ const STATIONS = [
     uncertaintyPct: 6,
     redundantWith: 'tisza-szeged',
     note: 'No discharge series is published here; the Tisza outflow is taken at Szeged.',
+    noteHu: 'Erre a szelvényre nem tesznek közzé vízhozamot; a Tisza kilépését Szegednél számoljuk.',
   },
 
   // ---------------------------------------------------------------------------
@@ -390,6 +406,7 @@ const STATIONS = [
     uncertaintyPct: 5,
     redundantWith: 'duna-komarom',
     note: 'Below the canal confluence and every Slovak tributary. Carries the whole Danube, plus the Ipoly.',
+    noteHu: 'A csatorna visszatorkollása és minden szlovák mellékfolyó alatt. A teljes Dunát viszi, az Ipollyal együtt.',
   },
   {
     id: 'duna-budapest',
@@ -403,6 +420,7 @@ const STATIONS = [
     uncertaintyPct: 5,
     redundantWith: 'duna-rajka',
     note: 'Reference gauge of the country; kept for display, excluded from the balance.',
+    noteHu: 'Az ország referenciamércéje; megjelenítjük, de a mérlegbe nem számít bele.',
   },
   {
     id: 'duna-paks',
@@ -416,6 +434,7 @@ const STATIONS = [
     uncertaintyPct: 5,
     redundantWith: 'duna-rajka',
     note: 'Receiving water body of the Paks nuclear plant. Used as the denominator for thermal load checks.',
+    noteHu: 'A paksi atomerőmű befogadó vize. Ez a nevező a hőterhelés ellenőrzésénél.',
   },
   {
     id: 'tisza-szeged',
@@ -433,6 +452,7 @@ const STATIONS = [
     travelTimeHours: 0,
     uncertaintyPct: 7,
     note: 'The Tisza exit term. Measured 11 river km above the border section at Tiszasziget.',
+    noteHu: 'A Tisza kilépő tagja. 11 folyamkilométerrel a tiszaszigeti határszelvény fölött mérve.',
   },
   {
     id: 'tisza-szolnok',
@@ -457,6 +477,7 @@ const STATIONS = [
     uncertaintyPct: 8,
     redundantWith: 'drava-ortilos',
     note: 'Joins the Dráva just above Őrtilos, so its water is already inside the Őrtilos reading.',
+    noteHu: 'Közvetlenül Őrtilos fölött ömlik a Drávába, tehát ez a víz már benne van az őrtilosi értékben.',
   },
 ];
 

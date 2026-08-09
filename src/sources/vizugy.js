@@ -297,7 +297,11 @@ async function fetchAll(env = process.env) {
         flowM3s: sample.flowM3s,
         // Stage is a bonus, not a requirement: a gauge can publish discharge and not
         // stage, and losing the discharge over that would be the wrong trade.
-        stageCm: stage ? stage.flowM3s : null,
+        //
+        // Named for the column all three stores already have. Calling it `stageCm` here
+        // meant every store dropped it on write, so the value was fetched, parsed and
+        // then discarded on the way to the database.
+        waterLevelCm: stage ? stage.flowM3s : null,
         timestamp: sample.timestamp,
         source: 'vizugy',
         quality: 'measured',

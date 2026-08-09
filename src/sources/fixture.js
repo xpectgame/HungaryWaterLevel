@@ -1,6 +1,7 @@
 'use strict';
 
 const { pollableStations } = require('../config/stations');
+const { getThresholds } = require('../config/stage-thresholds');
 
 /**
  * Synthetic but physically plausible data source.
@@ -54,13 +55,37 @@ function stationFlow(station, at) {
   return Math.max(station.meanFlow * 0.25, raw);
 }
 
+/**
+ * A stage to go with the synthetic discharge.
+ *
+ * Not a rating curve - there is no rating curve here to invert. It places the gauge on
+ * its own recorded LKV..LNV range as a concave function of how the flow compares to the
+ * long-term mean, which gets the shape right: mean water sits low on a scale whose top
+ * is a record flood, and it takes several times the mean flow to climb near it.
+ *
+ * Returns null where the reference table has nothing, so the fixture reproduces the real
+ * gap at Tiszabecs rather than papering over it. Without this, the entire stage display
+ * would be untestable and invisible in local development, which is how a feature ships
+ * broken.
+ */
+function stationStage(station, flow) {
+  const thresholds = getThresholds(station.id);
+  if (!thresholds || !Number.isFinite(thresholds.lkv) || !Number.isFinite(thresholds.lnv)) return null;
+  if (!(station.meanFlow > 0)) return null;
+
+  const position = Math.min(0.95, Math.max(0.03, 0.05 + 0.25 * Math.sqrt(flow / station.meanFlow)));
+  return Math.round(thresholds.lkv + position * (thresholds.lnv - thresholds.lkv));
+}
+
 async function fetchAll(env = process.env, at = new Date()) {
   const readings = {};
 
   for (const station of pollableStations()) {
+    const flow = round(stationFlow(station, at), 2);
     readings[station.id] = {
       stationId: station.id,
-      flowM3s: round(stationFlow(station, at), 2),
+      flowM3s: flow,
+      waterLevelCm: stationStage(station, flow),
       timestamp: at.toISOString(),
       source: 'fixture',
       quality: 'synthetic',
