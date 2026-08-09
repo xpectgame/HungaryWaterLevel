@@ -789,6 +789,37 @@ function blockArea(x, y, r){
   labelBoxes.push({ x:x-r, y:y-r, w:r*2, h:r*2 });
 }
 
+/**
+ * Touch-target radius, in viewBox units, that comes out the same size on any screen.
+ *
+ * The viewBox scales with the card, so a radius fixed in its units is not a fixed size
+ * to a finger: 14 units is 49 physical pixels on a desktop and 15 on a phone, which is
+ * a third of what a fingertip needs. This converts from the size we actually want -
+ * about 40 px across, everywhere.
+ */
+function hitRadius(){
+  const rendered = $('map').getBoundingClientRect().width || W;
+  return Math.max(10, Math.min(52, 20 / (rendered / W)));
+}
+
+/**
+ * Every marker's position, so a touch target can be grown without eating its neighbour.
+ *
+ * On a phone a fingertip is 47 viewBox units across, which is wide enough for the Mohács
+ * gauge to cover the Balaton entirely - the lake became untappable the moment the targets
+ * were made big enough to hit. So each target stops halfway to whatever is nearest: as
+ * large as a finger where there is room, and never larger than its own share of the map.
+ */
+let markerPoints = [];
+function hitFor(x, y, visualR, desired){
+  let nearest = Infinity;
+  for(const p of markerPoints){
+    const d = Math.hypot(p[0]-x, p[1]-y);
+    if(d > 0.5 && d < nearest) nearest = d;
+  }
+  return Math.max(visualR, Math.min(desired, nearest * 0.5));
+}
+
 function drawNodes(){
   const nodes = $('layer-nodes'); nodes.textContent='';
   const plantLayer = $('layer-plants'); plantLayer.textContent='';
@@ -818,11 +849,13 @@ function drawNodes(){
     const live = byId.get(st.id);
     return live ? live.flowM3s : (st.current ? st.current.flowM3s : null);
   };
+  const hitR = hitRadius();
 
   /* Two passes, because a label must dodge every marker and not just the ones drawn
      before it. First everything claims the space it physically covers, then the text
      competes for what is left. */
   labelBoxes = [];
+  markerPoints = [];
   for(const c of geo ? geo.neighbours : []){
     const pos = countryLabelAt(c);
     if(pos) blockArea(pos[0], pos[1], 26);
@@ -830,16 +863,19 @@ function drawNodes(){
   for(const st of ordered){
     const [x,y] = px(st.location.lon, st.location.lat);
     blockArea(x, y, radiusOf(flowOf(st), st.role));
+    markerPoints.push([x,y]);
   }
   for(const p of plants){
     if(!p.location) continue;
     const [x,y] = px(p.location.lon, p.location.lat);
     blockArea(x, y, plantSizeOf(p.water && p.water.withdrawalM3s));
+    markerPoints.push([x,y]);
   }
 
   for(const l of lakes){
     const [x,y] = px(l.location.lon, l.location.lat);
     blockArea(x, y, Math.max(3.2, Math.min(7, Math.sqrt(l.surface.areaKm2)/3.6)));
+    markerPoints.push([x,y]);
   }
 
   // Towns are placed first among the labels: they are the fixed frame a reader uses to
@@ -856,8 +892,7 @@ function drawNodes(){
     const g = svgEl('g',{ class:'node '+st.role, transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
     g.appendChild(svgEl('circle',{ class:'halo', r:(r*1.9).toFixed(1) }));
     g.appendChild(svgEl('circle',{ class:'core', r:r.toFixed(1) }));
-    // 14 units is roughly a fingertip once the 800-unit viewBox is scaled to a phone.
-    g.appendChild(svgEl('circle',{ class:'hit', r: Math.max(14, r*1.9).toFixed(1) }));
+    g.appendChild(svgEl('circle',{ class:'hit', r: hitFor(x, y, r*1.9, hitR).toFixed(1) }));
 
     // "Duna – Komárom" is labelled "Komárom": the river is already drawn under it.
     const label = st.name.split('–').pop().trim();
@@ -868,7 +903,11 @@ function drawNodes(){
     }
 
     bindMarker(g, () => renderStationTip(st, flow), () => showStation(st.id));
-    nodes.appendChild(g);
+    // Inserted at the front while iterating largest-first, so the biggest gauge ends up
+    // last in the DOM and therefore on top. Once the touch targets are a fingertip wide
+    // they overlap, and the browser gives the tap to whatever is painted highest - which
+    // should be the Danube, not the creek beside it.
+    nodes.insertBefore(g, nodes.firstChild);
   }
 
   for(const p of plants){
@@ -880,7 +919,7 @@ function drawNodes(){
     const size = plantSizeOf(w);
     g.appendChild(svgEl('circle',{ class:'heat', r:(size*1.8).toFixed(1) }));
     g.appendChild(plantGlyph(p.type, size));
-    g.appendChild(svgEl('circle',{ class:'hit', r: Math.max(14, size*1.8).toFixed(1) }));
+    g.appendChild(svgEl('circle',{ class:'hit', r: hitFor(x, y, size*1.8, hitR).toFixed(1) }));
     const name = p.name.split(/[ (]/)[0];
     if(w!=null && w>5 && claimLabel(x+size+4, y-3, name, 6.5)){
       const t = svgEl('text',{ x:(size+4).toFixed(1), y:'-3' });
@@ -1122,7 +1161,8 @@ function drawLakeNodes(){
       x:(x-size).toFixed(1), y:(y-size).toFixed(1),
       width:(size*2).toFixed(1), height:(size*2).toFixed(1), rx:'2',
     }));
-    g.appendChild(svgEl('circle',{ class:'hit', cx:x.toFixed(1), cy:y.toFixed(1), r:'14' }));
+    g.appendChild(svgEl('circle',{ class:'hit', cx:x.toFixed(1), cy:y.toFixed(1),
+      r: hitFor(x, y, size, hitRadius()).toFixed(1) }));
     if(claimLabel(x+size+3, y+2.5, l.name, 7)){
       const t = svgEl('text',{ x:(x+size+3).toFixed(1), y:(y+2.5).toFixed(1) });
       t.textContent = l.name;
@@ -1626,6 +1666,10 @@ function tick(){
   setInterval(refreshHistory, 300000);
   // A tab left open for hours should be current the moment it is looked at again.
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refresh(); });
+  // Rotating a phone changes how many viewBox units a fingertip covers, so the markers
+  // are laid out again rather than left at the previous screen's scale.
+  let resizeTimer = null;
+  addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer = setTimeout(drawNodes, 250); });
 })();
 </script>
 </body>
