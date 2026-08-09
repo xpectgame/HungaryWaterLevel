@@ -4,6 +4,7 @@ const express = require('express');
 
 const balanceRoutes = require('./balance');
 const stationRoutes = require('./stations');
+const lakeRoutes = require('./lakes');
 const plantRoutes = require('./powerplants');
 const geoRoutes = require('./geo');
 const metaRoutes = require('./meta');
@@ -27,6 +28,7 @@ function createRouter(ctx) {
 
   router.use(balanceRoutes(ctx));
   router.use(stationRoutes(ctx));
+  router.use(lakeRoutes(ctx));
   router.use(plantRoutes(ctx));
   router.use(geoRoutes(ctx));
   router.use(metaRoutes(ctx));

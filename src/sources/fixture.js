@@ -2,6 +2,7 @@
 
 const { pollableStations } = require('../config/stations');
 const { getThresholds } = require('../config/stage-thresholds');
+const { gaugedLakes } = require('../config/lakes');
 
 /**
  * Synthetic but physically plausible data source.
@@ -77,8 +78,46 @@ function stationStage(station, flow) {
   return Math.round(thresholds.lkv + position * (thresholds.lnv - thresholds.lkv));
 }
 
+/**
+ * A synthetic lake level.
+ *
+ * Lakes behave nothing like rivers: they integrate weather rather than reflecting it, so
+ * the level wanders slowly and seasonally - high after the spring melt, falling through
+ * an evaporating summer - instead of spiking with each front. Anchored to the middle of
+ * the gauge's own recorded range so the number is always inside what has really happened
+ * there.
+ */
+function lakeLevel(lake, at) {
+  const thresholds = getThresholds(lake.id);
+  if (!thresholds || !Number.isFinite(thresholds.lkv) || !Number.isFinite(thresholds.lnv)) return null;
+
+  const seed = seedFor(lake.id);
+  const days = Math.floor(at.getTime() / DAY_MS);
+  const season = seasonalFactor(at) - 1; // roughly -0.35 .. +0.35, peaking in spring
+  const drift = 0.08 * noise(Math.floor(days / 5) * 1.7 + seed);
+
+  // Around 40% of the way up the recorded range - a lake spends most of its life well
+  // below a record high, which was set by one flood year.
+  const position = Math.min(0.9, Math.max(0.1, 0.4 + season * 0.25 + drift));
+  return Math.round(thresholds.lkv + (thresholds.lnv - thresholds.lkv) * position);
+}
+
 async function fetchAll(env = process.env, at = new Date()) {
   const readings = {};
+
+  for (const lake of gaugedLakes()) {
+    const level = lakeLevel(lake, at);
+    if (level === null) continue;
+    readings[lake.id] = {
+      stationId: lake.id,
+      flowM3s: null,
+      waterLevelCm: level,
+      timestamp: at.toISOString(),
+      source: 'fixture',
+      quality: 'synthetic',
+      synthetic: true,
+    };
+  }
 
   for (const station of pollableStations()) {
     const flow = round(stationFlow(station, at), 2);

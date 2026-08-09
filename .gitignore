@@ -10,3 +10,7 @@ coverage/
 
 # Probe output is committed on purpose - see scripts/probe-save.sh
 !probe-output/
+
+# Natural Earth downloads for scripts/build-geo.js. The built public/geo.json is
+# committed; the 60 MB of source it came from is not.
+.geo-cache/

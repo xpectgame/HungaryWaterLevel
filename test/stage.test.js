@@ -6,16 +6,27 @@ const assert = require('node:assert');
 const { describeStage, gradeFor, positionOnRange } = require('../src/domain/stage');
 const { STAGE_THRESHOLDS, getThresholds } = require('../src/config/stage-thresholds');
 const { listStations } = require('../src/config/stations');
+const { LAKES } = require('../src/config/lakes');
 
 /**
  * The reference table is copied output. These check that it was copied correctly and
  * that nothing downstream invents a level the catalogue does not publish.
  */
 
-test('every threshold entry names a station that exists', () => {
-  const known = new Set(listStations().map((s) => s.id));
+test('every threshold entry names a gauge that exists', () => {
+  const known = new Set([...listStations().map((s) => s.id), ...LAKES.map((l) => l.id)]);
   for (const id of Object.keys(STAGE_THRESHOLDS)) {
-    assert.ok(known.has(id), `${id} has thresholds but is not in the station registry`);
+    assert.ok(known.has(id), `${id} has thresholds but is in neither registry`);
+  }
+});
+
+test('no lake shares an id with a station', () => {
+  // Lakes are stored in the same readings table, keyed by id. A collision would file a
+  // lake level as a river gauge's, and the balance would then read a level in cm as a
+  // discharge in m3/s.
+  const stations = new Set(listStations().map((s) => s.id));
+  for (const lake of LAKES) {
+    assert.ok(!stations.has(lake.id), `${lake.id} is both a lake and a station`);
   }
 });
 

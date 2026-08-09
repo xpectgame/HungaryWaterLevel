@@ -224,6 +224,35 @@ test('unknown station and unknown plant return 404', async () => {
   await withServer(async ({ get }) => {
     assert.strictEqual((await get('/api/v1/stations/atlantis')).status, 404);
     assert.strictEqual((await get('/api/v1/powerplants/atlantis')).status, 404);
+    assert.strictEqual((await get('/api/v1/lakes/atlantis')).status, 404);
+  });
+});
+
+test('GET /api/v1/lakes serves levels the balance never sees', async () => {
+  await withServer(async ({ get }) => {
+    const { status, body } = await get('/api/v1/lakes');
+    assert.strictEqual(status, 200);
+    assert.strictEqual(body.count, 4);
+
+    const balaton = body.lakes.find((l) => l.id === 'balaton');
+    assert.ok(Number.isFinite(balaton.current.levelCm), 'the poll must reach the lake gauges');
+    assert.strictEqual(balaton.current.stage.recordLowCm, 23);
+    assert.strictEqual(balaton.surface.millionM3PerCm, 5.94);
+
+    // The lakes ride in the readings table alongside the gauges. If one ever leaked into
+    // the balance, a level in centimetres would be summed as a discharge in m3/s.
+    const balance = (await get('/api/v1/balance')).body;
+    const summed = [...balance.inflow.stations, ...balance.outflow.stations].map((s) => s.id);
+    assert.ok(!summed.some((id) => body.lakes.some((l) => l.id === id)));
+  });
+});
+
+test('the Tisza-tó appears without a level and explains itself', async () => {
+  await withServer(async ({ get }) => {
+    const { body } = await get('/api/v1/lakes/tisza-to');
+    assert.strictEqual(body.measured, false);
+    assert.strictEqual(body.current, null);
+    assert.match(body.unavailableReason, /Kisköre|kiskörei/);
   });
 });
 

@@ -1,6 +1,8 @@
 'use strict';
 
 const { getStation } = require('../config/stations');
+const { getLake } = require('../config/lakes');
+const { getThresholds } = require('../config/stage-thresholds');
 
 /**
  * Plausibility screening for incoming gauge readings.
@@ -19,7 +21,55 @@ const { getStation } = require('../config/stations');
 const MAX_RATIO_ABOVE_MEAN = 25;
 const MIN_RATIO_BELOW_MEAN = 0.03;
 
+/**
+ * How far past a recorded extreme a lake level is still believed.
+ *
+ * Records do get broken - the Balaton set a new low in 2003 and the Fertő has run dry
+ * inside recorded history - so a value outside LKV..LNV cannot be rejected outright. A
+ * metre beyond either end is another matter: that is a datum change or a unit slip, not
+ * weather.
+ */
+const LAKE_RECORD_MARGIN_CM = 100;
+
+function validateLakeReading(lake, reading) {
+  const level = reading.waterLevelCm;
+  if (!Number.isFinite(level)) {
+    return { ok: false, reason: 'lake level is not a finite number' };
+  }
+  if (level <= -900) {
+    return { ok: false, reason: `sentinel no-data value (${level})` };
+  }
+
+  const thresholds = getThresholds(lake.id);
+  if (thresholds && Number.isFinite(thresholds.lkv) && level < thresholds.lkv - LAKE_RECORD_MARGIN_CM) {
+    return { ok: false, reason: `${level} cm is more than a metre below the recorded minimum (${thresholds.lkv})` };
+  }
+  if (thresholds && Number.isFinite(thresholds.lnv) && level > thresholds.lnv + LAKE_RECORD_MARGIN_CM) {
+    return { ok: false, reason: `${level} cm is more than a metre above the recorded maximum (${thresholds.lnv})` };
+  }
+
+  return validateTimestamp(reading);
+}
+
+function validateTimestamp(reading) {
+  const ts = Date.parse(reading.timestamp);
+  if (Number.isNaN(ts)) {
+    return { ok: false, reason: 'unparseable timestamp' };
+  }
+  // A gauge reporting from the future means a clock or timezone problem upstream;
+  // storing it would put a reading beyond "now" and break the lagged lookup.
+  if (ts > Date.now() + 2 * 3600 * 1000) {
+    return { ok: false, reason: `timestamp is in the future (${reading.timestamp})` };
+  }
+  return { ok: true };
+}
+
 function validateReading(reading) {
+  // Lakes share the readings table with the gauges but not the checks: a lake has no
+  // discharge, so every rule below about m3/s would reject it on the first line.
+  const lake = getLake(reading.stationId);
+  if (lake) return validateLakeReading(lake, reading);
+
   const station = getStation(reading.stationId);
   if (!station) {
     return { ok: false, reason: `unknown station ${reading.stationId}` };
@@ -56,17 +106,7 @@ function validateReading(reading) {
     };
   }
 
-  const ts = Date.parse(reading.timestamp);
-  if (Number.isNaN(ts)) {
-    return { ok: false, reason: 'unparseable timestamp' };
-  }
-  // A gauge reporting from the future means a clock or timezone problem upstream;
-  // storing it would put a reading beyond "now" and break the lagged lookup.
-  if (ts > Date.now() + 2 * 3600 * 1000) {
-    return { ok: false, reason: `timestamp is in the future (${reading.timestamp})` };
-  }
-
-  return { ok: true };
+  return validateTimestamp(reading);
 }
 
 /** Screen a whole batch, returning the survivors and a list of what was dropped. */

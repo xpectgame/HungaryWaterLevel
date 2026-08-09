@@ -232,6 +232,8 @@ test('the frontend is served from the app root', async () => {
     // Stage is live data, so the page has to refetch the station endpoint rather than
     // reading it once at load and letting the water level go stale under a live clock.
     assert.match(html, /id="levels"/, 'the stage section must be present');
+    assert.match(html, /id="lakes"/, 'the lakes section must be present');
+    assert.match(html, /\/api\/v1\/lakes/, 'the page must poll the lake endpoint');
     assert.match(
       html,
       /fetch\('\/api\/v1\/stations',\{cache:'no-store'\}\)/,

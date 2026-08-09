@@ -1,6 +1,7 @@
 'use strict';
 
 const { pollableStations, getStation } = require('../config/stations');
+const { gaugedLakes } = require('../config/lakes');
 const { fetchJson, browserHeaders } = require('../lib/http');
 const { createTokenProvider } = require('./vizugy-auth');
 
@@ -171,32 +172,46 @@ function mappedStations() {
 }
 
 /**
+ * Lakes, addressed the same way as gauges.
+ *
+ * A lake is a törzsszám in the same catalogue, so it needs no separate integration -
+ * only a different question. There is no discharge to ask for: the Sió is a gate, not a
+ * regime, and "how much water is leaving the Balaton" is a decision rather than a
+ * measurement. So lakes are asked for level only.
+ */
+function mappedLakes() {
+  return gaugedLakes();
+}
+
+/**
  * Build the request body: one entry per station, in one POST.
  *
  * ItemId is the index into the station list, which is what makes the response
  * unambiguous - the service echoes it back and nothing else identifies the series.
  */
-function buildRequest(stations, cfg, now = new Date()) {
+function buildRequest(stations, cfg, now = new Date(), lakes = []) {
   const endTime = new Date(now.getTime() + 60 * 60 * 1000); // clock skew headroom
   const startTime = new Date(now.getTime() - cfg.lookbackHours * 60 * 60 * 1000);
 
-  const ask = (station, index, code) => ({
+  const ask = (torzsszam, index, code) => ({
     ItemId: index,
-    Torzsszam: Number(EXTERNAL_IDS[station.id]),
+    Torzsszam: Number(torzsszam),
     AdatFajtaKod: code,
     AdatTipusKod: cfg.atCode,
     StartTime: startTime.toISOString(),
     EndTime: endTime.toISOString(),
   });
 
-  // Discharge and stage in one request. Each entry carries its own AdatFajtaKod, so
-  // asking for both costs nothing extra - and stage is what the record lows and the
-  // flood grades are expressed in, so without it those thresholds cannot be compared
-  // to anything. Stage entries are indexed above the discharge block so one ItemId
-  // still identifies exactly one series.
+  // Three blocks in one request: discharge, stage, then lake level. Each entry carries
+  // its own AdatFajtaKod, so asking for all three costs nothing extra - and stage is
+  // what the record lows and the flood grades are expressed in, so without it those
+  // thresholds cannot be compared to anything. The blocks are indexed one after another
+  // so a single ItemId still identifies exactly one series.
+  const n = stations.length;
   return [
-    ...stations.map((station, index) => ask(station, index, cfg.hafCode)),
-    ...stations.map((station, index) => ask(station, stations.length + index, cfg.stageCode)),
+    ...stations.map((station, i) => ask(EXTERNAL_IDS[station.id], i, cfg.hafCode)),
+    ...stations.map((station, i) => ask(EXTERNAL_IDS[station.id], n + i, cfg.stageCode)),
+    ...lakes.map((lake, i) => ask(lake.gaugeTsz, 2 * n + i, cfg.stageCode)),
   ];
 }
 
@@ -279,10 +294,30 @@ async function fetchAll(env = process.env) {
     return { source: 'vizugy', fetchedAt: new Date().toISOString(), readings, errors, configured: false };
   }
 
+  const lakes = mappedLakes();
+
   try {
-    const response = await postSeries(buildRequest(stations, cfg), cfg);
+    const response = await postSeries(buildRequest(stations, cfg, new Date(), lakes), cfg);
     const entries = Array.isArray(response) ? response : [];
     const byItemId = new Map(entries.map((entry) => [Number(entry.ItemId), entry]));
+
+    lakes.forEach((lake, index) => {
+      const sample = latestSample(byItemId.get(2 * stations.length + index));
+      if (!sample) {
+        errors.push({ stationId: lake.id, error: 'no lake level in the requested window' });
+        return;
+      }
+      readings[lake.id] = {
+        stationId: lake.id,
+        // A lake has no discharge. Null rather than 0: zero is a number a balance would
+        // happily add up, and this one must never enter a sum.
+        flowM3s: null,
+        waterLevelCm: sample.flowM3s,
+        timestamp: sample.timestamp,
+        source: 'vizugy',
+        quality: 'measured',
+      };
+    });
 
     stations.forEach((station, index) => {
       const sample = latestSample(byItemId.get(index));

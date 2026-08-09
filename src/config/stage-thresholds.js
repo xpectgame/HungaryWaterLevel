@@ -71,6 +71,14 @@ const STAGE_THRESHOLDS = {
   'feher-koros-gyula': { lkv: -210, lnv: 786, kf1: 350, kf2: 450, kf3: 550, datum: 84.62 },
   'maros-mako': { lkv: -127, lnv: 625, kf1: 400, kf2: 450, kf3: 500, datum: 79.5 },
 
+  // --- Standing water ------------------------------------------------------
+  // Same catalogue, same meaning: centimetres above each gauge's own zero, and the
+  // lowest and highest ever recorded there. No flood grades are published for a lake -
+  // a rising Balaton is not an event the levee system is graded against.
+  balaton: { lkv: 23, lnv: 155, kf1: null, kf2: null, kf3: null, datum: 103.42 },
+  'velencei-to': { lkv: 53, lnv: 226, kf1: null, kf2: null, kf3: null, datum: 102.62 },
+  ferto: { lkv: -9, lnv: 105, kf1: null, kf2: null, kf3: null, datum: 114.43 },
+
   // --- Dráva / Mura --------------------------------------------------------
   'drava-ortilos': { lkv: -185, lnv: 493, kf1: null, kf2: null, kf3: null, datum: 125.94 },
   'drava-dravaszabolcs': { lkv: -55, lnv: 596, kf1: 430, kf2: 480, kf3: 520, datum: 86.76 },

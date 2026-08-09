@@ -107,7 +107,6 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .abroad-label{font-size:9px;letter-spacing:.22em;text-transform:uppercase;fill:#b3c8d0;pointer-events:none}
 .border-outline{fill:url(#basin);stroke:var(--deep);stroke-width:1.4;opacity:1;stroke-linejoin:round}
 .lake{fill:var(--shallow);opacity:.55;stroke:var(--flow);stroke-width:.5}
-.lake-label{font-size:6.5px;fill:var(--deep);opacity:.8;pointer-events:none;font-style:italic}
 
 .river{fill:none;stroke-linecap:round;stroke-linejoin:round}
 .river-bed{stroke:rgba(14,143,158,.16)}
@@ -123,6 +122,13 @@ svg.map text{user-select:none;-webkit-user-select:none}
    reason: a period that changed with the river would stutter once per cycle. */
 @keyframes drift{to{stroke-dashoffset:-26}}
 .river-label{font-size:6.5px;fill:var(--flow);opacity:.8;pointer-events:none;letter-spacing:.04em}
+
+/* A lake is not a gauge, so it does not get a gauge's dot. The rounded square reads as
+   a basin at 8 pixels and never gets confused with a river section. */
+.lakenode{cursor:pointer}
+.lakenode rect{fill:var(--deep);stroke:#fff;stroke-width:1.1;rx:2}
+.lakenode.unmeasured rect{fill:none;stroke:var(--deep);stroke-dasharray:2 1.6}
+.lakenode text{font-size:7px;font-weight:600;fill:var(--deep);pointer-events:none}
 
 .place circle{fill:#fff;stroke:var(--ink-faint);stroke-width:.9}
 .place text{font-size:7px;fill:var(--ink-soft);pointer-events:none}
@@ -219,6 +225,39 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .scale .item{border-left:2px solid var(--flow-dim);padding-left:12px}
 .scale .q{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:600;color:var(--flow)}
 .scale .t{font-size:13px;color:var(--ink-soft);margin-top:2px}
+
+/* --- lakes --- */
+.lakes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(268px,1fr))}
+.lake{border:1px solid var(--line);border-radius:12px;padding:14px 15px;background:linear-gradient(180deg,#fbfeff,#f2fafc)}
+.lake.dim{background:#fafcfd;border-style:dashed}
+/* min-width:0 on the name and nowrap on the number: without them the name column
+   collapses to one word per line and the unit drifts off on its own. */
+.lake .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.lake .nm{font-weight:600;font-size:15px;flex:1 1 auto;min-width:0}
+.lake .nm small{display:block;font-weight:400;font-size:11.5px;color:var(--ink-faint)}
+.lake .now{flex:0 0 auto;white-space:nowrap;
+  font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600;color:var(--deep)}
+.lake .now span{font-size:13px;color:var(--ink-faint);margin-left:3px}
+.lake .rail{position:relative;height:12px;border-radius:6px;margin:11px 0 4px;
+  background:linear-gradient(90deg,#e9f4f7,#cfe7ee);border:1px solid var(--line)}
+.lake .rail .f{position:absolute;top:0;bottom:0;left:0;border-radius:6px 0 0 6px;
+  background:linear-gradient(90deg,var(--flow-dim),var(--shallow));opacity:.45;
+  transition:width .9s cubic-bezier(.2,.8,.2,1)}
+.lake .rail .mk{position:absolute;top:-4px;width:3px;height:18px;border-radius:2px;background:var(--ink);
+  box-shadow:0 0 0 1px #fff;transition:left .9s cubic-bezier(.2,.8,.2,1)}
+.lake .ends{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-faint);
+  font-family:var(--mono);font-variant-numeric:tabular-nums}
+.lake .trend{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;margin-top:11px;
+  font-size:12.5px;align-items:baseline}
+.lake .trend b{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+.lake .trend .lbl{color:var(--ink-faint)}
+.lake .trend .vol{text-align:right;color:var(--ink-soft);font-family:var(--mono);font-variant-numeric:tabular-nums}
+.lake .rise b,.lake .rise .vol{color:var(--flow)}
+.lake .fall b,.lake .fall .vol{color:var(--silt)}
+.lake .facts{margin-top:11px;padding-top:10px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--ink-faint);line-height:1.6}
+.lake .facts b{color:var(--ink-soft);font-family:var(--mono)}
+.lake p.why{font-size:12.5px;color:var(--ink-soft);margin:10px 0 0}
 
 /* --- stage against the gauge's own record range --- */
 .levels{display:grid;gap:11px}
@@ -349,6 +388,7 @@ footer a{color:var(--ink-soft)}
     <g id="layer-rivers"></g>
     <g id="layer-lakes"></g>
     <g id="layer-places"></g>
+    <g id="layer-lakenodes"></g>
     <g id="layer-borderflow"></g>
     <g id="layer-plants"></g>
     <g id="layer-nodes"></g>
@@ -358,6 +398,7 @@ footer a{color:var(--ink-soft)}
     <span><i class="key" style="background:var(--silt)"></i>kilépő szelvény</span>
     <span><i class="key" style="background:var(--ink-faint)"></i>belső mérce (nem összegezzük)</span>
     <span><i class="key" style="background:var(--ember)"></i>erőmű, hűtővíz-kivétellel</span>
+    <span><i class="key" style="background:var(--deep);border-radius:2px"></i>tó, vízszinttel</span>
     <span style="color:var(--ink-faint)">Határok, folyók, tavak: Natural Earth (10 m)</span>
   </div>
 </section>
@@ -382,6 +423,19 @@ footer a{color:var(--ink-soft)}
     Az emberek folyókban gondolkodnak, nem szelvényekben. Minden rendszer a hozzá tartozó
     határszelvények összege — a belső mércék (Budapest, Szolnok, Nagymaros) sehol nem
     számítanak bele, mert azt a vizet a belépésnél már megszámoltuk.
+  </p>
+</section>
+
+<section class="card" style="margin-bottom:18px">
+  <h3>Tavaink</h3>
+  <p id="lakes-lead" style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">&nbsp;</p>
+  <div id="lakes" class="lakes"></div>
+  <p style="font-size:13px;color:var(--ink-soft);margin-top:14px">
+    A tavaknál nincs értelmes vízhozam — a Balaton elfolyását a siófoki zsilip szabja meg,
+    ami döntés, nem folyamat. Ezért itt a vízszint a mért adat, és az számít. A köbméterre
+    átváltás a tó felszínéből jön: egy centiméter a Balatonon 5,94 millió m³, a Velencei-tavon
+    0,24 millió. Ez becslés, nem mérés — a tó nem henger, a partközeli sávban egy centi
+    nagyobb területet fed le, mint amivel itt számolunk.
   </p>
 </section>
 
@@ -461,6 +515,15 @@ footer a{color:var(--ink-soft)}
       <p>A Vág és a Garam a határszakaszon, Komárom alatt csatlakozik, és az OVF nem méri őket —
       a kisvízfolyásokkal együtt egy becsült tagba kerülnek (~260 m³/s), ami külön látszik.
       A Lajtára nincs használható szelvény. Rajka és Tiszasziget időnként nem ad vízhozamot.</p></details>
+
+    <details><summary>Miért nem szerepelnek a tavak a mérlegben?</summary>
+      <p>Mert a mérleg arról szól, mennyi víz lép át a határon, a tó pedig nem lép sehova.
+      A Balatonnak nincs értelmes „vízhozama”: az elfolyását a siófoki zsilip szabja meg, ami
+      üzemi döntés, nem folyamat. Ezért a tavaknál a vízszint a mért adat, és a változását
+      váltjuk át köbméterre a tó felszínével — a Balatonon egy centi 5,94 millió m³. Ez becslés:
+      a tó nem henger, a partközeli sávban egy centi nagyobb területet fed le. A Tisza-tóra a
+      szolgálat egyáltalán nem tesz közzé vízszintet — a szintje a kiskörei duzzasztó felvize,
+      arra pedig nincs nyilvános adatsor —, ezért ott a mezők üresek, nem pedig becsültek.</p></details>
 
     <details><summary>Mit jelent a centiméter a vízállásnál?</summary>
       <p>Minden mérce a saját nullpontjához mér, ami egy rögzített tengerszint feletti magasság
@@ -562,7 +625,7 @@ function setNumber(el, value, decimals=0){
 }
 
 /* -------------------------------------------------------------------------- */
-let stations = [], plants = [], snapshot = null;
+let stations = [], plants = [], lakes = [], snapshot = null;
 
 /**
  * Draw everything that does not change: countries, water, towns.
@@ -603,14 +666,12 @@ function drawBase(){
     }
   }
 
+  // Shapes only. The name is on the marker drawn over the lake, which is the thing you
+  // can actually press - labelling both wrote "Balaton" twice, half a centimetre apart.
   for(const l of geo.lakes){
     for(const ring of l.shapes){
       $('layer-lakes').appendChild(svgEl('path',{ d: path(ring)+' Z', class:'lake' }));
     }
-    const c = ringCentre(l.shapes[0]);
-    const t = svgEl('text',{ x:c[0].toFixed(1), y:(c[1]+2).toFixed(1), class:'lake-label', 'text-anchor':'middle' });
-    t.textContent = l.name;
-    $('layer-lakes').appendChild(t);
   }
 }
 
@@ -776,9 +837,16 @@ function drawNodes(){
     blockArea(x, y, plantSizeOf(p.water && p.water.withdrawalM3s));
   }
 
+  for(const l of lakes){
+    const [x,y] = px(l.location.lon, l.location.lat);
+    blockArea(x, y, Math.max(3.2, Math.min(7, Math.sqrt(l.surface.areaKm2)/3.6)));
+  }
+
   // Towns are placed first among the labels: they are the fixed frame a reader uses to
-  // find everything else.
+  // find everything else. Lakes come next - a named body of water outranks a gauge dot
+  // on a map about water.
   drawPlaces();
+  drawLakeNodes();
 
   for(const st of ordered){
     const [x,y] = px(st.location.lon, st.location.lat);
@@ -966,6 +1034,121 @@ function renderHeadline(b){
   $('verdict').textContent = b.net.significant
     ? (b.net.direction==='draining' ? 'több távozik, mint amennyi érkezik' : 'több érkezik, mint amennyi távozik')
     : 'a különbség a mérési hibán belül van';
+}
+
+/* --- lakes -------------------------------------------------------------- */
+
+/**
+ * The lakes, each against its own recorded range and its own last week.
+ *
+ * A level in centimetres is the least legible number on this page - nobody knows whether
+ * 108 cm on the Balaton is a lot. Three things fix it, and each card carries all three:
+ * where it sits between the lowest and highest ever recorded there, which way it has
+ * moved, and what that movement is in water. The last one is the point: "négy centit
+ * apadt" is unweighable, "24 millió köbméterrel kevesebb, mint egy hete" is not.
+ */
+function renderLakes(data){
+  const el = $('lakes');
+  if(!data || !data.lakes){ el.innerHTML=''; return; }
+
+  el.innerHTML = data.lakes.map((l) => {
+    const c = l.current, s = c && c.stage;
+    const has = c && Number.isFinite(c.levelCm);
+    const pos = s && s.position!=null ? Math.max(0,Math.min(1,s.position))*100 : 0;
+
+    const head =
+      `<div class="top"><div class="nm">${l.name}`+
+      `<small>${l.gauge ? l.gauge+' mérce' : 'nincs közzétett vízszint'}</small></div>`+
+      `<div class="now">${has?fmt(c.levelCm,0):'–'}<span>cm</span></div></div>`;
+
+    const rail = has && s && s.recordLowCm!=null
+      ? `<div class="rail"><i class="f" style="width:${pos.toFixed(1)}%"></i>`+
+        `<i class="mk" style="left:calc(${pos.toFixed(1)}% - 1.5px)"></i></div>`+
+        `<div class="ends"><span>${fmt(s.recordLowCm,0)} cm — valaha mért legkisebb</span>`+
+        `<span>${fmt(s.recordHighCm,0)} cm</span></div>`
+      : '';
+
+    const facts =
+      `<div class="facts">`+
+      `<b>${fmt(l.surface.areaKm2,0)}</b> km² felszín`+
+      (l.surface.hungarianAreaKm2?` (ebből <b>${fmt(l.surface.hungarianAreaKm2,0)}</b> km² Magyarországon)`:'')+
+      ` · <b>${fmt(l.surface.volumeMm3,0)}</b> millió m³ · átlagosan <b>${fmt(l.surface.meanDepthM,1)}</b> m mély`+
+      (l.surface.outflow?` · elfolyás: ${l.surface.outflow}`:'')+
+      `<br>1 cm ≈ <b>${fmt(l.surface.millionM3PerCm,2)}</b> millió m³`+
+      `</div>`;
+
+    return `<div class="lake ${has?'':'dim'}">`+
+      head + rail +
+      trendRows(l) +
+      (l.unavailableReason?`<p class="why">${l.unavailableReason}</p>`:'')+
+      facts +
+      `</div>`;
+  }).join('');
+
+  // The one national sentence this section can honestly produce.
+  const w = data.weeklyVolumeChangeMm3;
+  $('lakes-lead').innerHTML = w==null
+    ? `Egy hétnél rövidebb előzmény van eltárolva, ezért a heti változást még nem tudjuk kiszámolni. A pillanatnyi vízszintek lent.`
+    : `A mért tavakban egy hét alatt <b style="color:${w<0?'var(--silt)':'var(--flow)'}">`+
+      `${w>0?'+':''}${fmt(w,0)} millió m³</b> a változás — ${w<0?'ennyivel kevesebb':'ennyivel több'} víz van bennük, mint hét napja.`;
+}
+
+function trendRows(l){
+  const row = (label, t) => {
+    if(!t) return `<span class="lbl">${label}</span><span class="lbl">nincs elég előzmény</span><span></span>`;
+    const dir = t.cm > 0 ? 'rise' : t.cm < 0 ? 'fall' : '';
+    return `<span class="lbl">${label}</span>`+
+      `<span class="${dir}"><b>${t.cm>0?'+':''}${fmt(t.cm,0)} cm</b></span>`+
+      `<span class="vol ${dir}">${t.volumeMm3==null?'':`${t.volumeMm3>0?'+':''}${fmt(t.volumeMm3,1)} millió m³`}</span>`;
+  };
+  return `<div class="trend">${row('24 óra', l.trend.day)}${row('7 nap', l.trend.week)}</div>`;
+}
+
+/** Lake markers on the map: a basin, not a gauge dot. */
+function drawLakeNodes(){
+  const layer = $('layer-lakenodes');
+  layer.textContent = '';
+  if(!geo) return;
+
+  for(const l of lakes){
+    const [x,y] = px(l.location.lon, l.location.lat);
+    const has = l.current && Number.isFinite(l.current.levelCm);
+    // Area, square-rooted: the Balaton is 25x the Velencei-tó by surface, which as a
+    // side length is 5x - still a clear difference, still both legible.
+    const size = Math.max(3.2, Math.min(7, Math.sqrt(l.surface.areaKm2)/3.6));
+
+    const g = svgEl('g',{ class:'lakenode'+(has?'':' unmeasured') });
+    g.appendChild(svgEl('rect',{
+      x:(x-size).toFixed(1), y:(y-size).toFixed(1),
+      width:(size*2).toFixed(1), height:(size*2).toFixed(1), rx:'2',
+    }));
+    g.appendChild(svgEl('circle',{ class:'hit', cx:x.toFixed(1), cy:y.toFixed(1), r:'14' }));
+    if(claimLabel(x+size+3, y+2.5, l.name, 7)){
+      const t = svgEl('text',{ x:(x+size+3).toFixed(1), y:(y+2.5).toFixed(1) });
+      t.textContent = l.name;
+      g.appendChild(t);
+    }
+    bindMarker(g, () => renderLakeTip(l), () => showLake(l.id));
+    layer.appendChild(g);
+  }
+}
+
+function renderLakeTip(l){
+  const c = l.current, s = c && c.stage;
+  const week = l.trend.week;
+  $('tip').innerHTML =
+    `<div class="t-name">${l.name}</div>`+
+    `<div class="t-val" style="color:var(--deep)">${c&&Number.isFinite(c.levelCm)?fmt(c.levelCm,0):'–'} `+
+    `<span style="font-size:12px;color:var(--ink-faint)">cm</span></div>`+
+    `<div class="t-sub">${l.gauge?l.gauge+' mérce':'nincs közzétett vízszint'}`+
+    (s&&s.aboveRecordLowCm!=null?` · ${fmt(s.aboveRecordLowCm,0)} cm-rel a minimum fölött`:'')+`</div>`+
+    (week?`<div class="t-sub">7 nap: <b>${week.cm>0?'+':''}${fmt(week.cm,0)} cm</b>`+
+      (week.volumeMm3!=null?` · ${week.volumeMm3>0?'+':''}${fmt(week.volumeMm3,1)} millió m³`:'')+`</div>`:'');
+}
+
+function showLake(id){
+  const card = document.querySelectorAll('#lakes .lake')[lakes.findIndex(l=>l.id===id)];
+  (card || $('lakes')).scrollIntoView({ behavior:'smooth', block:'center' });
 }
 
 /* --- stage --- */
@@ -1381,12 +1564,14 @@ async function refresh(){
     // Stations are fetched every cycle, not once at load: the registry half is static,
     // but `current` carries the live stage, and a tab left open all afternoon would
     // otherwise show this morning's water level under a clock ticking in real time.
-    const [s, st] = await Promise.all([
+    const [s, st, lk] = await Promise.all([
       fetch('/api/v1/snapshot',{cache:'no-store'}).then(r=>r.json()),
       fetch('/api/v1/stations',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+      fetch('/api/v1/lakes',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
     ]);
     snapshot = s;
     if(st && st.stations) stations = st.stations;
+    if(lk && lk.lakes){ lakes = lk.lakes; renderLakes(lk); }
 
     $('synthetic').classList.toggle('hidden', !(s._meta && s._meta.synthetic));
 

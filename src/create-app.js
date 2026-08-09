@@ -124,7 +124,7 @@ function createApp(ctx) {
   app.use((req, res) => {
     res.status(404).json({
       error: 'Not found',
-      hint: 'See /api/v1/health, /api/v1/snapshot, /api/v1/balance, /api/v1/stations, /api/v1/powerplants, /api/v1/meta/sources',
+      hint: 'See /api/v1/health, /api/v1/snapshot, /api/v1/balance, /api/v1/stations, /api/v1/lakes, /api/v1/powerplants, /api/v1/meta/sources',
     });
   });
 
