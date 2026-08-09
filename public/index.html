@@ -64,6 +64,45 @@ h1 em{font-style:normal;color:var(--flow)}
 .dot.live{animation:pulse 2.6s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
 
+/* --- navigation ---------------------------------------------------------
+   Sticky, because the page is long and the thing a reader wants next is rarely
+   the thing directly below. It scrolls horizontally on a phone rather than
+   wrapping to three rows and eating the screen. */
+/* Contained rather than full-bleed. The `margin:0 -100vw; padding:0 100vw` trick that
+   stretches a background to the window edges also stretches the element, and on a phone
+   that gave the whole page a horizontal scroll. */
+.nav{position:sticky;top:8px;z-index:40;margin-bottom:16px;border-radius:99px;
+  background:rgba(255,255,255,.9);backdrop-filter:blur(12px);
+  border:1px solid var(--line);box-shadow:0 2px 10px rgba(10,44,55,.07)}
+.nav-inner{display:flex;align-items:center;gap:6px;
+  padding:5px 7px;overflow-x:auto;scrollbar-width:none}
+.nav-inner::-webkit-scrollbar{display:none}
+.nav a{flex:0 0 auto;font-size:12.5px;color:var(--ink-soft);text-decoration:none;
+  padding:6px 11px;border-radius:99px;white-space:nowrap;transition:background .15s,color .15s}
+.nav a:hover{background:var(--sunk);color:var(--ink)}
+.nav a[aria-current="true"]{background:var(--deep);color:#fff}
+.nav .spacer{flex:1 1 auto;min-width:4px}
+
+/* The scenario switch. Deliberately not a toggle that could be mistaken for a
+   filter: it changes what the whole page is about, so it is labelled in words. */
+.scenario{flex:0 0 auto;display:flex;gap:2px;background:var(--sunk);border-radius:99px;padding:2px;
+  border:1px solid var(--line)}
+.scenario button{border:0;background:none;font:inherit;font-size:12px;color:var(--ink-soft);
+  padding:5px 12px;border-radius:99px;cursor:pointer;white-space:nowrap}
+.scenario button[aria-pressed="true"]{background:#fff;color:var(--ink);font-weight:600;
+  box-shadow:0 1px 3px rgba(10,44,55,.12)}
+.scenario button:focus-visible{outline:2px solid var(--flow);outline-offset:1px}
+
+/* Everything the page shows while the hypothetical is on gets this, so a
+   screenshot of it can never be mistaken for today's reading. */
+body.what-if .headline,body.what-if #cards,body.what-if #s-szelvenyek,
+body.what-if #s-rendszerek,body.what-if .mapcard{
+  background-image:repeating-linear-gradient(135deg,rgba(194,82,28,.05) 0 12px,transparent 12px 24px)}
+.whatif-bar{display:none;margin-bottom:18px}
+body.what-if .whatif-bar{display:block}
+.linkish{border:0;background:none;font:inherit;color:inherit;text-decoration:underline;
+  cursor:pointer;padding:0;margin-left:6px}
+
 /* --- banners --- */
 .banner{border-radius:12px;padding:12px 15px;margin-bottom:18px;font-size:14px;border:1px solid}
 .banner.warn{background:#fdeef1;border-color:#eab8c3;color:#8d1329}
@@ -138,6 +177,13 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .place.foreign text{fill:#9db6bf}
 
 .node{cursor:pointer}
+/* Pointing at a row in a list lights that gauge and quiets the others. Opacity only -
+   nothing moves, so the map does not jump under a pointer travelling down a list. */
+.map.has-focus .node,.map.has-focus .plant,.map.has-focus .lakenode{opacity:.25;transition:opacity .18s}
+.map.has-focus .node.lit{opacity:1}
+.node.lit .core{stroke:var(--ink);stroke-width:1.8}
+.node.lit .halo{opacity:.4}
+.node.lit text{fill:var(--ink);font-weight:600}
 /* An invisible disc under every marker. A 3-pixel dot is not a touch target, and the
    alternative - drawing everything bigger - would bury the map under its own markers. */
 .hit{fill:transparent;stroke:none}
@@ -269,6 +315,14 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .bar.dry-2 .fill{background:linear-gradient(90deg,var(--ember-dim),var(--ember))}
 .bar.dry-1 .fill{background:linear-gradient(90deg,var(--silt-dim),var(--silt))}
 .bar.wet-0 .fill,.bar.wet-1 .fill{background:linear-gradient(90deg,var(--flow-dim),var(--flow))}
+.cardhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.cardhead h3{margin-bottom:0}
+.sortbar{display:flex;gap:2px;margin-bottom:8px}
+.sortbar button{border:1px solid var(--line);background:#fff;font:inherit;font-size:11px;
+  color:var(--ink-soft);padding:3px 9px;border-radius:99px;cursor:pointer}
+.sortbar button[aria-pressed="true"]{background:var(--sunk);color:var(--ink);font-weight:600;
+  border-color:var(--flow-dim)}
+.sortbar button:focus-visible{outline:2px solid var(--flow);outline-offset:1px}
 .barhead{display:grid;grid-template-columns:minmax(96px,1.3fr) 1fr minmax(74px,auto);gap:10px;
   font-size:11px;color:var(--ink-faint);margin-bottom:7px}
 .barhead .mid{position:relative}
@@ -391,6 +445,30 @@ footer a{color:var(--ink-soft)}
   </div>
 </header>
 
+<nav class="nav" aria-label="Szekciók">
+  <div class="nav-inner">
+    <a href="#s-terkep">Térkép</a>
+    <a href="#s-szelvenyek">Szelvények</a>
+    <a href="#s-rendszerek">Folyórendszerek</a>
+    <a href="#s-tavak">Tavak</a>
+    <a href="#s-vizallas">Vízállás</a>
+    <a href="#s-eromuvek">Erőművek</a>
+    <a href="#s-elozmeny">48 óra</a>
+    <a href="#s-modszertan">Módszertan</a>
+    <span class="spacer"></span>
+    <div class="scenario" role="group" aria-label="Mit mutasson az oldal">
+      <button type="button" id="mode-now" aria-pressed="true">Most</button>
+      <button type="button" id="mode-normal" aria-pressed="false">Átlagos évben</button>
+    </div>
+  </div>
+</nav>
+
+<div class="banner warn whatif-bar" id="whatif">
+  <strong>Ez nem a mostani állapot.</strong> Azt mutatja, mit mérnénk, ha minden szelvény a sokéves
+  átlagát hozná — összehasonlításnak, nem adatnak. A csíkozott háttér is erre figyelmeztet.
+  <button type="button" class="linkish" id="whatif-back">Vissza a mostanihoz</button>
+</div>
+
 <div class="banner warn hidden" id="synthetic">
   <strong>Ez szintetikus adat.</strong> A megjelenített értékek generáltak, nem mérések — fejlesztői módban fut.
   Hihetőnek látszanak, és pontosan ezért van itt ez a sáv.
@@ -417,7 +495,7 @@ footer a{color:var(--ink-soft)}
   </div>
 </section>
 
-<section class="mapcard">
+<section class="mapcard" id="s-terkep">
   <div class="maphead">
     <h2>A folyók most</h2>
     <div class="hint">A sodrás sebessége a tényleges vízhozamot követi. Koppints vagy kattints egy pontra.</div>
@@ -455,9 +533,16 @@ footer a{color:var(--ink-soft)}
 
 <section class="grid g3" id="cards"></section>
 
-<section class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+<section class="grid" id="s-szelvenyek" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
   <div class="card">
-    <h3>Belépő szelvények — a saját átlagukhoz mérve</h3>
+    <div class="cardhead">
+      <h3>Belépő szelvények — a saját átlagukhoz mérve</h3>
+      <div class="sortbar" role="group" aria-label="Sorrend">
+        <button type="button" data-sort="flow" aria-pressed="true">méret</button>
+        <button type="button" data-sort="ratio" aria-pressed="false">hol a legkevesebb</button>
+        <button type="button" data-sort="name" aria-pressed="false">név</button>
+      </div>
+    </div>
     <div class="barhead"><span></span><span class="mid"><span>▏sokéves átlag</span></span><span></span></div>
     <div class="bars" id="bars-in"></div>
   </div>
@@ -468,7 +553,7 @@ footer a{color:var(--ink-soft)}
   </div>
 </section>
 
-<section class="card" style="margin-bottom:18px">
+<section class="card" id="s-rendszerek" style="margin-bottom:18px">
   <h3>Folyórendszerek</h3>
   <div id="systems" class="systems"></div>
   <p style="font-size:13px;color:var(--ink-soft);margin-top:12px">
@@ -478,7 +563,7 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
-<section class="card" style="margin-bottom:18px">
+<section class="card" id="s-tavak" style="margin-bottom:18px">
   <h3>Tavaink</h3>
   <p id="lakes-lead" style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">&nbsp;</p>
   <div id="lakes" class="lakes"></div>
@@ -491,7 +576,7 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
-<section class="card" style="margin-bottom:18px">
+<section class="card" id="s-vizallas" style="margin-bottom:18px">
   <h3>Vízállás — hol tart a folyó a saját történetéhez képest</h3>
   <div id="levels" class="levels"></div>
   <div class="lvl-legend">
@@ -520,7 +605,7 @@ footer a{color:var(--ink-soft)}
   <div id="scale" class="scale"></div>
 </section>
 
-<section class="card" style="margin-bottom:18px">
+<section class="card" id="s-eromuvek" style="margin-bottom:18px">
   <h3>Erőművek és hűtővizük</h3>
   <div id="plantlist" class="bars"></div>
   <p style="font-size:13px;color:var(--ink-soft);margin-top:10px">
@@ -535,7 +620,7 @@ footer a{color:var(--ink-soft)}
   <div id="mixlegend" class="mixlegend"></div>
 </section>
 
-<section class="card" style="margin-bottom:18px">
+<section class="card" id="s-elozmeny" style="margin-bottom:18px">
   <h3>Az elmúlt 48 óra</h3>
   <svg class="spark" id="spark" viewBox="0 0 800 120" preserveAspectRatio="none"></svg>
   <p id="spark-note">&nbsp;</p>
@@ -543,7 +628,7 @@ footer a{color:var(--ink-soft)}
 
 <div class="note-block" id="explainer"></div>
 
-<section class="card" style="margin-bottom:18px">
+<section class="card" id="s-modszertan" style="margin-bottom:18px">
   <h3>Módszertan — mit számolunk, és mit nem</h3>
   <div class="method">
     <details open><summary>Mi a „mérleg”?</summary>
@@ -957,7 +1042,8 @@ function drawNodes(){
     const flow = flowOf(st);
     const r = radiusOf(flow, st.role);
 
-    const g = svgEl('g',{ class:'node '+st.role, transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
+    const g = svgEl('g',{ class:'node '+st.role, 'data-station':st.id,
+      transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
     g.appendChild(svgEl('circle',{ class:'halo', r:(r*1.9).toFixed(1) }));
     g.appendChild(svgEl('circle',{ class:'core', r:r.toFixed(1) }));
     g.appendChild(svgEl('circle',{ class:'hit', r: hitFor(x, y, r*1.9, hitR).toFixed(1) }));
@@ -1152,6 +1238,132 @@ function renderHeadline(b){
     : 'a különbség a mérési hibán belül van';
 }
 
+/* --- navigation ----------------------------------------------------------
+
+   Scroll-spy done from bounding rectangles rather than IntersectionObserver.
+   The observer version needed a rootMargin that shrank the window to the top
+   45% of the screen, and at the top of the page the map section started below
+   that band - so nothing was marked at all until the reader scrolled. This
+   always yields exactly one answer: the last section whose top has passed under
+   the sticky bar, and the first one before any has.
+-------------------------------------------------------------------------- */
+const NAV_OFFSET = 70;
+
+function initNav(){
+  const links = [...document.querySelectorAll('.nav a')];
+  const sections = links.map(a => $(a.getAttribute('href').slice(1)));
+  if(!sections.some(Boolean)) return;
+
+  const mark = () => {
+    let index = 0;
+    sections.forEach((s, i) => { if(s && s.getBoundingClientRect().top <= NAV_OFFSET) index = i; });
+    // At the very bottom the last section may still start below the line; a reader who
+    // has reached the end is reading the end.
+    if(innerHeight + scrollY >= document.body.scrollHeight - 4) index = sections.length - 1;
+    links.forEach((a, i) => a.setAttribute('aria-current', String(i === index)));
+
+    // Keep the active chip in view on a phone, where the bar scrolls sideways.
+    const active = links[index];
+    const bar = document.querySelector('.nav-inner');
+    if(active && bar.scrollWidth > bar.clientWidth){
+      const left = active.offsetLeft - bar.clientWidth/2 + active.offsetWidth/2;
+      bar.scrollTo({ left, behavior:'smooth' });
+    }
+  };
+
+  let ticking = false;
+  const onScroll = () => {
+    if(ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { ticking = false; mark(); });
+  };
+  addEventListener('scroll', onScroll, { passive:true });
+  addEventListener('resize', onScroll);
+  mark();
+
+  // Smooth scrolling with the sticky bar accounted for, and the hash kept in the URL
+  // so a section is linkable.
+  for(const a of links){
+    a.addEventListener('click', (e) => {
+      const target = $(a.getAttribute('href').slice(1));
+      if(!target) return;
+      e.preventDefault();
+      scrollToSection(target);
+      history.replaceState(null, '', a.getAttribute('href'));
+    });
+  }
+}
+
+function scrollToSection(el){
+  const top = el.getBoundingClientRect().top + scrollY - 62;
+  scrollTo({ top, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+}
+
+/* --- "what if it were a normal year" -------------------------------------
+
+   The page can say "the inflow is 77% of its long-term mean" and a reader still
+   has to imagine the other 23%. This stops asking them to: every number, every
+   bar and the speed of the water on the map switch to what an average year would
+   show, and switch back.
+
+   It is built by substituting each section's own long-term mean into a copy of
+   the real balance - not by inventing a scenario. Nothing is modelled that was
+   not already published on the page.
+
+   The one thing it must never do is look like a measurement. Hence the striped
+   background, the banner that cannot be dismissed while the mode is on, and the
+   refusal to carry over the significance verdict: whether a difference beats the
+   error bars is a statement about today's readings, and there are none here.
+-------------------------------------------------------------------------- */
+let mode = 'now';
+
+function normalise(side){
+  const stations = side.stations.map((s) => ({
+    ...s,
+    flowM3s: s.longTermMeanM3s,
+    ratioToMean: 1,
+    quality: 'climatology',
+  }));
+  const total = side.longTermMeanM3s;
+  return {
+    ...side,
+    totalM3s: total,
+    stations: stations.map((s) => ({ ...s, shareOfSide: total > 0 ? s.flowM3s/total : 0 })),
+    dailyM3: Math.round(total * 86400),
+    ratioToMean: 1,
+  };
+}
+
+function scenarioBalance(b){
+  if(mode === 'now') return b;
+  const inflow = normalise(b.inflow);
+  const outflow = normalise(b.outflow);
+  const net = inflow.totalM3s - outflow.totalM3s;
+  return {
+    ...b,
+    scenario: 'normal',
+    inflow, outflow,
+    net: {
+      ...b.net,
+      m3s: Math.round(net*10)/10,
+      dailyM3: Math.round(net*86400),
+      // No live readings, so no error band and no verdict about beating it.
+      significant: false,
+      direction: net > 0 ? 'accumulating' : 'draining',
+    },
+  };
+}
+
+function setMode(next){
+  if(mode === next) return;
+  mode = next;
+  document.body.classList.toggle('what-if', mode === 'normal');
+  $('mode-now').setAttribute('aria-pressed', String(mode === 'now'));
+  $('mode-normal').setAttribute('aria-pressed', String(mode === 'normal'));
+  if(snapshot) paint(snapshot);
+  if(lastHistory) renderSpark(lastHistory);
+}
+
 /* --- normal, and how far from it ----------------------------------------
 
    Every discharge on this page is now printed against what that section carries
@@ -1335,9 +1547,17 @@ function renderLevels(){
   }).join('');
 
   for(const row of el.querySelectorAll('[data-station]')){
-    const open = () => showStation(row.dataset.station);
+    const id = row.dataset.station;
+    const open = () => showStation(id);
     row.addEventListener('click', open);
     row.addEventListener('keydown', (e) => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } });
+    // Point at a row, find it on the map. The list answers "how much" and the map
+    // answers "where", and until now a reader had to hold one in their head to use
+    // the other.
+    row.addEventListener('pointerenter', () => highlightStation(id));
+    row.addEventListener('focus', () => highlightStation(id));
+    row.addEventListener('pointerleave', () => highlightStation(null));
+    row.addEventListener('blur', () => highlightStation(null));
   }
 }
 
@@ -1455,8 +1675,23 @@ function renderCards(s){
  */
 const RATIO_SCALE = 1.5; // full track = 150% of normal, so the 100% tick sits at two thirds
 
+/**
+ * How the section lists are ordered.
+ *
+ * "By size" answers which rivers carry the country's water; "by how far below normal"
+ * answers which ones are in trouble, and those are different lists - the Pinka running
+ * at 54% is invisible at the bottom of a size-ordered list, and it is exactly the row a
+ * drought reader is looking for.
+ */
+const BAR_SORTS = {
+  flow:  { label:'méret szerint', fn:(a,b)=> b.flowM3s - a.flowM3s },
+  ratio: { label:'ahol a legkevesebb a víz', fn:(a,b)=> (a.ratioToMean??9) - (b.ratioToMean??9) },
+  name:  { label:'név szerint', fn:(a,b)=> a.name.localeCompare(b.name,'hu') },
+};
+let barSort = 'flow';
+
 function renderBars(list, el, cls){
-  el.innerHTML = list.slice().sort((a,b)=>b.flowM3s-a.flowM3s).map(s=>{
+  el.innerHTML = list.slice().sort(BAR_SORTS[barSort].fn).map(s=>{
     const est = s.quality!=='measured' ? ' <small>becsült</small>' : '';
     const ratio = s.ratioToMean;
     const band = ratio!=null ? dryBand(ratio) : null;
@@ -1476,10 +1711,33 @@ function renderBars(list, el, cls){
   }).join('');
 
   for(const row of el.querySelectorAll('[data-station]')){
-    const open = () => showStation(row.dataset.station);
+    const id = row.dataset.station;
+    const open = () => showStation(id);
     row.addEventListener('click', open);
     row.addEventListener('keydown', (e) => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } });
+    // Point at a row, find it on the map. The list answers "how much" and the map
+    // answers "where", and until now a reader had to hold one in their head to use
+    // the other.
+    row.addEventListener('pointerenter', () => highlightStation(id));
+    row.addEventListener('focus', () => highlightStation(id));
+    row.addEventListener('pointerleave', () => highlightStation(null));
+    row.addEventListener('blur', () => highlightStation(null));
   }
+}
+
+/**
+ * Light one gauge on the map and dim the rest.
+ *
+ * Class toggles rather than a redraw: drawNodes rebuilds forty elements and recomputes
+ * every label position, which is far too much work for a pointer moving down a list of
+ * twenty rows.
+ */
+function highlightStation(id){
+  const map = $('map');
+  map.classList.toggle('has-focus', !!id);
+  for(const g of map.querySelectorAll('.node')) g.classList.toggle('lit', g.dataset.station === id);
+  const lit = id ? map.querySelector('.node.lit') : null;
+  if(lit) lit.parentNode.appendChild(lit); // out from under its neighbours
 }
 
 function renderSpark(history){
@@ -1524,7 +1782,10 @@ function renderSpark(history){
   const hrs = Math.round((Date.parse(history[history.length-1].timestamp)-Date.parse(history[0].timestamp))/3600000);
   $('spark-note').innerHTML = `Beáramlás <span style="color:var(--flow)">———</span> és kiáramlás `+
     `<span style="color:var(--silt)">———</span> az elmúlt ${hrs} órában. A pontozott vonalak azt mutatják, `+
-    `hol lenne a sokéves átlag.`;
+    `hol lenne a sokéves átlag.`+
+    // The history is a record of what happened; there is no hypothetical version of it.
+    (mode === 'normal' ? ` <b>Ez a grafikon mindig a valós mérést mutatja</b>, az „átlagos évben” `+
+      `nézet csak a pillanatnyi állapotot cseréli le.` : '');
 }
 
 // Colours belong to the electricity system, so they stay warm; water keeps the cool
@@ -1744,7 +2005,10 @@ async function showStation(id){
     `<svg class="spark" id="det-spark" viewBox="0 0 800 120" preserveAspectRatio="none" style="margin-top:12px"></svg>`+
     `<p id="det-note" style="font-size:12.5px;color:var(--ink-faint);margin:6px 0 0">előzmény betöltése…</p>`;
 
-  $('detailcard').scrollIntoView({ behavior:'smooth', block:'nearest' });
+  scrollToSection($('detailcard'));
+  // Shareable: the hash names the gauge, so a link lands on the same section someone
+  // was looking at rather than at the top of a long page.
+  history.replaceState(null, '', '#szelveny=' + encodeURIComponent(id));
 
   try{
     const h = await fetch(`/api/v1/stations/${encodeURIComponent(id)}/timeseries?days=2&limit=300`).then(r=>r.json());
@@ -1830,19 +2094,7 @@ async function refresh(){
     if(lk && lk.lakes){ lakes = lk.lakes; renderLakes(lk); }
 
     $('synthetic').classList.toggle('hidden', !(s._meta && s._meta.synthetic));
-
-    renderHeadline(s.balance);
-    renderCards(s);
-    renderBars(s.balance.inflow.stations, $('bars-in'), '');
-    renderBars(s.balance.outflow.stations, $('bars-out'), 'out');
-    renderExplainer(s);
-    renderDroughtBanner(s.balance);
-    renderMix(s.power);
-    renderSystems(s.balance);
-    renderScale(s.balance);
-    renderLevels();
-    renderFloodBanner();
-    drawNodes();
+    paint(s);
 
     const at = s._meta && s._meta.lastPollAt;
     const stale = $('stale');
@@ -1861,11 +2113,49 @@ async function refresh(){
   }
 }
 
+/**
+ * Draw everything that depends on the balance.
+ *
+ * Split out of refresh so the scenario switch can repaint from the snapshot already in
+ * hand - flipping to "an average year" must not wait on the network, and must not be
+ * able to show one section's hypothetical next to another's live number.
+ */
+function paint(s){
+  const b = scenarioBalance(s.balance);
+  renderHeadline(b);
+  renderCards({ ...s, balance: b });
+  renderBars(b.inflow.stations, $('bars-in'), '');
+  renderBars(b.outflow.stations, $('bars-out'), 'out');
+  renderExplainer({ ...s, balance: b });
+  renderDroughtBanner(b);
+  renderMix(s.power);
+  renderSystems(b);
+  renderScale(b);
+  renderLevels();
+  renderFloodBanner();
+  drawNodes();
+}
+
+let lastHistory = null;
+
 async function refreshHistory(){
   try{
     const h = await fetch('/api/v1/balance/history?days=2&limit=300').then(r=>r.json());
-    renderSpark(h.series||h.history||[]);
+    lastHistory = h.series||h.history||[];
+    renderSpark(lastHistory);
   }catch{ /* history is optional garnish, not the page */ }
+}
+
+/** Land on whatever the URL names: a section, or one gauge in the close-up. */
+function openFromHash(){
+  const hash = decodeURIComponent(location.hash.slice(1));
+  if(hash.startsWith('szelveny=')){
+    const id = hash.slice('szelveny='.length);
+    if(stations.some(s => s.id === id)) showStation(id);
+    return;
+  }
+  const section = hash && $(hash);
+  if(section) scrollToSection(section);
 }
 
 function tick(){
@@ -1874,6 +2164,21 @@ function tick(){
 
 (async function start(){
   tick(); setInterval(tick,1000);
+  initNav();
+  for(const b of document.querySelectorAll('.sortbar button')){
+    b.addEventListener('click', () => {
+      barSort = b.dataset.sort;
+      for(const other of document.querySelectorAll('.sortbar button')){
+        other.setAttribute('aria-pressed', String(other === b));
+      }
+      // Both lists follow the one control: two sort orders on one screen would be a
+      // puzzle, not a feature.
+      if(snapshot) paint(snapshot);
+    });
+  }
+  $('mode-now').addEventListener('click', () => setMode('now'));
+  $('mode-normal').addEventListener('click', () => setMode('normal'));
+  $('whatif-back').addEventListener('click', () => setMode('now'));
   // drawBase needs the geometry, so it runs inside loadStatic once geo.json has landed.
   await loadStatic();
   await refresh();
@@ -1883,6 +2188,8 @@ function tick(){
   setInterval(refreshHistory, 300000);
   // A tab left open for hours should be current the moment it is looked at again.
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refresh(); });
+  openFromHash();
+  addEventListener('hashchange', openFromHash);
   // Rotating a phone changes how many viewBox units a fingertip covers, so the markers
   // are laid out again rather than left at the previous screen's scale.
   let resizeTimer = null;

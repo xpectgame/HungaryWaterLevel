@@ -234,6 +234,21 @@ test('the frontend is served from the app root', async () => {
     assert.match(html, /id="levels"/, 'the stage section must be present');
     assert.match(html, /id="lakes"/, 'the lakes section must be present');
     assert.match(html, /\/api\/v1\/lakes/, 'the page must poll the lake endpoint');
+
+    // Every nav link must point at a section that exists, or the bar silently loses an
+    // entry and the scroll-spy skips a step.
+    const navLinks = [...html.matchAll(/<a href="#(s-[a-z]+)">/g)].map((m) => m[1]);
+    assert.ok(navLinks.length >= 6, `expected a nav bar, found ${navLinks.length} links`);
+    for (const id of navLinks) {
+      assert.ok(html.includes(`id="${id}"`), `nav points at #${id}, which no section carries`);
+    }
+
+    // The hypothetical view must never be able to appear without the warning that it is
+    // one: the banner and the striped background are the only things separating it from
+    // a screenshot of today's readings.
+    assert.match(html, /id="mode-normal"/, 'the scenario switch must be present');
+    assert.match(html, /id="whatif"/, 'the hypothetical must carry its warning banner');
+    assert.match(html, /body\.what-if/, 'the hypothetical must be visually marked');
     assert.match(
       html,
       /fetch\('\/api\/v1\/stations',\{cache:'no-store'\}\)/,
