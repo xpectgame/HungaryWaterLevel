@@ -449,3 +449,65 @@ test('the document rating wins over the nameplate split when it is present', () 
   assert.strictEqual(unitsRunningFrom(paks, [{ unitName: 'PA_gép1', powerMw: 15, nominalMw: 220 }]), 0);
   assert.strictEqual(unitsRunningFrom(paks, [{ unitName: 'PA_gép1', powerMw: 15, nominalMw: 100 }]), 1);
 });
+
+// ---------------------------------------------------------------------------
+// Per-plant output, which retires the gas fleet's biggest caveat
+// ---------------------------------------------------------------------------
+
+test('a plant with published units reports the sum of its own machines', () => {
+  const { sumUnitsFor } = require('../src/sources/entsoe');
+  const dunamenti = getPlant('dunamenti');
+  // The real names from A73, 2026-08-10.
+  const units = [
+    { unitName: 'DG3_gép7', powerMw: 85, timestamp: '2026-08-10T11:30:00.000Z' },
+    { unitName: 'DG3_gép8', powerMw: 73, timestamp: '2026-08-10T11:30:00.000Z' },
+    { unitName: 'DG2_gép15', powerMw: 0, timestamp: '2026-08-10T08:15:00.000Z' },
+    { unitName: 'CSP_GT1', powerMw: 40, timestamp: '2026-08-10T11:30:00.000Z' },
+  ];
+  assert.strictEqual(sumUnitsFor(dunamenti, units), 158, 'Csepel must not land in Dunamenti');
+  assert.strictEqual(sumUnitsFor(getPlant('csepel-2'), units), 40);
+});
+
+test('a unit listed twice is counted once, at its newest reading', () => {
+  // The document carries a series per unit, and GÖNYÜ_gép1 came back at both 08:30 and
+  // 08:45 in the same response. Summing both would double the plant.
+  const { sumUnitsFor } = require('../src/sources/entsoe');
+  const units = [
+    { unitName: 'GÖNYÜ_gép1', powerMw: 1, timestamp: '2026-08-10T08:30:00.000Z' },
+    { unitName: 'GÖNYÜ_gép1', powerMw: 0, timestamp: '2026-08-10T08:45:00.000Z' },
+  ];
+  assert.strictEqual(sumUnitsFor(getPlant('gonyu'), units), 0);
+});
+
+test('a plant that publishes no units gets null, not zero', () => {
+  // Tisza II publishes nothing. Zero would say "producing nothing" and take the second
+  // largest water user off the map; null lets the estimate stand.
+  const { sumUnitsFor } = require('../src/sources/entsoe');
+  assert.strictEqual(sumUnitsFor(getPlant('tisza-2'), [{ unitName: 'PA_gép1', powerMw: 200 }]), null);
+  assert.strictEqual(getPlant('tisza-2').entsoeUnitPattern, undefined);
+});
+
+test('every configured unit pattern matches only its own plant', () => {
+  // Every unit name seen in the live A73 document, and who it belongs to.
+  const observed = {
+    'PA_gép1': 'paks-1', 'PA_gép8': 'paks-1',
+    'MÁ2_gép3': 'matra', 'MÁ2_gép5': 'matra',
+    'GÖNYÜ_gép1': 'gonyu',
+    'DG2_gép15': 'dunamenti', 'DG3_gép7': 'dunamenti',
+    'CSP_GT1': 'csepel-2', 'CSP_ST': 'csepel-2',
+    // Not in the registry: peaking turbines and Budapest CHPs. Nothing may claim them.
+    'Sajó_GT': null, 'Litér_GT': null, 'LORIGTae': null, 'KI_GTST': null, 'KF_GT': null,
+  };
+
+  const { listPlants } = require('../src/config/powerplants');
+  const patterned = listPlants('operating').filter((p) => p.entsoeUnitPattern);
+
+  for (const [unitName, owner] of Object.entries(observed)) {
+    const matches = patterned.filter((p) => new RegExp(p.entsoeUnitPattern, 'i').test(unitName));
+    if (owner === null) {
+      assert.strictEqual(matches.length, 0, `${unitName} belongs to no registry plant, matched ${matches.map((p) => p.id)}`);
+    } else {
+      assert.deepStrictEqual(matches.map((p) => p.id), [owner], `${unitName} should belong to ${owner} alone`);
+    }
+  }
+});

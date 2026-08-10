@@ -47,11 +47,16 @@ function computeBalance(readings, opts = {}) {
   const get = normaliseReadings(readings);
 
   const warnings = [];
+  // The same warnings, tagged. Prose is fine for an API that is entirely in English;
+  // it is not fine as the only form, because the frontend was printing these sentences
+  // verbatim into a Hungarian page. A code lets a consumer say it in its own words.
+  const notes = [];
   let effectiveMethod = method;
 
   if (method === 'lagged' && typeof opts.historyLookup !== 'function') {
     effectiveMethod = 'instant';
     warnings.push('method=lagged requested but no history is available yet; fell back to instant comparison.');
+    notes.push({ code: 'lagged-no-history' });
   }
 
   const inflow = sumSide(listStations('inflow'), {
@@ -78,11 +83,13 @@ function computeBalance(readings, opts = {}) {
       warnings.push(
         'method=lagged requested but no station had history at its travel time; this is an instant comparison.',
       );
+      notes.push({ code: 'lagged-no-history' });
     } else if (inflow.laggedCount < inflow.stationCount) {
       warnings.push(
         `Only ${inflow.laggedCount} of ${inflow.stationCount} inflow stations had history at their travel time; ` +
           'the rest used their current reading.',
       );
+      notes.push({ code: 'lagged-partial', lagged: inflow.laggedCount, total: inflow.stationCount });
     }
   }
 
@@ -161,6 +168,10 @@ function computeBalance(readings, opts = {}) {
       measuredShare: round(measuredShare(inflow, outflow), 3),
       ungaugedShareOfInflow: inflowTotal > 0 ? round(ungaugedM3s / inflowTotal, 3) : 0,
       warnings: warnings.concat(inflow.warnings, outflow.warnings),
+      // The gauges behind those warnings, as data rather than prose, so a consumer can
+      // write its own sentence in its own language instead of printing a raw station id.
+      substituted: inflow.substituted.concat(outflow.substituted),
+      notes,
     },
   };
 }
@@ -176,6 +187,7 @@ function sumSide(stations, { get, now, method, historyLookup }) {
   let estimatedCount = 0;
   let laggedCount = 0;
   const warnings = [];
+  const substituted = [];
   const detail = [];
 
   for (const station of stations) {
@@ -210,6 +222,16 @@ function sumSide(stations, { get, now, method, historyLookup }) {
       quality = 'climatology';
       estimatedCount += 1;
       warnings.push(`${station.id}: no live reading, substituted long-term mean (${station.meanFlow} m3/s).`);
+      // The same fact, structured. `warnings` is prose in English because the whole API
+      // is, and the frontend was printing it verbatim into a Hungarian page - complete
+      // with the raw station id, which names nothing to a reader. A consumer that wants
+      // to write its own sentence needs the parts, not the sentence.
+      substituted.push({
+        id: station.id,
+        name: station.name,
+        river: station.river,
+        meanFlowM3s: station.meanFlow,
+      });
     }
 
     const sigma = (flow * station.uncertaintyPct) / 100;
@@ -252,6 +274,7 @@ function sumSide(stations, { get, now, method, historyLookup }) {
     estimatedCount,
     laggedCount,
     warnings,
+    substituted,
     stations: detail,
   };
 }

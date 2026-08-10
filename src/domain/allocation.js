@@ -8,31 +8,66 @@ const { livePlants, plantsBySourceType } = require('../config/powerplants');
  * Two very different confidence levels come out of this, and keeping them apart is the
  * whole point of the module:
  *
- *   'measured'  - the plant is the sole generator of its source type, so the aggregate
- *                 is its output. Only Paks I qualifies, and it happens to be the plant
- *                 that dominates water withdrawal.
+ *   'measured'  - either the plant is the sole generator of its source type, so the
+ *                 aggregate is its output (Paks I, which also dominates withdrawal), or
+ *                 ENTSO-E publishes the plant's own generation units and the figure is
+ *                 their sum.
  *
- *   'estimated' - the aggregate is shared. It is split across plants in proportion to
- *                 capacity, which is a defensible first guess and definitely not the
- *                 truth: real dispatch follows marginal cost and maintenance schedules,
- *                 so at low system load the cheap plants run flat out and the expensive
- *                 ones sit idle, rather than everyone running at the same part load.
+ *   'estimated' - the aggregate is shared and the plant publishes no units. It is split
+ *                 across plants in proportion to capacity, which is a defensible first
+ *                 guess and definitely not the truth: real dispatch follows marginal
+ *                 cost and maintenance schedules, so at low system load the cheap plants
+ *                 run flat out and the expensive ones sit idle, rather than everyone
+ *                 running at the same part load.
  *
- * The consequence is worth stating plainly: per-plant water figures for the gas fleet
- * are indicative. Their aggregate is sound; the split between them is not.
+ * The gas fleet used to be entirely in the second category, and that was the largest
+ * caveat this project carried. A73 moved Gönyű, Dunamenti and Csepel into the first,
+ * along with Mátra on the coal aggregate. Tisza II is the one that remains: it
+ * publishes no units, and the leftover aggregate is not its output either, because the
+ * same aggregate carries Budapest CHPs this registry does not model.
  */
 
 /**
  * @param {object} generationMw  { nuclear: 1980, naturalGas: 1200, coal: 400, ... }
  * @returns {Array<object>} one entry per live plant
  */
-function allocateGeneration(generationMw = {}) {
+function allocateGeneration(generationMw = {}, { measuredMw = null } = {}) {
   const out = [];
   const handledTypes = new Set();
 
   for (const plant of livePlants()) {
     const { mode, mavirSourceType } = plant.powerSource;
     const aggregate = generationMw[mavirSourceType];
+
+    // ENTSO-E A73 publishes output per generation unit, so for a plant whose units are
+    // known the split stops being a split at all - it is the sum of its own machines.
+    // This is what retires the caveat below for four of the five sharing plants: their
+    // figure is no longer a capacity-weighted guess at merit-order dispatch.
+    //
+    // Tisza II is the exception and stays estimated: it publishes no units, so there is
+    // nothing to sum. Subtracting the measured plants from the aggregate would not give
+    // it either, because the aggregate also carries Budapest CHPs this registry does not
+    // model - the remainder is not one plant's worth of anything.
+    // Only where it replaces an estimate. For an 'exclusive' plant the source-type
+    // aggregate already IS that plant's output, and the two documents disagree about
+    // Paks - A75 read 168 MW while the A73 units summed to 260 at the same minute,
+    // probably gross against net, possibly something else. Swapping a working measured
+    // figure for a second one that differs by half, on a hunch about which is which,
+    // would be trading a known number for an unexplained one.
+    const measured = mode !== 'exclusive' && measuredMw && measuredMw[plant.id];
+    if (Number.isFinite(measured)) {
+      out.push({
+        plantId: plant.id,
+        powerMw: clamp(measured, 0, plant.capacityMw * 1.05),
+        confidence: 'measured',
+        sourceType: mavirSourceType,
+        method: 'sum of this plant\'s own generation units (ENTSO-E A73)',
+      });
+      // Deliberately NOT added to handledTypes: the others sharing this source type
+      // still need their estimated split, and marking the type handled would leave
+      // them with no figure at all.
+      continue;
+    }
 
     if (!Number.isFinite(aggregate)) {
       out.push({

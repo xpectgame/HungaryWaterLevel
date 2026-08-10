@@ -34,7 +34,16 @@ function buildSnapshot({ readings, generation, historyLookup, availability, conf
 
 function buildPowerWater({ readings, generation, coolingModel, availability }) {
   const generationMw = (generation && generation.generationMw) || {};
-  const allocations = allocateGeneration(generationMw);
+
+  // Where ENTSO-E published a plant's own units, its output is their sum rather than a
+  // share of an aggregate. Carried on the availability record because that is where it
+  // is computed - the same A73 call answers both "how many units are running" and "how
+  // much are they producing", and fetching it twice would be the only alternative.
+  const measuredMw = {};
+  for (const [plantId, entry] of Object.entries(availability || {})) {
+    if (entry && Number.isFinite(entry.measuredMw)) measuredMw[plantId] = entry.measuredMw;
+  }
+  const allocations = allocateGeneration(generationMw, { measuredMw });
   const allocationById = new Map(allocations.map((a) => [a.plantId, a]));
 
   const plants = [];

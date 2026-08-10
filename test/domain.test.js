@@ -473,3 +473,38 @@ test('without availability the unit count says it was inferred', () => {
   assert.strictEqual(paks.units.known, false);
   assert.strictEqual(paks.units.declaredOnline, null);
 });
+
+test('a measured plant output replaces its share of the aggregate, and only its own', () => {
+  // The gas fleet used to be split by capacity share, which is a guess at merit-order
+  // dispatch. A73 publishes three of the four plants' own units, so those stop being
+  // guesses - without disturbing the fourth, which publishes nothing.
+  const { allocateGeneration } = require('../src/domain/allocation');
+  const measuredMw = { gonyu: 1, dunamenti: 158, 'csepel-2': 0 };
+  const allocations = allocateGeneration({ nuclear: 168, naturalGas: 900, coal: 184 }, { measuredMw });
+  const by = Object.fromEntries(allocations.map((a) => [a.plantId, a]));
+
+  assert.strictEqual(by.gonyu.confidence, 'measured');
+  assert.strictEqual(by.gonyu.powerMw, 1);
+  assert.strictEqual(by.dunamenti.powerMw, 158);
+  assert.strictEqual(by['csepel-2'].powerMw, 0);
+
+  // Tisza II publishes no units and keeps its estimate - the leftover aggregate is not
+  // its output either, because the same aggregate carries CHPs this registry omits.
+  assert.strictEqual(by['tisza-2'].confidence, 'estimated');
+  assert.ok(by['tisza-2'].caveat);
+
+  // Every plant still gets exactly one entry.
+  assert.strictEqual(allocations.length, new Set(allocations.map((a) => a.plantId)).size);
+});
+
+test('an exclusive plant keeps its aggregate figure even when units are published', () => {
+  // A75 read 168 MW for nuclear while the A73 units summed to 260 at the same minute.
+  // Both are measurements and they disagree; swapping one for the other on a hunch
+  // about gross-versus-net would trade a known number for an unexplained one.
+  const { allocateGeneration } = require('../src/domain/allocation');
+  const allocations = allocateGeneration({ nuclear: 168 }, { measuredMw: { 'paks-1': 260 } });
+  const paks = allocations.find((a) => a.plantId === 'paks-1');
+
+  assert.strictEqual(paks.powerMw, 168);
+  assert.match(paks.method, /sole nuclear generator/);
+});

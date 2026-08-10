@@ -441,6 +441,32 @@ function unitsRunningFrom(plant, units) {
 }
 
 /**
+ * A plant's output, summed from its own generation units.
+ *
+ * Null rather than 0 when nothing matches: zero is the claim "this plant is producing
+ * nothing", and a document that simply does not list a plant is not evidence for it.
+ * Tisza II publishes no units at all, and reporting it at zero megawatts would take it
+ * off the map entirely.
+ */
+function sumUnitsFor(plant, units) {
+  if (!plant.entsoeUnitPattern || !Array.isArray(units)) return null;
+
+  const matcher = new RegExp(plant.entsoeUnitPattern, 'i');
+  // One unit can appear twice with different timestamps - the document carries a
+  // series per unit and the probe saw GÖNYÜ_gép1 listed at both 08:30 and 08:45. Keep
+  // the newest reading per unit, or the plant is counted twice over.
+  const newest = new Map();
+  for (const unit of units) {
+    if (!matcher.test(unit.unitName || '') || !Number.isFinite(unit.powerMw)) continue;
+    const seen = newest.get(unit.unitName);
+    if (!seen || (unit.timestamp || '') > (seen.timestamp || '')) newest.set(unit.unitName, unit);
+  }
+
+  if (newest.size === 0) return null;
+  return Math.round([...newest.values()].reduce((sum, unit) => sum + unit.powerMw, 0) * 10) / 10;
+}
+
+/**
  * Fetch outages over a window, splitting it whenever the platform says it is too big.
  *
  * The window for this document cannot be chosen by picking a number, because it is
@@ -531,6 +557,10 @@ async function fetchAvailability(plants, env = process.env, now = new Date()) {
       unitCount: plant.unitCount,
       source: 'entsoe',
       basis: measured !== null ? 'generation' : 'outage-notices',
+      // The plant's own output, summed from its own machines. This is what lets the
+      // gas fleet stop being a capacity-weighted guess at merit-order dispatch - the
+      // single largest caveat this project carried.
+      measuredMw: unitGeneration ? sumUnitsFor(plant, unitGeneration.units) : null,
       // Both, when both exist. A gap between them is worth seeing rather than
       // resolving silently - it is either an unfiled outage or a unit on house load,
       // and those are different stories about the same plant.
@@ -667,6 +697,7 @@ module.exports = {
   activeAt,
   unitsOnlineFor,
   unitsRunningFrom,
+  sumUnitsFor,
   buildUrl,
   formatPeriod,
   config,

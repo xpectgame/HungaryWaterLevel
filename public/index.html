@@ -2254,7 +2254,9 @@ function renderMix(power){
   const bar = $('mix'), legend = $('mixlegend');
   if(parts.length === 0){
     bar.innerHTML=''; 
-    legend.innerHTML = '<span>Nincs élő termelési adat. A MAVIR nyilvános exportja országos összeget ad, erőművenkénti bontást nem; a blokkonkénti adat az ENTSO-E-ből fog jönni.</span>';
+    legend.innerHTML = '<span>Most nincs élő termelési adat — a legutóbbi lekérdezés nem hozott '
+      + 'termelési bontást. A számok az ENTSO-E Transparency Platformról jönnek, negyedórás '
+      + 'bontásban; ha ez a sáv sokáig üres marad, az adatforrás nem válaszol.</span>';
     return;
   }
 
@@ -2513,12 +2515,39 @@ async function showStation(id){
 
 function renderExplainer(s){
   const b=s.balance;
-  const warn = b.dataQuality.warnings||[];
+  const q = b.dataQuality||{};
+  // A helyettesített szelvényeket a strukturált mezőből írjuk le, nem az angol prózából:
+  // az API végig angol, az oldal magyar, és a nyers azonosító („lajta-mosonmagyarovar")
+  // egy olvasónak nem mond semmit. A mérce neve és a folyó igen.
+  const sub = q.substituted||[];
+  // Kódból fordítunk, nem az angol mondatból: egy szövegre illesztett minta az első
+  // átfogalmazásnál elnémul, és akkor megint angolul jelenik meg a magyar oldalon.
+  const NOTE_HU = {
+    'lagged-no-history': 'A késleltetett összehasonlításhoz még nincs elég tárolt előzmény, '
+      + 'ezért ez azonos időpontú összevetés.',
+    'lagged-partial': (n) => `${n.total} belépő szelvényből ${n.lagged} volt visszakereshető `
+      + 'a saját futásidejére; a többi a mostani adatával szerepel.',
+  };
+  const notes = (q.notes||[]).map((n) => {
+    const t = NOTE_HU[n.code];
+    return typeof t === 'function' ? t(n) : t;
+  }).filter(Boolean);
+
+  let caveat = '';
+  if(sub.length){
+    const names = sub.map((x) => `<b>${x.name}</b> (sokéves átlag: ${fmt(x.meanFlowM3s,0)} m³/s)`);
+    caveat += `${sub.length===1?'egy szelvény':`${sub.length} szelvény`} `+
+      `nem adott élő adatot, ezért a sokéves átlagával szerepel — ${names.join(', ')}. `+
+      `Ez tartja együtt az összeget, de nem mérés.`;
+  }
+  if(notes.length) caveat += `${caveat?' ':''}${notes.join(' ')}`;
+  if(caveat) caveat = `<br><br><strong>Fenntartás:</strong> ${caveat}`;
+
   $('explainer').innerHTML =
     `<strong>Hogyan olvasd?</strong> A beáramlás ${b.inflow.stationCount} határszelvény összege, a kiáramlás ${b.outflow.stationCount}-é. `+
     `Ami közte marad, az nem „elveszett” víz: a hazai csapadékból származó lefolyás, a párolgás és a mérési hiba együtt adja ki. `+
     `Ezért van minden számnak hibasávja, és ezért mondjuk azt, hogy a különbség ${b.net.significant?'kilóg a hibasávból':'belefér a hibasávba'}.`+
-    (warn.length ? `<br><br><strong>Fenntartás:</strong> ${warn.join(' · ')}` : '');
+    caveat;
 }
 
 /* --- data --- */

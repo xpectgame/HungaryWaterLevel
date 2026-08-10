@@ -130,6 +130,11 @@ const PLANTS = [
     capacityMw: 950,
     receivingWater: 'Tisza (Kiskörei-tározó, távvezetéken)',
     powerSource: { mode: 'allocated', mavirSourceType: 'coal' },
+    // Mátrai Erőmű: MÁ2_gép3, gép4, gép5.
+    // Confirmed against A73 on 2026-08-10 - written from observation, never from
+    // a guess at how the operator might name things. A pattern that matches
+    // nothing does not fail; it quietly reports the plant as fully available.
+    entsoeUnitPattern: '^MÁ2_gép\\d+$',
     cooling: {
       type: 'cooling_tower',
       nominalWithdrawalM3s: 0.8,
@@ -154,6 +159,11 @@ const PLANTS = [
     capacityMw: 433,
     receivingWater: 'Duna',
     powerSource: { mode: 'allocated', mavirSourceType: 'naturalGas' },
+    // Gönyű: GÖNYÜ_gép1, a single combined-cycle block.
+    // Confirmed against A73 on 2026-08-10 - written from observation, never from
+    // a guess at how the operator might name things. A pattern that matches
+    // nothing does not fail; it quietly reports the plant as fully available.
+    entsoeUnitPattern: '^GÖNYÜ_gép\\d+$',
     cooling: {
       type: 'once_through',
       nominalWithdrawalM3s: 9,
@@ -177,6 +187,11 @@ const PLANTS = [
     capacityMw: 700,
     receivingWater: 'Duna',
     powerSource: { mode: 'allocated', mavirSourceType: 'naturalGas' },
+    // Dunamenti: DG2_gép15, DG3_gép7, DG3_gép8.
+    // Confirmed against A73 on 2026-08-10 - written from observation, never from
+    // a guess at how the operator might name things. A pattern that matches
+    // nothing does not fail; it quietly reports the plant as fully available.
+    entsoeUnitPattern: '^DG\\d+_gép\\d+$',
     cooling: {
       type: 'once_through',
       nominalWithdrawalM3s: 14,
@@ -200,6 +215,11 @@ const PLANTS = [
     capacityMw: 410,
     receivingWater: 'Duna',
     powerSource: { mode: 'allocated', mavirSourceType: 'naturalGas' },
+    // Csepel: CSP_GT1, CSP_GT2 and the CSP_ST steam turbine.
+    // Confirmed against A73 on 2026-08-10 - written from observation, never from
+    // a guess at how the operator might name things. A pattern that matches
+    // nothing does not fail; it quietly reports the plant as fully available.
+    entsoeUnitPattern: '^CSP_(GT\\d+|ST)$',
     cooling: {
       type: 'once_through',
       nominalWithdrawalM3s: 8,
