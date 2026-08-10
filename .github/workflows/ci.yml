@@ -1,0 +1,103 @@
+name: Tests
+
+# 313 tests existed for weeks and nothing ran them. Every bug that reached the live site
+# in that period was caught by a human looking at a screenshot - the sort control that
+# threw on every redraw, the SVG markers painted with `background`, a rain layer that
+# rendered black. That is luck, not a process.
+#
+# Two jobs, deliberately: `test` is the suite, `smoke` boots the real entry point and
+# asks it for the endpoints the frontend depends on. The second exists because three
+# deployments have failed at boot while every unit test passed - a module that exports
+# the wrong shape, a missing asset, a route that was never mounted. Those break the
+# whole site and no unit test looks at them.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  smoke:
+    name: Boots and answers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # Fixture provider: this job is about whether the app stands up, not about whether
+      # OVF is reachable from a datacentre in Azure. An upstream outage must not turn
+      # into a red build on a change that had nothing to do with it.
+      - name: Boot the server
+        env:
+          DATA_PROVIDER: fixture
+          ALLOW_FIXTURE_IN_PRODUCTION: 'true'
+          STORE: memory
+          PORT: '3000'
+        run: |
+          npm start & echo $! > server.pid
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:3000/api/v1/health >/dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/v1/health >/dev/null
+
+      # Every endpoint the frontend calls on load. A 200 is not enough - a route that
+      # answers with an error document still returns 200 through some hosts - so each
+      # one is checked for a field only a real payload has.
+      - name: Every endpoint the page needs
+        run: |
+          set -e
+          check() {
+            echo "  $1"
+            body=$(curl -fsS "http://127.0.0.1:3000$1")
+            echo "$body" | node -e "
+              let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
+                const j=JSON.parse(s);
+                const path='$2'.split('.');
+                let v=j; for(const k of path) v = v?.[k];
+                if(v===undefined||v===null){ console.error('missing $2 in $1'); process.exit(1); }
+              });"
+          }
+          check /api/v1/health status
+          check /api/v1/snapshot balance.net.m3s
+          check /api/v1/stations stations
+          check /api/v1/lakes lakes
+          check /api/v1/rainfall gauges
+          check /api/v1/events arrivals.disclaimer
+          check /api/v1/powerplants plants
+          check /api/v1/geojson features
+          check /api/v1/meta/sources upstream
+
+      # The page itself, not just the API. A deployment can arrive with every module
+      # present and the HTML absent - bundlers trace imports, not filesystem reads.
+      - name: The page is served and carries its sections
+        run: |
+          set -e
+          html=$(curl -fsS http://127.0.0.1:3000/)
+          for id in s-terkep s-csapadek s-hirek s-tavak s-vizallas s-eromuvek layer-rain arrivals; do
+            echo "$html" | grep -q "id=\"$id\"" || { echo "missing #$id"; exit 1; }
+            echo "  #$id"
+          done
+
+      - name: Stop
+        if: always()
+        run: kill "$(cat server.pid)" 2>/dev/null || true
