@@ -85,6 +85,25 @@ function config(env = process.env) {
   };
 }
 
+/**
+ * The platform's own explanation of a rejection, which it puts in the body.
+ *
+ * A 4xx here arrives with an `Acknowledgement_MarketDocument` carrying a `Reason` that
+ * says exactly which parameter is wrong - "The amount of requested data is too large",
+ * "No matching data found", and so on. Throwing away the body turns a precise
+ * instruction into a bare status code, which is how an afternoon gets spent guessing at
+ * parameter combinations the server was willing to describe.
+ */
+function describeError(err) {
+  const body = (err && err.body) || '';
+  const reason = /<text>([\s\S]*?)<\/text>/i.exec(body);
+  const code = /<code>([\s\S]*?)<\/code>/i.exec(body);
+  if (!reason && !code) return (err && err.message) || String(err);
+
+  const parts = [reason ? reason[1].trim() : null, code ? `code ${code[1].trim()}` : null].filter(Boolean);
+  return `${(err && err.message) || err} — ${parts.join(', ')}`;
+}
+
 /** The platform's timestamp format: yyyyMMddHHmm, always UTC. */
 function formatPeriod(date) {
   const pad = (n) => String(n).padStart(2, '0');
@@ -404,6 +423,53 @@ async function fetchGeneration(env = process.env, now = new Date()) {
 }
 
 /**
+ * Every point of every series, for diagnosing the shape rather than reading a value.
+ *
+ * Exists because a mix summed from each fuel's own last point is only a mix if they all
+ * publish at the same moment, and there is no way to tell from the summed number whether
+ * they do. Used by the probe; nothing in the app reads it.
+ */
+async function fetchGenerationRaw(env = process.env, now = new Date()) {
+  const cfg = config(env);
+  if (!cfg.token) throw new Error(cfg.tokenError || 'ENTSOE_TOKEN is not set');
+
+  const url = buildUrl(cfg, {
+    from: new Date(now.getTime() - 24 * 3600 * 1000),
+    to: new Date(now.getTime() + 3600 * 1000),
+    documentType: 'A75',
+    processType: 'A16',
+    domainParam: 'in_Domain',
+  });
+  const { body } = await fetchText(url, { timeoutMs: cfg.timeoutMs });
+
+  const byType = {};
+  for (const series of allBlocks(body, 'TimeSeries')) {
+    if (tagValue(series, 'inBiddingZone_Domain\\.mRID') === null &&
+        tagValue(series, 'outBiddingZone_Domain\\.mRID') !== null) continue;
+    const key = PSR_TYPES[tagValue(series, 'psrType')];
+    if (!key) continue;
+
+    for (const period of allBlocks(series, 'Period')) {
+      const start = Date.parse(tagValue(period, 'start'));
+      const resolution = tagValue(period, 'resolution') || 'PT15M';
+      const minutes = Number((resolution.match(/PT(\d+)M/) || [])[1]) || 60;
+      for (const point of allBlocks(period, 'Point')) {
+        const position = Number(tagValue(point, 'position'));
+        const mw = Number(tagValue(point, 'quantity'));
+        if (!Number.isFinite(position) || !Number.isFinite(mw) || !Number.isFinite(start)) continue;
+        (byType[key] = byType[key] || []).push({
+          timestamp: new Date(start + (position - 1) * minutes * 60000).toISOString(),
+          mw,
+        });
+      }
+    }
+  }
+
+  for (const points of Object.values(byType)) points.sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1));
+  return { byType };
+}
+
+/**
  * Generation per unit (A73).
  *
  * The document that makes the units cooling model a measurement rather than an
@@ -428,6 +494,7 @@ async function fetchUnitGeneration(env = process.env, now = new Date()) {
 module.exports = {
   fetchAvailability,
   fetchGeneration,
+  fetchGenerationRaw,
   fetchUnitGeneration,
   parseOutages,
   parseGeneration,
@@ -439,6 +506,7 @@ module.exports = {
   formatPeriod,
   config,
   cleanToken,
+  describeError,
   PSR_TYPES,
   DEFAULTS,
 };

@@ -379,8 +379,20 @@ async function probeEntsoe() {
       console.log(`  ${source.padEnd(14)} ${mw.toFixed(0).padStart(7)} MW`);
     }
     console.log('\nNuclear is Paks I and nothing else - that is the cooling-water driver.');
+
+    // 169 MW of nuclear is not a reading, it is a bug: Paks I is four 500 MW units on
+    // baseload. The suspicion is the ragged publication edge - each fuel is summed at
+    // its OWN last point, so a fuel that publishes later than the others contributes a
+    // partial interval to a mix that looks like one moment. Print each series' tail so
+    // the guess becomes a measurement.
+    const raw = await entsoe.fetchGenerationRaw();
+    console.log('\nPer-series tail, to see whether the edge is ragged:');
+    for (const [key, points] of Object.entries(raw.byType)) {
+      const tail = points.slice(-4).map((p) => `${p.timestamp.slice(11, 16)}=${p.mw}`).join('  ');
+      console.log(`  ${key.padEnd(14)} ${String(points.length).padStart(4)} pts   ${tail}`);
+    }
   } catch (err) {
-    console.log(`A75 FAILED: ${err.message}`);
+    console.log(`A75 FAILED: ${entsoe.describeError(err)}`);
   }
 
   try {
@@ -394,7 +406,7 @@ async function probeEntsoe() {
     }
     console.log('\nPaks units listed separately is what the units cooling model needs.');
   } catch (err) {
-    console.log(`A73 FAILED: ${err.message}`);
+    console.log(`A73 FAILED: ${entsoe.describeError(err)}`);
   }
 
   try {
@@ -402,7 +414,7 @@ async function probeEntsoe() {
     console.log(`\nA80 outages: ${availability.activeOutages} active of ${availability.outageCount} published`);
     console.log(JSON.stringify(availability.availability, null, 2));
   } catch (err) {
-    console.log(`A80 FAILED: ${err.message}`);
+    console.log(`A80 FAILED: ${entsoe.describeError(err)}`);
   }
 }
 
