@@ -719,6 +719,64 @@ async function probeOperations() {
   }
 }
 
+/**
+ * Does the forecast series actually contain anything?
+ *
+ * The catalogue lists AdatTipusKod 5 as "előrejelzett", which would mean a forecast costs
+ * us one extra block on a request we already make. A code existing in a catalogue is not
+ * the same as a series being populated, though, so this asks for real stations and prints
+ * what comes back - specifically whether any sample carries a timestamp in the future,
+ * which is the only thing that makes it a forecast rather than another copy of the past.
+ */
+async function probeForecast() {
+  console.log('\n########## forecast (AdatTipusKod 5) ##########');
+  const { EXTERNAL_IDS, config } = require('../sources/vizugy');
+  const cfg = config();
+  const wanted = ['duna-komarom', 'duna-budapest', 'duna-mohacs', 'tisza-szolnok', 'tisza-szeged', 'drava-ortilos'];
+  const now = new Date();
+
+  for (const atCode of [5, 100]) {
+    const body = wanted.map((id, index) => ({
+      ItemId: index,
+      Torzsszam: Number(EXTERNAL_IDS[id]),
+      AdatFajtaKod: 68,
+      AdatTipusKod: atCode,
+      // A forecast lives ahead of now, so the window has to reach forward.
+      StartTime: new Date(now.getTime() - 24 * 3600 * 1000).toISOString(),
+      EndTime: new Date(now.getTime() + 7 * 24 * 3600 * 1000).toISOString(),
+    }));
+
+    console.log(`\nAdatTipusKod ${atCode} (${atCode === 5 ? 'előrejelzett' : 'operatív'}), stage, ±7 days:`);
+    try {
+      const token = await createTokenProvider({ authBaseUrl: cfg.authBaseUrl }).getToken();
+      const rows = await fetchJson(`${VRAQUERY_BASE}/TS/TsShort`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        timeoutMs: 30000,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          ...browserHeaders('https://data.vizugy.hu'),
+        },
+      });
+
+      for (const entry of Array.isArray(rows) ? rows : []) {
+        const items = (entry.TsItemList || []).filter((i) => i && i.Adat !== null && i.Adat !== undefined);
+        const ahead = items.filter((i) => new Date(i.UTCTime) > now);
+        const id = wanted[Number(entry.ItemId)] || `ItemId ${entry.ItemId}`;
+        console.log(
+          `  ${id.padEnd(16)} ${String(items.length).padStart(4)} samples, ${String(ahead.length).padStart(4)} in the future` +
+            (ahead.length
+              ? ` — first ${ahead[0].UTCTime} = ${ahead[0].Adat}, last ${ahead[ahead.length - 1].UTCTime} = ${ahead[ahead.length - 1].Adat}`
+              : ''),
+        );
+      }
+    } catch (err) {
+      console.log(`  FAILED: ${err.message}`);
+    }
+  }
+}
+
 async function probeThresholds() {
   console.log('\n########## stage thresholds (LKV / LNV / flood grades) ##########');
   const { EXTERNAL_IDS } = require('../sources/vizugy');
@@ -762,6 +820,11 @@ async function main() {
 
   if (args.includes('--datatypes')) {
     await probeDataTypes();
+    return;
+  }
+
+  if (args.includes('--forecast')) {
+    await probeForecast();
     return;
   }
 
