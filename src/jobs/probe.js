@@ -1018,6 +1018,78 @@ async function probeRainScan() {
 }
 
 /**
+ * Every published well, asked what it still reports.
+ *
+ * The matrix says 69 (talajvízállás) is empty at every well under every data type, and
+ * that 70 (rétegvízszint) answers at some. Before concluding that the shallow water table
+ * is simply not published here, ask all 524 rather than the twelve that happened to be
+ * first in their directorate - a national conclusion drawn from twelve wells is a guess.
+ *
+ * The distinction matters for what could be built: talajvíz is the shallow table a well
+ * in a garden reaches and what a maize root system drinks; rétegvíz is the confined
+ * aquifer below it. Labelling one as the other would be the single most misleading thing
+ * this project could publish.
+ */
+async function probeWellScan() {
+  console.log('\n########## well scan ##########');
+
+  const { rows } = await fetchCatalogue(13, { internetOnly: true });
+  const usableRows = rows.filter((r) => r.Lat != null && r.Lon != null);
+  console.log(`${rows.length} published wells, ${usableRows.length} with coordinates`);
+
+  const now = new Date();
+  const start = new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString();
+  const end = new Date(now.getTime() + 3600 * 1000).toISOString();
+
+  for (const [haf, label] of [[69, 'talajvízállás'], [70, 'rétegvízszint']]) {
+    const live = [];
+    let answered = 0;
+
+    const CHUNK = 50;
+    for (let offset = 0; offset < usableRows.length; offset += CHUNK) {
+      const batch = usableRows.slice(offset, offset + CHUNK);
+      try {
+        const out = await askSeries(
+          batch.map((well, index) => ({
+            ItemId: index,
+            Torzsszam: Number(well.Tsz),
+            AdatFajtaKod: haf,
+            AdatTipusKod: 100,
+            StartTime: start,
+            EndTime: end,
+          })),
+          { timeoutMs: 60000 },
+        );
+        const byItemId = require('../sources/vizugy').indexByItemId(Array.isArray(out) ? out : []);
+        batch.forEach((well, index) => {
+          const items = usable(byItemId.get(index));
+          if (!items.length) return;
+          answered += 1;
+          const last = new Date(items[items.length - 1].UTCTime);
+          if (now - last > 7 * 24 * 3600 * 1000) return;
+          live.push({ well, samples: items.length, last: items[items.length - 1] });
+        });
+      } catch (err) {
+        console.log(`  chunk at ${offset}: FAILED ${err.message}`);
+      }
+    }
+
+    console.log(
+      `\n--- AdatFajtaKod ${haf} (${label}): ${answered} wells returned anything in 60 days, ` +
+        `${live.length} within the last week ---`,
+    );
+    for (const row of live.sort((a, b) => b.samples - a.samples).slice(0, 25)) {
+      console.log(
+        `  ${String(row.well.Tsz).padEnd(8)} ${String(row.well.Nev).slice(0, 26).padEnd(26)} ` +
+          `vizig ${String(row.well.Vizig).padStart(2)}  ${row.well.Lat.toFixed(3)},${row.well.Lon.toFixed(3)}  ` +
+          `Npt=${row.well.Npt ?? '-'}  ${String(row.samples).padStart(4)} samples  ` +
+          `last ${row.last.UTCTime.slice(0, 16)} = ${row.last.Adat}`,
+      );
+    }
+  }
+}
+
+/**
  * Which (kind, type) pairs a station actually publishes.
  *
  * AdatFajtaKod 69 is "talajvízállás" and every well in vmoType 13 is a groundwater well,
@@ -1226,6 +1298,11 @@ async function main() {
 
   if (args.includes('--rain-scan')) {
     await probeRainScan();
+    return;
+  }
+
+  if (args.includes('--well-scan')) {
+    await probeWellScan();
     return;
   }
 
