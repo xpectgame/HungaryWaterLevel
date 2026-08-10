@@ -372,12 +372,17 @@ svg.map text{user-select:none;-webkit-user-select:none}
 
 /* Rain dots sit under the rivers and stay quiet: a background condition, not a
    feature of the network. Stale gauges go hollow rather than vanishing. */
-.rainnode circle{opacity:.62}
+.rainnode .mark{opacity:.66}
 .rainnode .hit{fill:transparent;opacity:1;cursor:pointer}
-.rainnode.stale circle{fill:none;stroke:var(--ink-faint);stroke-width:1.2;stroke-dasharray:2 2;opacity:.7}
+.rainnode.stale .mark{fill:none;stroke:var(--ink-faint);stroke-width:1.2;stroke-dasharray:2 2;opacity:.75}
 .rainnode.stale .hit{stroke:none}
 .toggle{display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
 .toggle input{accent-color:var(--flow);cursor:pointer}
+/* A jelmagyarázat a térképi alakot mutassa, ne csak a színt: a többi kulcs kör vagy
+   négyzet, a csapadéké lefelé mutató háromszög. */
+.tri{display:inline-block;width:0;height:0;margin:0 1px 0 4px;vertical-align:-1px;
+  border-left:6px solid transparent;border-right:6px solid transparent;
+  border-top:9px solid var(--ink-faint)}
 .ramp{display:inline-flex;align-items:center;gap:0}
 .ramp .key{margin:0;border-radius:0}
 .ramp .key:first-of-type{border-radius:3px 0 0 3px}
@@ -421,15 +426,15 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .b-near-normal{background:#5aa86e}
 .b-surplus{background:#2f7fb5}
 .b-extreme-surplus{background:#2b4f9e}
-circle.b-extreme-deficit{fill:#a3341f}
-circle.b-severe-deficit{fill:#cf6a2e}
-circle.b-deficit{fill:#dfa53c}
-circle.b-near-normal{fill:#5aa86e}
-circle.b-surplus{fill:#2f7fb5}
-circle.b-extreme-surplus{fill:#2b4f9e}
+.mark.b-extreme-deficit{fill:#a3341f}
+.mark.b-severe-deficit{fill:#cf6a2e}
+.mark.b-deficit{fill:#dfa53c}
+.mark.b-near-normal{fill:#5aa86e}
+.mark.b-surplus{fill:#2f7fb5}
+.mark.b-extreme-surplus{fill:#2b4f9e}
 /* No band means no baseline to judge against - drawn as an outline so it cannot be
    mistaken for a reading at the dry end of the scale. */
-circle.nobase{fill:none;stroke:var(--ink-faint);stroke-width:1.1}
+.mark.nobase{fill:none;stroke:var(--ink-faint);stroke-width:1.1}
 
 /* --- what is on its way --- */
 .arrivals{display:grid;gap:7px}
@@ -641,7 +646,7 @@ footer a{color:var(--ink-soft)}
     <g id="layer-nodes"></g>
   </svg>
   <div class="legend">
-    <label class="toggle"><input type="checkbox" id="rain-layer" checked> csapadék az elmúlt 30 napban</label>
+    <label class="toggle"><input type="checkbox" id="rain-layer" checked><i class="tri"></i> csapadék az elmúlt 30 napban</label>
     <span class="ramp" title="a sokéves átlaghoz mérve">
       <i class="key b-extreme-deficit"></i><i class="key b-severe-deficit"></i><i class="key b-deficit"></i><i
         class="key b-near-normal"></i><i class="key b-surplus"></i><i class="key b-extreme-surplus"></i>
@@ -1904,13 +1909,20 @@ function drawRainNodes(){
 
   for(const g of rainMap){
     const [x,y] = px(g.lon, g.lat);
+    // Downward triangle, not a circle. Gauges, plants and lakes already own the round,
+    // flame and square marks, and a fourth kind of dot on the same map is read as a
+    // fifth kind of gauge rather than as weather. A triangle pointing down is the one
+    // shape nothing else here uses, and it points the way rain goes.
+    const s = 4;
     const node = svgEl('g',{ class:'rainnode'+(g.stale?' stale':'') });
-    node.appendChild(svgEl('circle',{
-      cx:x.toFixed(1), cy:y.toFixed(1), r:'3.4',
-      class: g.band ? 'b-'+g.band : 'nobase',
+    node.appendChild(svgEl('polygon',{
+      points: `${(x-s).toFixed(1)},${(y-s*0.7).toFixed(1)} `
+            + `${(x+s).toFixed(1)},${(y-s*0.7).toFixed(1)} `
+            + `${x.toFixed(1)},${(y+s*1.05).toFixed(1)}`,
+      class: 'mark ' + (g.band ? 'b-'+g.band : 'nobase'),
     }));
     node.appendChild(svgEl('circle',{ class:'hit', cx:x.toFixed(1), cy:y.toFixed(1),
-      r: hitFor(x, y, 3.4, hitRadius()).toFixed(1) }));
+      r: hitFor(x, y, s, hitRadius()).toFixed(1) }));
     bindMarker(node, () => renderRainTip(g), () => {
       $('s-csapadek').scrollIntoView({ behavior:'smooth', block:'start' });
     });
