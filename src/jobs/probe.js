@@ -126,27 +126,6 @@ async function probeOpenApi() {
  * spring stage, 69 = groundwater), but not the surface figures, and picking the wrong
  * code returns a plausible number in the wrong unit. The service publishes the list.
  */
-async function probeDataTypes() {
-  console.log('\n########## data types (adatfajta) ##########');
-
-  for (const path of ['/Base/AdatFajta', '/Base/AdatTipus']) {
-    const url = `${VRAQUERY_BASE}${path}`;
-    console.log(`\nGET ${url}`);
-    try {
-      const token = await createTokenProvider().getToken();
-      const rows = await fetchJson(url, {
-        timeoutMs: 20000,
-        headers: { Authorization: `Bearer ${token}`, ...browserHeaders('https://data.vizugy.hu') },
-      });
-      const list = Array.isArray(rows) ? rows : [rows];
-      console.log(`${list.length} entries:`);
-      for (const row of list) console.log(`  ${JSON.stringify(row)}`);
-    } catch (err) {
-      console.log(`FAILED: ${err.message}`);
-    }
-  }
-}
-
 /** The raw catalogue. `internetOnly` picks the published subset over the full list. */
 async function fetchCatalogue(vmoType = 11, { internetOnly = true } = {}) {
   const url = `${VRAQUERY_BASE}/Vra/${internetOnly ? 'InternetVmo' : 'Vmo'}/${vmoType}/false`;
@@ -696,7 +675,13 @@ async function probeDataTypes() {
   console.log('\n########## data type catalogue ##########');
   const token = await createTokenProvider().getToken();
 
-  for (const path of ['/Vra/AdatFajta', '/Vra/AdatFajtak', '/Vra/AdatTipus', '/Vra/Mertekegyseg']) {
+  // Both prefixes: an earlier copy of this probe asked /Base/... and this one /Vra/...,
+  // and neither of us knew which was right because the duplicate meant only one ever ran.
+  const paths = [
+    '/Vra/AdatFajta', '/Vra/AdatFajtak', '/Vra/AdatTipus', '/Vra/AdatTipusok', '/Vra/Mertekegyseg',
+    '/Base/AdatFajta', '/Base/AdatTipus', '/Base/Mertekegyseg',
+  ];
+  for (const path of paths) {
     const url = `${VRAQUERY_BASE}${path}`;
     try {
       const rows = await fetchJson(url, {
@@ -709,6 +694,28 @@ async function probeDataTypes() {
     } catch (err) {
       console.log(`\n${url}: FAILED ${err.message}`);
     }
+  }
+}
+
+/**
+ * Every operation the service documents.
+ *
+ * A forecast is the single most valuable thing this project does not have, and it is
+ * unlikely to be a separate integration: the query service already returns time series
+ * by data-type code, so a forecast is most probably another AdatTipusKod on the endpoint
+ * we already call. This lists the whole contract so that guess can be checked rather
+ * than assumed.
+ */
+async function probeOperations() {
+  console.log('\n########## every documented operation ##########');
+  try {
+    const spec = await fetchJson(OPENAPI_URL, {
+      timeoutMs: 30000,
+      headers: browserHeaders('https://vmservice.vizugy.hu', `${VRAQUERY_BASE}/swagger/index.html`),
+    });
+    for (const line of summarizeOperations(spec)) console.log(`  ${line}`);
+  } catch (err) {
+    console.log(`FAILED: ${err.message}`);
   }
 }
 
@@ -755,6 +762,11 @@ async function main() {
 
   if (args.includes('--datatypes')) {
     await probeDataTypes();
+    return;
+  }
+
+  if (args.includes('--operations')) {
+    await probeOperations();
     return;
   }
 
