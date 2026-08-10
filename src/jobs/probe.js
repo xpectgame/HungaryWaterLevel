@@ -356,6 +356,14 @@ async function probeEntsoe() {
   const cfg = entsoe.config();
 
   console.log('\n########## entsoe ##########');
+  if (cfg.tokenError) {
+    // Worth its own branch: this looks identical to a wrong token from the server's
+    // side - three HTTP 401s - and is a paste artefact rather than a credentials problem.
+    console.log(cfg.tokenError);
+    console.log(`The stored value is ${String(process.env.ENTSOE_TOKEN || '').length} characters long ` +
+      `across ${String(process.env.ENTSOE_TOKEN || '').split('\n').length} line(s); it should be one line.`);
+    return;
+  }
   if (!cfg.token) {
     console.log('ENTSOE_TOKEN is not set, so nothing can be requested.');
     console.log('Register on https://transparency.entsoe.eu, then email transparency@entsoe.eu');

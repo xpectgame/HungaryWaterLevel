@@ -40,12 +40,47 @@ const DEFAULTS = {
   timeoutMs: 30000,
 };
 
+/**
+ * Clean up a pasted token, and say so when it cannot be cleaned up.
+ *
+ * The token travels as a query parameter, so anything extra in it comes back as a bare
+ * HTTP 401 - a message that says "wrong credentials" when the credentials are right and
+ * the paste was wrong. That happened here: a secret was set to the token followed by a
+ * newline and the YAML line that references it, and three documents failed with 401
+ * apiece while the token itself was perfectly valid.
+ *
+ * A surrounding newline or a stray quote is silently fixed, because that is a paste
+ * artefact and not a decision. Anything left inside the value is reported by name: an
+ * ENTSO-E token is a UUID, so a space or a colon in the middle of one is a mistake worth
+ * interrupting for rather than passing to a server that can only answer 401.
+ */
+function cleanToken(raw) {
+  if (raw === undefined || raw === null) return { token: null };
+
+  const trimmed = String(raw).trim().replace(/^["']|["']$/g, '');
+  if (trimmed === '') return { token: null };
+
+  if (/\s/.test(trimmed)) {
+    return {
+      token: null,
+      error:
+        'ENTSOE_TOKEN contains whitespace, so it is not just the token. A common cause is ' +
+        'pasting the surrounding YAML into the secret. The value must be the bare token ' +
+        'on one line - no "ENTSOE_TOKEN:" prefix, no indentation, no quotes.',
+    };
+  }
+
+  return { token: trimmed };
+}
+
 function config(env = process.env) {
+  const { token, error } = cleanToken(env.ENTSOE_TOKEN);
   return {
     baseUrl: env.ENTSOE_BASE_URL || DEFAULTS.baseUrl,
     domain: env.ENTSOE_DOMAIN || DEFAULTS.domain,
     documentType: env.ENTSOE_DOCUMENT_TYPE || DEFAULTS.documentType,
-    token: env.ENTSOE_TOKEN || null,
+    token,
+    tokenError: error || null,
     timeoutMs: Number(env.ENTSOE_TIMEOUT_MS) || DEFAULTS.timeoutMs,
   };
 }
@@ -306,7 +341,7 @@ async function fetchAvailability(plants, env = process.env, now = new Date()) {
       source: 'entsoe',
       configured: false,
       availability: {},
-      note: 'ENTSOE_TOKEN is not set; unit counts fall back to inference from output.',
+      note: cfg.tokenError || 'ENTSOE_TOKEN is not set; unit counts fall back to inference from output.',
     };
   }
 
@@ -347,7 +382,7 @@ async function fetchAvailability(plants, env = process.env, now = new Date()) {
  */
 async function fetchGeneration(env = process.env, now = new Date()) {
   const cfg = config(env);
-  if (!cfg.token) throw new Error('ENTSOE_TOKEN is not set');
+  if (!cfg.token) throw new Error(cfg.tokenError || 'ENTSOE_TOKEN is not set');
 
   // A day back. The platform publishes with a lag of an hour or so, and asking for only
   // the current hour regularly returns an empty document.
@@ -376,7 +411,7 @@ async function fetchGeneration(env = process.env, now = new Date()) {
  */
 async function fetchUnitGeneration(env = process.env, now = new Date()) {
   const cfg = config(env);
-  if (!cfg.token) throw new Error('ENTSOE_TOKEN is not set');
+  if (!cfg.token) throw new Error(cfg.tokenError || 'ENTSOE_TOKEN is not set');
 
   const url = buildUrl(cfg, {
     from: new Date(now.getTime() - 24 * 3600 * 1000),
@@ -403,6 +438,7 @@ module.exports = {
   buildUrl,
   formatPeriod,
   config,
+  cleanToken,
   PSR_TYPES,
   DEFAULTS,
 };

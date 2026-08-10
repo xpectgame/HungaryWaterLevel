@@ -244,3 +244,54 @@ test('generation queries use in_Domain and a process type; outage queries do not
   assert.match(outages, /biddingZone_Domain=/);
   assert.doesNotMatch(outages, /processType/);
 });
+
+// ---------------------------------------------------------------------------
+// The token, and what a bad paste does to it
+// ---------------------------------------------------------------------------
+
+test('a token pasted with its surrounding YAML is rejected by name, not by 401', () => {
+  // This happened. A repository secret was set to the token plus a newline and the
+  // workflow line that references it, and all three documents came back HTTP 401 - a
+  // message that says "wrong credentials" while the credentials were perfectly correct.
+  const { cleanToken } = require('../src/sources/entsoe');
+  const pasted = '10b93e88-0000-0000-0000-000000000000\n  ENTSOE_TOKEN: ${{ secrets.ENTSOE_TOKEN }}';
+
+  const result = cleanToken(pasted);
+  assert.strictEqual(result.token, null, 'a value with whitespace inside must not be sent');
+  assert.match(result.error, /whitespace/);
+  assert.match(result.error, /one line/);
+});
+
+test('a trailing newline or a stray quote is fixed rather than reported', () => {
+  // Paste artefacts, not decisions: a text field that adds a newline should not cost
+  // anyone an afternoon.
+  const { cleanToken } = require('../src/sources/entsoe');
+  const bare = '10b93e88-0000-0000-0000-000000000000';
+
+  assert.strictEqual(cleanToken(`${bare}\n`).token, bare);
+  assert.strictEqual(cleanToken(`  ${bare}  `).token, bare);
+  assert.strictEqual(cleanToken(`"${bare}"`).token, bare);
+  assert.strictEqual(cleanToken(`'${bare}'`).token, bare);
+  assert.strictEqual(cleanToken(bare).error, undefined);
+});
+
+test('a missing token stays a missing token, not an error', () => {
+  // Absent is a supported state - the units model falls back to inference and says so.
+  const { cleanToken } = require('../src/sources/entsoe');
+  for (const value of [undefined, null, '', '   ']) {
+    const result = cleanToken(value);
+    assert.strictEqual(result.token, null);
+    assert.strictEqual(result.error, undefined, `${JSON.stringify(value)} must not be an error`);
+  }
+});
+
+test('a malformed token is reported everywhere the token is required', () => {
+  const { config: entsoeCfg, fetchGeneration } = require('../src/sources/entsoe');
+  const env = { ENTSOE_TOKEN: 'abc def' };
+
+  assert.strictEqual(entsoeCfg(env).token, null);
+  assert.match(entsoeCfg(env).tokenError, /whitespace/);
+
+  // And the thrown error names the real problem rather than claiming nothing is set.
+  return assert.rejects(() => fetchGeneration(env), /whitespace/);
+});
