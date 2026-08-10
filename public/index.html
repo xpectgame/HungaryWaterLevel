@@ -458,6 +458,18 @@ svg.map text{user-select:none;-webkit-user-select:none}
 /* No band means no baseline to judge against - drawn as an outline so it cannot be
    mistaken for a reading at the dry end of the scale. */
 .mark.nobase{fill:none;stroke:var(--ink-faint);stroke-width:1.1}
+/* The ten-year verdict. Same band colours as the rain layer, on purpose: a reader who
+   has learned that ochre means "dry" on the map should not have to relearn it in a
+   tooltip. These paint text, so they are `color`, not the `fill` the SVG marks use. */
+.t-hist,.det-hist b{font-weight:600}
+.t-hist.b-extreme-deficit,.det-hist .b-extreme-deficit{color:#a3341f}
+.t-hist.b-severe-deficit,.det-hist .b-severe-deficit{color:#b25a24}
+.t-hist.b-deficit,.det-hist .b-deficit{color:#a6791f}
+.t-hist.b-near-normal,.det-hist .b-near-normal{color:var(--ink-soft)}
+.t-hist.b-surplus,.det-hist .b-surplus{color:#2f7fb5}
+.t-hist.b-extreme-surplus,.det-hist .b-extreme-surplus{color:#2b4f9e}
+.det-hist{font-size:13px;color:var(--ink-soft);margin:10px 0 0;line-height:1.5}
+.det-hist-src{color:var(--ink-faint)}
 
 /* --- what is on its way --- */
 .arrivals{display:grid;gap:7px}
@@ -863,9 +875,22 @@ footer a{color:var(--ink-soft)}
       a csapadékhiányt és az évszakot is nézi, és ezek egyike sincs ebben az adatban. Azt tudjuk
       megmondani, hogy a folyók mennyi vizet hoznak a szokásoshoz képest — azt nem, hogy ez
       hivatalosan aszálynak minősül-e.</p>
-      <p>Egy fenntartás: a sokéves átlag egész évre vonatkozik, nem augusztusra. A magyar folyók
-      nyár végén amúgy is az évi átlaguk alatt járnak, tehát a nyári hónapokban a 100% alatti
-      érték önmagában még nem rendkívüli — a mértéke az, ami az.</p></details>
+      <p>A sokéves átlag egész évre vonatkozik, nem augusztusra, és a magyar folyók nyár végén
+      amúgy is az évi átlaguk alatt járnak — a 100% alatti érték a nyári hónapokban önmagában
+      tehát még nem rendkívüli. Épp ezért nem csak ehhez mérünk.</p>
+      <p><strong>Tíz év, ugyanaz a hónap.</strong> Minden szelvényre kiszámoltuk, hogy az elmúlt
+      tíz évben milyen napi vízhozamok fordultak elő <em>ugyanabban a naptári hónapban</em>, és a
+      mai értéket ehhez az eloszláshoz mérjük. Ezért tud az oldal olyat mondani, hogy „az augusztusi
+      napok legszárazabb 5%-ában”, vagy hogy „alacsonyabb, mint bármelyik augusztusi nap az elmúlt
+      tíz évben” — ezt az arányszám önmagában nem tudja megmondani. A szelvény oldalán ott áll a
+      hónap mediánja és az eddigi mélypont dátuma is.</p>
+      <p>Amit ez nem tud: tíz év rövid. Ha a mai érték az egész rögzített időszaknál alacsonyabb,
+      azt annyiban mondjuk el — „alacsonyabb mindennél, ami ebben a sorban szerepel” —, és nem
+      teszünk úgy, mintha tudnánk, hányadik százalék. 29 szelvényből 27-nek van mind a tizenkét
+      hónapja; a mohácsi vízhozam-sor csak 2021 nyaráig nyúlik vissza (ott öt év, június–december),
+      Tiszasziget pedig egyáltalán nem közöl visszamenőleges vízhozamot. Ahol nincs elég év, ott
+      nem írunk ki összehasonlítást. A hónaphatárnál van egy varrat: augusztus 31-ét augusztus
+      1-jével is összevetjük, ami visszahúzódó nyárban vizesebb nap.</p></details>
 
     <details><summary>Honnan tudja az oldal, hogy „mi miért történik"?</summary>
       <p>Kétféle tétel van a <em>Mi történik</em> szekcióban, és szándékosan másképp néznek ki.</p>
@@ -1529,10 +1554,57 @@ document.addEventListener('pointerdown', (e) => {
   hideTip();
 }, true);
 
+/**
+ * Ten years of the same calendar month, said in Hungarian.
+ *
+ * The API deliberately hands over a code and some numbers rather than a sentence - it is
+ * an English API and this is a Hungarian page, and the two were mixed once already, with
+ * a raw station id printed mid-paragraph. So the wording lives here.
+ *
+ * A ratio to the long-term mean cannot say whether 73% is an ordinary August on this
+ * river or the lowest in the record. This can, and that is the whole point of it.
+ */
+const MONTH_ADJ = ['januári','februári','márciusi','áprilisi','májusi','júniusi',
+                   'júliusi','augusztusi','szeptemberi','októberi','novemberi','decemberi'];
+/** a/az - "a augusztusi" is wrong in a way every Hungarian reader hears immediately. */
+const art = (w) => /^[aáeéiíoóöőuúüű]/i.test(w) ? 'az' : 'a';
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+function historyPhrase(h){
+  // Under five years "az elmúlt N évben" is a claim the record cannot support. The probe
+  // already refuses to publish such a month; this is the second lock, because the file
+  // outlives the run that made it.
+  if(!h || !(h.years >= 5)) return null;
+  const m = MONTH_ADJ[h.month-1];
+  const y = h.years;
+  switch(h.band){
+    case 'record-low':   return { cls:'b-extreme-deficit', text:`alacsonyabb, mint bármelyik ${m} nap az elmúlt ${y} évben` };
+    case 'very-low':     return { cls:'b-severe-deficit',  text:`${art(m)} ${m} napok legszárazabb 5%-ában` };
+    case 'low':          return { cls:'b-deficit',         text:`${art(m)} ${m} napok alsó negyedében` };
+    case 'normal':       return { cls:'b-near-normal',     text:`a szokásos ${m} sávban` };
+    case 'high':         return { cls:'b-surplus',         text:`${art(m)} ${m} napok felső negyedében` };
+    case 'very-high':    return { cls:'b-surplus',         text:`${art(m)} ${m} napok legmagasabb 5%-ában` };
+    case 'record-high':  return { cls:'b-extreme-surplus', text:`magasabb, mint bármelyik ${m} nap az elmúlt ${y} évben` };
+  }
+  return null;
+}
+
+/** The record itself, with its date - "a mélypont 2022. augusztus 29-én volt, 96 m³/s". */
+function recordSentence(h){
+  if(!h) return '';
+  const r = h.band==='record-high' ? h.recordHigh : h.recordLow;
+  if(!r || !r.day) return '';
+  const d = new Date(r.day+'T00:00:00Z');
+  const when = d.toLocaleDateString('hu-HU',{year:'numeric',month:'long',day:'numeric',timeZone:'UTC'});
+  const what = h.band==='record-high' ? 'Az eddigi csúcs' : 'Az eddigi mélypont';
+  return `${what} ${when} volt, ${fmt(r.value,1)} m³/s.`;
+}
+
 function renderStationTip(st, flow){
   const mean = st.longTermMeanM3s;
   const ratio = (flow!=null && mean) ? flow/mean : null;
   const stage = st.current && st.current.stage;
+  const hist = historyPhrase(st.current && st.current.history);
   $('tip').innerHTML =
     `<div class="t-name">${st.name}</div>`+
     `<div class="t-val">${fmt(flow,1)} <span style="font-size:12px;color:var(--ink-faint)">m³/s</span></div>`+
@@ -1541,7 +1613,10 @@ function renderStationTip(st, flow){
     (ratio!=null?` · <b>${fmt(ratio*100,0)}%</b>`:'')+`</div>`+
     (stage?`<div class="t-sub">vízállás <b>${fmt(stage.cm,0)} cm</b>`+
       (stage.grade?` · <b style="color:var(--alarm)">${stage.gradeName}</b>`
-        : stage.aboveRecordLowCm!=null?` · ${fmt(stage.aboveRecordLowCm,0)} cm-rel a minimum fölött`:'')+`</div>`:'');
+        : stage.aboveRecordLowCm!=null?` · ${fmt(stage.aboveRecordLowCm,0)} cm-rel a minimum fölött`:'')+`</div>`:'')+
+    // The line the percentage cannot carry: 73% of the annual mean is an ordinary
+    // August on some of these rivers and a record on others.
+    (hist?`<div class="t-sub t-hist ${hist.cls}">${hist.text}</div>`:'');
 }
 function renderPlantTip(p,mw,w){
   $('tip').innerHTML =
@@ -2254,7 +2329,25 @@ function renderDroughtBanner(b){
     (low.length ? ` ${low.length} határszelvény a saját átlagának a ${fmt(LOW*100,0)}%-át sem éri el: `+
       low.slice(0,4).map(s=>`${s.name.split('–').pop().trim()} ${fmt(s.ratioToMean*100,0)}%`).join(', ')+
       (low.length>4?` és még ${low.length-4}`:'')+'.' : '')+
+    // The strongest thing this page can say, and it needs the ten-year record to say it:
+    // not "less than average" - which is true most of the year on most of these rivers -
+    // but "less than any day of this month in the whole record". A ratio cannot get here.
+    recordLowSentence()+
     `<br><span style="opacity:.85">Ez a sokéves átlaghoz mért arány, nem hivatalos aszályindex — az a talajnedvességet és a csapadékhiányt is nézi.</span>`;
+}
+
+/** Border sections currently below anything in their ten-year record for this month. */
+function recordLowSentence(){
+  const hit = stations.filter((s) => {
+    const h = s.current && s.current.history;
+    return h && h.band === 'record-low' && h.years >= 5 && s.countsTowardBalance;
+  });
+  if(!hit.length) return '';
+  const m = MONTH_ADJ[hit[0].current.history.month-1];
+  const years = Math.min(...hit.map((s) => s.current.history.years));
+  const names = hit.slice(0,4).map((s) => s.name.split('–').pop().trim()).join(', ');
+  return ` <b>${hit.length} határszelvényen kevesebb víz jön, mint bármelyik ${m} napon az elmúlt ${years} évben`+
+    `</b> (${names}${hit.length>4?` és még ${hit.length-4}`:''}).`;
 }
 
 function renderCards(s){
@@ -2611,6 +2704,8 @@ async function showStation(id){
 
   const role = st.role==='inflow' ? 'belépő szelvény' : st.role==='outflow' ? 'kilépő szelvény' : 'belső mérce, nem összegezzük';
   const ratio = live && mean ? live.flowM3s/mean : null;
+  const hist2 = (st.current && st.current.history) || null;
+  const hist = historyPhrase(hist2);
 
   $('detail').innerHTML =
     `<div class="det-head"><div><div style="font-weight:600;font-size:16px">${st.name}</div>`+
@@ -2625,6 +2720,13 @@ async function showStation(id){
       (st.uncertaintyPct?`<span>bizonytalanság <b>±${st.uncertaintyPct}%</b></span>`:'')+
       (live&&live.quality!=='measured'?`<span style="color:var(--ember)">becsült érték</span>`:'')+
     `</div>`+
+    // Ten years of this same month, spelled out. The percentage above says how today
+    // compares with the annual mean; this says how it compares with the last ten of
+    // this month, which is the comparison a reader is actually making in their head.
+    (hist?`<p class="det-hist"><b class="${hist.cls}">${cap(hist.text)}.</b>`+
+      (hist2.medianM3s!=null?` ${cap(art(MONTH_ADJ[hist2.month-1]))} ${MONTH_ADJ[hist2.month-1]} medián ${fmt(hist2.medianM3s,0)} m³/s.`:'')+
+      ` ${recordSentence(hist2)}`+
+      `<span class="det-hist-src"> ${hist2.years} év, ${hist2.days} nap adatából.</span></p>`:'')+
     stageDetail(stage)+
     // Hungarian only. The English `note` is documentation for whoever maintains the
     // registry, and printing it here put an English sentence in the middle of a

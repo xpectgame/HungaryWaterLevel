@@ -263,6 +263,12 @@ test('the frontend is served from the app root', async () => {
     assert.match(html, /id="arrivals"/, 'the arrival list must be present');
     assert.match(html, /id="arrivals-note"/, 'the arrival disclaimer must have somewhere to appear');
 
+    // The ten-year comparison is the one claim on this page that a reader cannot check
+    // against a number printed beside it, so the methodology has to carry its limits:
+    // that ten years is short, and that two stations do not have the full record.
+    assert.match(html, /Tíz év, ugyanaz a hónap/, 'the ten-year method must be explained');
+    assert.match(html, /Tiszasziget/, 'the gaps in the ten-year record must be named');
+
     // The rainfall window buttons wear .sortbar for its styling, so anything that binds
     // behaviour by that class picks them up too - which it did once, setting the bar
     // sort to undefined and throwing on every redraw.

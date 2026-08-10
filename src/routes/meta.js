@@ -5,6 +5,7 @@ const path = require('node:path');
 const { listStations } = require('../config/stations');
 const { vizugy, mavir } = require('../sources');
 const { asyncRoute } = require('../lib/async-route');
+const { historyCoverage } = require('../domain/flow-history');
 
 module.exports = function metaRoutes(ctx) {
   const router = express.Router();
@@ -78,6 +79,20 @@ module.exports = function metaRoutes(ctx) {
             'Instantaneous comparison ignores travel time (up to ~8 days across the Tisza system). Use method=lagged when enough history exists.',
             'Gauged stations cover roughly 93% of long-term mean inflow; the remainder is an estimate, not a measurement.',
           ],
+        },
+        {
+          quantity: 'how today compares with the same calendar month over ten years',
+          method:
+            'Per station, the 5th-95th percentiles of daily mean discharge for each calendar month, ' +
+            'over ten years of the OVF archive, baked offline by `npm run probe -- --flow-history`. ' +
+            'A live reading is placed in that distribution and reported as a band plus a percentile.',
+          caveats: [
+            'Ten years is a short record. A reading below everything in it is reported as below the record, not as a percentile, because the data cannot say how unusual it is.',
+            'Bucketed by calendar month, so there is a seam at each boundary: 31 August is compared against a set that includes 1 August, a wetter day in a receding summer.',
+            'Daily means, not raw samples: cadence varies between gauges and across years, and percentiles over raw samples would weight a 15-minute gauge above an hourly one.',
+            'Coverage is not uniform. Mohács discharge only reaches back to mid-2021 (five years, June-December); Tiszasziget publishes no archive at all. A month with fewer than five years is not published.',
+          ],
+          coverage: historyCoverage(),
         },
         {
           quantity: 'power plant cooling water',

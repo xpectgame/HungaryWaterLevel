@@ -3,6 +3,7 @@
 const express = require('express');
 const { listStations, getStation, UNGAUGED_INFLOW } = require('../config/stations');
 const { describeStage } = require('../domain/stage');
+const { rankFlow } = require('../domain/flow-history');
 const { parseRange } = require('../lib/params');
 const { asyncRoute } = require('../lib/async-route');
 const { withMeta } = require('./balance');
@@ -107,6 +108,11 @@ function decorate(station, reading) {
           // a gauge can publish one and not the other. Null here means "not published
           // this cycle", never "zero".
           stage: describeStage(reading.waterLevelCm, station.id),
+          // Where this sits in ten years of the same calendar month. `ratioToMean` above
+          // says 73% of normal; it cannot say whether 73% is an ordinary August here or
+          // the lowest in the record, and those are different stories. Null when the
+          // decade has not been baked for this station and month - see domain/flow-history.
+          history: rankFlow(station.id, reading.flowM3s, { at: reading.timestamp }),
         }
       : null,
   };
