@@ -1282,6 +1282,193 @@ async function probeRainNormals() {
 }
 
 /**
+ * Ten years of discharge per station, reduced to a monthly distribution.
+ *
+ * The site can currently say "411 m3/s, 73% of the long-term mean". That is a true
+ * sentence nobody can act on: it does not say whether 73% is a normal August or the
+ * worst in a decade, and those are different stories. A mean cannot answer it - only a
+ * distribution can. What comes out of here lets the page say "lower than any August day
+ * since 2017", which is the sentence a reader actually understands.
+ *
+ * Bucketed by calendar month, not by day-of-year window. A month is how hydrology talks
+ * about this ("augusztusi kisviz"), it is what a reader hears, and 12 buckets bake into
+ * a file the size of the rain normals while 365 windows do not. The cost is a seam at
+ * each month boundary: on 31 August the comparison set includes 1 August, which in a
+ * receding summer is a wetter day. That is a real limitation and it is reported rather
+ * than smoothed away.
+ *
+ * Daily MEANS, not raw samples. The cadence varies between gauges and across years, so
+ * percentiles over raw samples would weight a 15-minute gauge sixteen times more than an
+ * hourly one - within the same station, across years, silently.
+ *
+ * Run it in chunks if the runner is slow: --only=tisza-szeged,duna-mohacs
+ */
+async function probeFlowHistory(args = []) {
+  console.log('\n########## discharge history ##########');
+  const { mappedStations, EXTERNAL_IDS } = require('../sources/vizugy');
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
+
+  const YEARS = Number(arg('years')) || 10;
+  const only = arg('only');
+  const wanted = only ? new Set(only.split(',').map((s) => s.trim())) : null;
+  const stations = mappedStations().filter((s) => !wanted || wanted.has(s.id));
+  const now = new Date();
+
+  // A month-year contributes only if most of it reported. A February with three days in
+  // it does not describe February, and its lowest day would be published as "the lowest
+  // February day in ten years" - the same failure the rain normals guard against.
+  const MIN_DAYS_IN_MONTH = 20;
+  // Below this many years the phrase "in N years" is not worth saying, so the domain is
+  // given the count and left to refuse.
+  const MIN_YEARS = 5;
+
+  console.log(`${stations.length} stations, ${YEARS} years each (${stations.length * YEARS} requests)\n`);
+  const out = {};
+
+  for (const station of stations) {
+    const external = EXTERNAL_IDS[station.id];
+    // [month] -> array of daily means across all years
+    const perMonth = Array.from({ length: 12 }, () => []);
+    // [month] -> {value, year} of the lowest and highest day seen
+    const extremes = Array.from({ length: 12 }, () => ({ min: null, max: null }));
+    const yearsIn = Array.from({ length: 12 }, () => new Set());
+    let failures = 0;
+
+    for (let back = 1; back <= YEARS; back += 1) {
+      const year = now.getUTCFullYear() - back;
+      const from = new Date(Date.UTC(year, 0, 1));
+      const to = new Date(Date.UTC(year + 1, 0, 1));
+      try {
+        const rows = await askSeries(
+          [
+            {
+              ItemId: 0,
+              Torzsszam: Number(external),
+              AdatFajtaKod: 87,
+              AdatTipusKod: 100,
+              StartTime: from.toISOString(),
+              EndTime: to.toISOString(),
+            },
+          ],
+          { timeoutMs: 120000 },
+        );
+
+        // day -> {sum, n}, then the mean. Sub-daily cadence varies by gauge and by year.
+        const byDay = new Map();
+        for (const item of usable(Array.isArray(rows) ? rows[0] : null)) {
+          const q = Number(item.Adat);
+          // A negative discharge at these sections is an instrument fault or a sign
+          // convention, not backflow. Letting one through would set a 10-year minimum
+          // that every later reading is measured against.
+          if (!Number.isFinite(q) || q < 0) continue;
+          const day = item.UTCTime.slice(0, 10);
+          const bucket = byDay.get(day) || { sum: 0, n: 0 };
+          bucket.sum += q;
+          bucket.n += 1;
+          byDay.set(day, bucket);
+        }
+
+        const daysInMonth = Array.from({ length: 12 }, () => 0);
+        for (const day of byDay.keys()) {
+          daysInMonth[Number(day.slice(5, 7)) - 1] += 1;
+        }
+        for (const [day, bucket] of byDay) {
+          const month = Number(day.slice(5, 7)) - 1;
+          if (daysInMonth[month] < MIN_DAYS_IN_MONTH) continue;
+          const mean = bucket.sum / bucket.n;
+          perMonth[month].push(mean);
+          yearsIn[month].add(year);
+          const ex = extremes[month];
+          if (ex.min === null || mean < ex.min.value) ex.min = { value: round2(mean), year, day };
+          if (ex.max === null || mean > ex.max.value) ex.max = { value: round2(mean), year, day };
+        }
+      } catch (err) {
+        failures += 1;
+        if (failures === 1) console.log(`  ${station.id}: ${err.message}`);
+      }
+    }
+
+    const months = perMonth.map((values, month) => {
+      const years = yearsIn[month].size;
+      if (!values.length || years < MIN_YEARS) return null;
+      const sorted = values.slice().sort((a, b) => a - b);
+      return {
+        p: [5, 10, 25, 50, 75, 90, 95].map((q) => round2(percentileOf(sorted, q))),
+        min: extremes[month].min,
+        max: extremes[month].max,
+        days: values.length,
+        years,
+      };
+    });
+
+    const covered = months.filter(Boolean).length;
+    out[station.id] = { months, unit: 'm3s' };
+    console.log(
+      `  ${station.id.padEnd(24)} months ${String(covered).padStart(2)}/12  ` +
+        `median [${months.map((m) => (m ? m.p[3].toFixed(0) : '-')).join(' ')}]`,
+    );
+    // Checkpoint every station. This run is 300 requests against someone else's service;
+    // if it times out at station 22 the artifact should still carry 22 stations rather
+    // than nothing, because the alternative is asking for all 300 again.
+    writeDocument('flow-history', out);
+  }
+
+  const complete = Object.values(out).filter((e) => e.months.every(Boolean)).length;
+  console.log(`\n${complete} of ${stations.length} stations have all twelve months.`);
+  console.log(`percentiles are [5 10 25 50 75 90 95] of daily mean discharge, m3/s`);
+  emitDocument('flow-history', out, 'src/config/flow-history.json');
+}
+
+/**
+ * Hand a baked document back to whoever ran the probe.
+ *
+ * The log has always been the delivery mechanism, and for the rain normals at 5 KB it
+ * was fine. This document is closer to 40 KB on a single line - inside a log that is
+ * read back through an API returning trailing chunks, which is a good way to lose the
+ * front of it. So it also goes to a file when PROBE_OUT_DIR is set, which the workflow
+ * uploads as an artifact. The log copy stays for a run from a laptop, where there is no
+ * artifact to download.
+ */
+function emitDocument(name, doc, destination) {
+  const file = writeDocument(name, doc);
+  const json = JSON.stringify(doc);
+  if (file) console.log(`\nwrote ${file} (${json.length} bytes) - download it from the run's artifacts`);
+  // One line, deliberately: pretty-printing turns 30 stations into two thousand.
+  console.log(`\n----- paste into ${destination} -----`);
+  console.log(json);
+}
+
+/** The file half of emitDocument, callable mid-run as a checkpoint. Returns the path. */
+function writeDocument(name, doc) {
+  const dir = process.env.PROBE_OUT_DIR;
+  if (!dir) return null;
+  const fs = require('node:fs');
+  const path = require('node:path');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${name}.json`);
+  fs.writeFileSync(file, JSON.stringify(doc));
+  return file;
+}
+
+/** Linear-interpolated percentile of an ascending array - the same rule numpy defaults to. */
+function percentileOf(sorted, q) {
+  if (!sorted.length) return null;
+  if (sorted.length === 1) return sorted[0];
+  const pos = ((q / 100) * (sorted.length - 1));
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+function round2(v) {
+  return v === null || v === undefined ? null : Math.round(v * 100) / 100;
+}
+
+/**
  * Which (kind, type) pairs a station actually publishes.
  *
  * AdatFajtaKod 69 is "talajvízállás" and every well in vmoType 13 is a groundwater well,
@@ -1500,6 +1687,11 @@ async function main() {
 
   if (args.includes('--rain-normals')) {
     await probeRainNormals();
+    return;
+  }
+
+  if (args.includes('--flow-history')) {
+    await probeFlowHistory(args);
     return;
   }
 

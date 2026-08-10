@@ -28,11 +28,19 @@ on:
         description: Optional single URL to probe instead (overrides target)
         required: false
         type: string
+      flags:
+        description: >
+          Raw probe flags, overriding target. e.g. --flow-history, or
+          --flow-history --only=tisza-szeged,duna-mohacs
+        required: false
+        type: string
 
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 60, not 20: --flow-history is 30 stations x 10 years of sub-hourly discharge, one
+    # request each, sequentially because this is someone else's public service.
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v5
@@ -44,15 +52,35 @@ jobs:
 
       - run: npm ci
 
+      # Inputs go through the environment, not through ${{ }} interpolation into the
+      # script body: a workflow_dispatch string is arbitrary text, and pasted straight
+      # into a shell it is a command, not an argument.
       - name: Probe
+        env:
+          PROBE_FLAGS: ${{ inputs.flags }}
+          PROBE_URL: ${{ inputs.url }}
+          PROBE_TARGET: ${{ inputs.target }}
+          PROBE_OUT_DIR: probe-out
         run: |
-          if [ -n "${{ inputs.url }}" ]; then
-            npm run probe -- --url="${{ inputs.url }}"
-          elif [ "${{ inputs.target }}" = "both" ]; then
+          if [ -n "$PROBE_FLAGS" ]; then
+            npm run probe -- $PROBE_FLAGS
+          elif [ -n "$PROBE_URL" ]; then
+            npm run probe -- --url="$PROBE_URL"
+          elif [ "$PROBE_TARGET" = "both" ]; then
             npm run probe
           else
-            npm run probe -- --${{ inputs.target }}
+            npm run probe -- "--$PROBE_TARGET"
           fi
+
+      # if: always() - a probe that timed out partway still baked whatever it reached,
+      # and 200 of 300 stations is worth keeping rather than re-fetching.
+      - name: Keep the baked documents
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe-out
+          path: probe-out/
+          if-no-files-found: ignore
 
       - name: What to do with the output
         if: always()
