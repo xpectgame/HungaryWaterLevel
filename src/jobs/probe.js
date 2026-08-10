@@ -908,6 +908,69 @@ async function probeGroundwater() {
 }
 
 /**
+ * Which (kind, type) pairs a station actually publishes.
+ *
+ * AdatFajtaKod 69 is "talajvízállás" and every well in vmoType 13 is a groundwater well,
+ * and yet asking 69 under AdatTipusKod 100 returned an empty series at all twelve wells
+ * sampled - while 70 answered at four of them. So either groundwater is filed under a
+ * different data type (100 is `operatív`, and a well read by an observer with a dip meter
+ * is not an operational telemetry feed), or under a different kind code entirely.
+ *
+ * One POST per pair rather than one big one: an unsupported combination fails the whole
+ * request, and a single 500 across 56 combinations tells you nothing about which.
+ */
+async function probeMatrix() {
+  console.log('\n########## kind x type matrix ##########');
+
+  const STATIONS = [
+    [468, 'Ólmod K-2 (well, had 70)'],
+    [3726, 'Debrecen-Józsa (well, had 70)'],
+    [4196, 'Monor K-209 (well, empty)'],
+    [4445, 'Jászszentlászló (rain)'],
+    [1026, 'Budapest (surface, control)'],
+  ];
+  const KINDS = [69, 70, 71, 297, 299, 307, 308];
+  const TYPES = [1, 4, 5, 6, 9, 15, 100, 101];
+
+  const now = new Date();
+  const start = new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString();
+  const end = new Date(now.getTime() + 3600 * 1000).toISOString();
+
+  console.log(`stations: ${STATIONS.map(([tsz, label]) => `${tsz} ${label}`).join(' | ')}`);
+  console.log(`\n  ${'kind'.padEnd(5)} ${'type'.padEnd(5)} ${STATIONS.map(([tsz]) => String(tsz).padStart(9)).join('')}`);
+
+  for (const haf of KINDS) {
+    for (const at of TYPES) {
+      const body = STATIONS.map(([tsz], index) => ({
+        ItemId: index,
+        Torzsszam: tsz,
+        AdatFajtaKod: haf,
+        AdatTipusKod: at,
+        StartTime: start,
+        EndTime: end,
+      }));
+
+      let cells;
+      try {
+        const rows = await askSeries(body, { timeoutMs: 20000 });
+        const byItemId = require('../sources/vizugy').indexByItemId(Array.isArray(rows) ? rows : []);
+        cells = STATIONS.map((_, index) => {
+          const items = usable(byItemId.get(index));
+          return String(items.length || '.').padStart(9);
+        }).join('');
+      } catch (err) {
+        cells = `  ${String(err.message).slice(0, 40)}`;
+      }
+
+      // Only the rows with something in them; 56 lines of dots is not a result.
+      if (!/^(\s+\.)+$/.test(cells)) console.log(`  ${String(haf).padEnd(5)} ${String(at).padEnd(5)} ${cells}`);
+    }
+  }
+
+  console.log('\n(a dot is an empty series, a number is how many non-null samples came back)');
+}
+
+/**
  * Rain gauges: what exists, and what the units are.
  *
  * vmoType 14 is the meteorological network. 71 is "csapadékösszeg" in millimetres, but a
@@ -1043,6 +1106,11 @@ async function main() {
 
   if (args.includes('--rain')) {
     await probeRain();
+    return;
+  }
+
+  if (args.includes('--matrix')) {
+    await probeMatrix();
     return;
   }
 
