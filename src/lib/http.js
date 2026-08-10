@@ -92,10 +92,15 @@ async function fetchText(
       const body = await response.text();
 
       if (!response.ok) {
+        // 500 characters was not enough to reach the part that explains anything.
+        // ENTSO-E answers a bad request with a document whose sender, receiver and
+        // timestamps take about 600 characters before the <Reason> element that names
+        // the wrong parameter - so the truncation was throwing away the only useful
+        // half of the response and leaving a bare status code.
         throw new HttpError(`HTTP ${response.status} from ${url}`, {
           status: response.status,
           url,
-          body: body.slice(0, 500),
+          body: body.slice(0, 4000),
         });
       }
 

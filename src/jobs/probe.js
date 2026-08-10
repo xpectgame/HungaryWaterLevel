@@ -407,7 +407,7 @@ async function probeEntsoe() {
     console.log('\nPaks units listed separately is what the units cooling model needs.');
   } catch (err) {
     console.log(`A73 FAILED: ${entsoe.describeError(err)}`);
-    console.log(`  raw body: ${JSON.stringify(String(err.body || '(empty)').slice(0, 400))}`);
+    console.log(`  reason: ${(/<Reason>[\s\S]*?<\/Reason>/i.exec(err.body || '') || ['(no Reason element)'])[0].replace(/\s+/g, ' ')}`);
   }
 
   try {
@@ -416,7 +416,7 @@ async function probeEntsoe() {
     console.log(JSON.stringify(availability.availability, null, 2));
   } catch (err) {
     console.log(`A80 FAILED: ${entsoe.describeError(err)}`);
-    console.log(`  raw body: ${JSON.stringify(String(err.body || '(empty)').slice(0, 400))}`);
+    console.log(`  reason: ${(/<Reason>[\s\S]*?<\/Reason>/i.exec(err.body || '') || ['(no Reason element)'])[0].replace(/\s+/g, ' ')}`);
   }
 
   // The nuclear series came back a flat 168 MW for a full day, which is not Paks and is
