@@ -15,8 +15,8 @@ const { getPlant } = require('../src/config/powerplants');
 const SAMPLE = `<?xml version="1.0" encoding="UTF-8"?>
 <Unavailability_MarketDocument>
   <TimeSeries>
-    <production_RegisteredResource.name>Paks 2</production_RegisteredResource.name>
-    <production_RegisteredResource.pSRType.powerSystemResources.nominalP>500</production_RegisteredResource.pSRType.powerSystemResources.nominalP>
+    <production_RegisteredResource.name>PA_gép3</production_RegisteredResource.name>
+    <production_RegisteredResource.pSRType.powerSystemResources.nominalP>220</production_RegisteredResource.pSRType.powerSystemResources.nominalP>
     <available_Period>
       <timeInterval>
         <start>2026-08-01T00:00Z</start>
@@ -26,18 +26,29 @@ const SAMPLE = `<?xml version="1.0" encoding="UTF-8"?>
     </available_Period>
   </TimeSeries>
   <TimeSeries>
-    <production_RegisteredResource.name>Paks 3</production_RegisteredResource.name>
-    <production_RegisteredResource.pSRType.powerSystemResources.nominalP>500</production_RegisteredResource.pSRType.powerSystemResources.nominalP>
+    <production_RegisteredResource.name>PA_gép4</production_RegisteredResource.name>
+    <production_RegisteredResource.pSRType.powerSystemResources.nominalP>220</production_RegisteredResource.pSRType.powerSystemResources.nominalP>
     <available_Period>
       <timeInterval>
         <start>2026-08-01T00:00Z</start>
         <end>2026-09-01T00:00Z</end>
       </timeInterval>
-      <Point><position>1</position><quantity>250</quantity></Point>
+      <Point><position>1</position><quantity>0</quantity></Point>
     </available_Period>
   </TimeSeries>
   <TimeSeries>
-    <production_RegisteredResource.name>Paks 4</production_RegisteredResource.name>
+    <production_RegisteredResource.name>PA_gép5</production_RegisteredResource.name>
+    <production_RegisteredResource.pSRType.powerSystemResources.nominalP>220</production_RegisteredResource.pSRType.powerSystemResources.nominalP>
+    <available_Period>
+      <timeInterval>
+        <start>2026-08-01T00:00Z</start>
+        <end>2026-09-01T00:00Z</end>
+      </timeInterval>
+      <Point><position>1</position><quantity>110</quantity></Point>
+    </available_Period>
+  </TimeSeries>
+  <TimeSeries>
+    <production_RegisteredResource.name>PA_gép7</production_RegisteredResource.name>
     <available_Period>
       <timeInterval>
         <start>2026-01-01T00:00Z</start>
@@ -52,24 +63,25 @@ const DURING = Date.parse('2026-08-15T12:00Z');
 
 test('outages are read out of the response', () => {
   const outages = parseOutages(SAMPLE);
-  assert.strictEqual(outages.length, 3);
+  assert.strictEqual(outages.length, 4);
 
-  const paks2 = outages.find((o) => o.unitName === 'Paks 2');
-  assert.strictEqual(paks2.nominalMw, 500);
-  assert.strictEqual(paks2.availableMw, 0);
-  assert.strictEqual(paks2.start, '2026-08-01T00:00:00.000Z');
+  const generator = outages.find((o) => o.unitName === 'PA_gép3');
+  assert.strictEqual(generator.nominalMw, 220);
+  assert.strictEqual(generator.availableMw, 0);
+  assert.strictEqual(generator.start, '2026-08-01T00:00:00.000Z');
 });
 
 test('only outages in force right now count', () => {
   // A published outage that has ended, or has not started, is not an outage.
   const active = activeAt(parseOutages(SAMPLE), DURING);
-  assert.strictEqual(active.length, 2);
-  assert.ok(!active.some((o) => o.unitName === 'Paks 4'), 'the January outage is over');
+  assert.strictEqual(active.length, 3);
+  assert.ok(!active.some((o) => o.unitName === 'PA_gép7'), 'the January outage is over');
 });
 
 test('a fully unavailable unit reduces the count, a derated one does not', () => {
-  // Paks 2 is out entirely. Paks 3 is at half capacity - still online, pumps running,
-  // which is what the water model cares about.
+  // Block 2 is out entirely - BOTH its generators, PA_gép3 and PA_gép4, at zero.
+  // PA_gép5 is at half capacity: still online, pumps running, which is what the water
+  // model cares about.
   const online = unitsOnlineFor(getPlant('paks-1'), parseOutages(SAMPLE), DURING);
   assert.strictEqual(online, 3);
 });
@@ -77,7 +89,7 @@ test('a fully unavailable unit reduces the count, a derated one does not', () =>
 test('duplicate messages for one unit are not counted twice', () => {
   const doubled = SAMPLE.replace('</Unavailability_MarketDocument>', `
   <TimeSeries>
-    <production_RegisteredResource.name>Paks 2</production_RegisteredResource.name>
+    <production_RegisteredResource.name>PA_gép3</production_RegisteredResource.name>
     <available_Period>
       <timeInterval><start>2026-08-02T00:00Z</start><end>2026-09-01T00:00Z</end></timeInterval>
       <Point><position>1</position><quantity>0</quantity></Point>
@@ -205,7 +217,7 @@ test('A73 names each unit, which is what the units cooling model needs', () => {
     <TimeSeries>
       <MktPSRType>
         <psrType>B14</psrType>
-        <PowerSystemResources><name>Paks 1</name><nominalP>500</nominalP></PowerSystemResources>
+        <PowerSystemResources><name>PA_gép1</name><nominalP>220</nominalP></PowerSystemResources>
       </MktPSRType>
       <Period><start>2026-08-08T10:00Z</start><resolution>PT60M</resolution>
         <Point><position>1</position><quantity>473</quantity></Point></Period>
@@ -213,7 +225,7 @@ test('A73 names each unit, which is what the units cooling model needs', () => {
     <TimeSeries>
       <MktPSRType>
         <psrType>B14</psrType>
-        <PowerSystemResources><name>Paks 2</name><nominalP>500</nominalP></PowerSystemResources>
+        <PowerSystemResources><name>PA_gép2</name><nominalP>220</nominalP></PowerSystemResources>
       </MktPSRType>
       <Period><start>2026-08-08T10:00Z</start><resolution>PT60M</resolution>
         <Point><position>1</position><quantity>0</quantity></Point></Period>
@@ -223,10 +235,10 @@ test('A73 names each unit, which is what the units cooling model needs', () => {
   assert.strictEqual(units.length, 2);
   assert.deepStrictEqual(
     units.map((u) => [u.unitName, u.powerMw]),
-    [['Paks 1', 473], ['Paks 2', 0]],
+    [['PA_gép1', 473], ['PA_gép2', 0]],
   );
   assert.strictEqual(units[0].sourceType, 'nuclear');
-  assert.strictEqual(units[0].nominalMw, 500);
+  assert.strictEqual(units[0].nominalMw, 220);
 });
 
 test('generation queries use in_Domain and a process type; outage queries do not', () => {
@@ -323,4 +335,46 @@ test('each document is requested inside the window the platform allows', () => {
     to: new Date(now.getTime() + 86400000),
   });
   assert.ok(spanHours(a80) <= 96, `A80 window is ${spanHours(a80)} h; nine days returned 320 of a 200 cap`);
+});
+
+// ---------------------------------------------------------------------------
+// Paks is eight generators, not four blocks
+// ---------------------------------------------------------------------------
+
+test('the Paks pattern matches the names the platform actually uses', () => {
+  // '^paks' was written from expectation and matched nothing. A pattern that matches
+  // nothing never errors - it silently reports every unit available, forever.
+  const paks = getPlant('paks-1');
+  const matcher = new RegExp(paks.entsoeUnitPattern, 'i');
+
+  for (let n = 1; n <= 8; n += 1) assert.ok(matcher.test(`PA_gép${n}`), `PA_gép${n} must match`);
+  // ...and does not sweep up the other plants in the same document.
+  for (const other of ['MÁ2_gép4', 'DG3_gép8', 'GÖNYÜ_gép1', 'CSP_GT1', 'Litér_GT']) {
+    assert.ok(!matcher.test(other), `${other} must not match the Paks pattern`);
+  }
+});
+
+test('two generators out of one block is not a block out', () => {
+  // A VVER-440 block carries two turbogenerators. One turbine down still leaves the
+  // block's circulating pumps running for the other, and pumps are what the water model
+  // counts. Only a block with both generators out has stopped drawing cooling water.
+  const paks = getPlant('paks-1');
+  const now = Date.parse('2026-08-10T08:00:00Z');
+  const out = (unitName) => ({
+    unitName,
+    availableMw: 0,
+    start: new Date(now - 3600000).toISOString(),
+    end: new Date(now + 3600000).toISOString(),
+  });
+
+  // Both generators of block 1 (gép1, gép2): one block down, three left.
+  assert.strictEqual(unitsOnlineFor(paks, [out('PA_gép1'), out('PA_gép2')], now), 3);
+  // One generator each from two different blocks: neither block has stopped.
+  assert.strictEqual(unitsOnlineFor(paks, [out('PA_gép1'), out('PA_gép3')], now), 4);
+  // Everything out: no blocks left, and crucially not a negative clamped to zero by
+  // accident - eight names against four blocks used to produce exactly this by mistake.
+  const allOut = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => out(`PA_gép${n}`));
+  assert.strictEqual(unitsOnlineFor(paks, allOut, now), 0);
+  // Nothing out: all four.
+  assert.strictEqual(unitsOnlineFor(paks, [], now), 4);
 });

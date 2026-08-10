@@ -47,9 +47,20 @@ const PLANTS = [
     lon: 18.8547,
     capacityMw: 2000,
     unitCount: 4,
-    // Matches how the units are named in ENTSO-E outage messages, so per-unit
-    // availability can replace the guess the units model would otherwise make.
-    entsoeUnitPattern: '^paks',
+    // Matches how the units are named in ENTSO-E messages, so per-unit availability can
+    // replace the guess the units model would otherwise make.
+    //
+    // '^paks' was written from expectation and never matched anything: the platform
+    // names them PA_gép1 .. PA_gép8. A pattern that matches nothing does not fail - it
+    // silently reports every unit available, forever, which is the worst way to be
+    // wrong. Confirmed against A73 on 2026-08-10.
+    entsoeUnitPattern: '^PA_gép\\d+$',
+    // ...and there are EIGHT of them against this registry's unitCount of 4, because a
+    // VVER-440 block carries two ~220 MW turbogenerators. `unitCount` here means blocks,
+    // which is what the cooling model is built on, so the generator number has to be
+    // folded back to a block before the two can be compared. Without this,
+    // `unitCount - distinctOutages` is 4 - 8 and every reading clamps to zero.
+    entsoeGeneratorsPerUnit: 2,
     receivingWater: 'Duna',
     receivingWaterStationId: 'duna-paks',
     intakeRiverKm: 1527,

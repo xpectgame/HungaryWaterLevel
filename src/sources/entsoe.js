@@ -345,6 +345,28 @@ function unitsOnlineFor(plant, outages, now = Date.now()) {
 
   // Distinct units - the platform may publish several overlapping messages for one.
   const names = new Set(fullyOut.map((o) => o.unitName));
+
+  // The platform's "unit" is not always this registry's unit. Paks is listed as eight
+  // generators, PA_gép1..PA_gép8, while `unitCount` is four blocks - a VVER-440 block
+  // carries two turbogenerators. Subtracting eight names from four blocks clamps to
+  // zero and reports the whole plant dark.
+  //
+  // A block only counts as out when every generator in it is out: one turbine down
+  // still leaves the block's circulating pumps running for the other, and pumps are
+  // what the water model is counting.
+  const perUnit = plant.entsoeGeneratorsPerUnit;
+  if (perUnit > 1) {
+    const outPerBlock = new Map();
+    for (const name of names) {
+      const generator = Number((name.match(/(\d+)\s*$/) || [])[1]);
+      if (!Number.isFinite(generator)) continue;
+      const block = Math.ceil(generator / perUnit);
+      outPerBlock.set(block, (outPerBlock.get(block) || 0) + 1);
+    }
+    const blocksOut = [...outPerBlock.values()].filter((count) => count >= perUnit).length;
+    return Math.max(0, plant.unitCount - blocksOut);
+  }
+
   return Math.max(0, plant.unitCount - names.size);
 }
 

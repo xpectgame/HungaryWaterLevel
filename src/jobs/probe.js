@@ -411,7 +411,10 @@ async function probeEntsoe() {
   }
 
   try {
-    const availability = await entsoe.fetchAvailability();
+    // The plant list is not optional - fetchAvailability iterates it. Calling it bare
+    // reported "plants is not iterable", which reads like an upstream failure and is a
+    // probe bug.
+    const availability = await entsoe.fetchAvailability(require('../config/powerplants').listPlants('operating'));
     console.log(`\nA80 outages: ${availability.activeOutages} active of ${availability.outageCount} published`);
     console.log(JSON.stringify(availability.availability, null, 2));
   } catch (err) {
