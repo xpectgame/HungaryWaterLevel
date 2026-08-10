@@ -16,15 +16,30 @@ const { fetchText } = require('../lib/http');
  * it covers every Hungarian plant in this registry that matters.
  *
  * ---------------------------------------------------------------------------
- * STATUS: UNVERIFIED
+ * STATUS: VERIFIED AGAINST THE LIVE PLATFORM, 2026-08-10
  * ---------------------------------------------------------------------------
- * Everything below - the document type, the domain code, the XML element names - is
- * written from the platform's published interface, but it could not be exercised: the
- * API needs a token, and the host was unreachable from the machine this was written on.
- * Treat it as a first draft that `npm run probe -- --entsoe` will confirm or correct.
+ * Four documents, all exercised by `npm run probe -- --entsoe`:
+ *
+ *   A75  generation by production type, quarter-hourly. Replaces the MAVIR scrape.
+ *   A73  generation per unit. The document MAVIR has no equivalent of, and the reason
+ *        this adapter exists. Window must not exceed one day.
+ *   A80  unavailability of generation units. Capped at 200 instances per response.
+ *   A65  total load, used as a cross-check on whether A75 carries the whole fleet.
+ *
+ * What the first real run corrected, none of which failed loudly:
+ *
+ *   - Paks is published as EIGHT generators, PA_gép1..PA_gép8, not four units. A
+ *     VVER-440 block carries two turbogenerators. The pattern written from expectation
+ *     ('^paks') matched none of them, and a pattern that matches nothing reports every
+ *     unit available forever.
+ *   - A80 and A73 disagree. On the first comparison A80 had all four blocks available
+ *     while A73 showed seven of eight generators at 5-11 MW - house load, not output.
+ *     An outage notice is a document; generation is the machine. The unit count is
+ *     taken from A73 for that reason, and A80 is kept for the part it can answer.
  *
  * A token is free: register on the Transparency Platform, then email
- * transparency@entsoe.eu asking for API access, and set ENTSOE_TOKEN.
+ * transparency@entsoe.eu asking for API access, and set ENTSOE_TOKEN. It must be the
+ * bare token on one line - see cleanToken for what a careless paste costs.
  *
  * Without a token this adapter returns nothing and the units model falls back to
  * inferring units from output - a lower bound, honestly labelled as one.
@@ -371,6 +386,61 @@ function unitsOnlineFor(plant, outages, now = Date.now()) {
 }
 
 /**
+ * A generator is running when it is putting out more than this share of its rating.
+ *
+ * Observed at Paks on 2026-08-10: one generator at 214 MW and seven between 5 and 11.
+ * That is not seven machines at low load - a VVER-440 turbogenerator does not idle at
+ * 2% - it is house load, the plant drawing from the grid to keep its own systems alive
+ * while the turbine is stopped. Ten percent sits far above that floor and far below
+ * anything that could be called production.
+ */
+const RUNNING_FRACTION = 0.1;
+
+/**
+ * How many of a plant's units are running, measured rather than inferred.
+ *
+ * A73 says what each generator is producing right now. A80 says what somebody filed a
+ * notice about, and the two disagreed the first time they were compared: A80 reported
+ * all four Paks blocks available while A73 showed seven of eight generators at house
+ * load. An outage notice is a document; output is the machine.
+ *
+ * That matters here more than usual, because the number feeds a cooling-water figure.
+ * A stopped turbine's circulating pumps are off whether or not anyone filed for it, and
+ * counting it as running would put a hundred cubic metres a second of Danube water into
+ * the model that is not being drawn.
+ */
+function unitsRunningFrom(plant, units) {
+  if (!plant.entsoeUnitPattern || !plant.unitCount || !Array.isArray(units)) return null;
+
+  const matcher = new RegExp(plant.entsoeUnitPattern, 'i');
+  const mine = units.filter((unit) => matcher.test(unit.unitName || ''));
+  if (mine.length === 0) return null;
+
+  const perUnit = plant.entsoeGeneratorsPerUnit || 1;
+  // The rating per generator. The document's own nominalP is the better source, but it
+  // came back as 0 for every unit, so the plant's nameplate split evenly is the fallback.
+  const nominalPerGenerator = (plant.capacityMw || 0) / (plant.unitCount * perUnit);
+
+  const runningGenerators = new Set();
+  for (const unit of mine) {
+    const rating = unit.nominalMw > 0 ? unit.nominalMw : nominalPerGenerator;
+    if (!(rating > 0)) continue;
+    if (unit.powerMw >= rating * RUNNING_FRACTION) runningGenerators.add(unit.unitName);
+  }
+
+  if (perUnit === 1) return Math.min(plant.unitCount, runningGenerators.size);
+
+  // Fold generators back to blocks: a block is drawing cooling water if either of its
+  // turbines is turning, because each has its own condenser on the same circuit.
+  const blocks = new Set();
+  for (const name of runningGenerators) {
+    const generator = Number((name.match(/(\d+)\s*$/) || [])[1]);
+    if (Number.isFinite(generator)) blocks.add(Math.ceil(generator / perUnit));
+  }
+  return Math.min(plant.unitCount, blocks.size);
+}
+
+/**
  * Fetch outages over a window, splitting it whenever the platform says it is too big.
  *
  * The window for this document cannot be chosen by picking a number, because it is
@@ -431,19 +501,41 @@ async function fetchAvailability(plants, env = process.env, now = new Date()) {
     };
   }
 
-  // Six days, fetched in pieces. See fetchOutageWindow for why neither end of the
-  // window can be chosen by picking a number.
-  const outages = await fetchOutageWindow(cfg, {
-    from: new Date(now.getTime() - 5 * 86400000),
-    to: new Date(now.getTime() + 86400000),
-  });
+  // A73 first, because it measures. A80 only says what somebody filed a notice about,
+  // and the two disagreed the first time they met: A80 called all four Paks blocks
+  // available while A73 had seven of eight generators at house load. The cooling model
+  // turns this number into cubic metres a second of Danube water, so it has to come
+  // from the machine rather than the paperwork.
+  //
+  // Outages are still fetched, for the part A73 cannot answer: whether a stopped unit
+  // is stopped on purpose and until when.
+  const [unitGeneration, outages] = await Promise.all([
+    fetchUnitGeneration(env, now).catch(() => null),
+    // Six days, in pieces. See fetchOutageWindow for why neither end of the window can
+    // be chosen by picking a number.
+    fetchOutageWindow(cfg, {
+      from: new Date(now.getTime() - 5 * 86400000),
+      to: new Date(now.getTime() + 86400000),
+    }).catch(() => []),
+  ]);
 
   const availability = {};
   for (const plant of plants) {
-    const online = unitsOnlineFor(plant, outages, now.getTime());
-    if (online !== null) {
-      availability[plant.id] = { unitsOnline: online, unitCount: plant.unitCount, source: 'entsoe' };
-    }
+    const measured = unitGeneration ? unitsRunningFrom(plant, unitGeneration.units) : null;
+    const declared = unitsOnlineFor(plant, outages, now.getTime());
+    const online = measured !== null ? measured : declared;
+    if (online === null) continue;
+
+    availability[plant.id] = {
+      unitsOnline: online,
+      unitCount: plant.unitCount,
+      source: 'entsoe',
+      basis: measured !== null ? 'generation' : 'outage-notices',
+      // Both, when both exist. A gap between them is worth seeing rather than
+      // resolving silently - it is either an unfiled outage or a unit on house load,
+      // and those are different stories about the same plant.
+      declaredOnline: declared,
+    };
   }
 
   return {
@@ -452,6 +544,7 @@ async function fetchAvailability(plants, env = process.env, now = new Date()) {
     fetchedAt: new Date().toISOString(),
     outageCount: outages.length,
     activeOutages: activeAt(outages, now.getTime()).length,
+    unitsMeasured: unitGeneration ? unitGeneration.units.length : 0,
     availability,
   };
 }
@@ -573,6 +666,7 @@ module.exports = {
   lastPoint,
   activeAt,
   unitsOnlineFor,
+  unitsRunningFrom,
   buildUrl,
   formatPeriod,
   config,

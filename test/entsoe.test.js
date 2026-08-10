@@ -382,3 +382,70 @@ test('two generators out of one block is not a block out', () => {
   // Nothing out: all four.
   assert.strictEqual(unitsOnlineFor(paks, [], now), 4);
 });
+
+// ---------------------------------------------------------------------------
+// Counting units from what they produce, not from what was filed
+// ---------------------------------------------------------------------------
+
+test('a generator at house load is not a running unit', () => {
+  // The real reading from 2026-08-10: one generator at 214 MW, seven between 5 and 11.
+  // A VVER-440 turbogenerator does not idle at 2% of rating - that is the plant drawing
+  // from the grid to keep its own systems alive while the turbine is stopped.
+  const { unitsRunningFrom } = require('../src/sources/entsoe');
+  const paks = getPlant('paks-1');
+  const observed = [
+    { unitName: 'PA_gép4', powerMw: 214, nominalMw: 0 },
+    { unitName: 'PA_gép3', powerMw: 11, nominalMw: 0 },
+    { unitName: 'PA_gép1', powerMw: 7, nominalMw: 0 },
+    { unitName: 'PA_gép7', powerMw: 6, nominalMw: 0 },
+    { unitName: 'PA_gép8', powerMw: 6, nominalMw: 0 },
+    { unitName: 'PA_gép2', powerMw: 6, nominalMw: 0 },
+    { unitName: 'PA_gép6', powerMw: 5, nominalMw: 0 },
+    { unitName: 'PA_gép5', powerMw: 5, nominalMw: 0 },
+  ];
+
+  // gép4 is in block 2 (generators 3 and 4). One block drawing cooling water, not four.
+  assert.strictEqual(unitsRunningFrom(paks, observed), 1);
+});
+
+test('all eight generators at full output is four blocks, not eight', () => {
+  const { unitsRunningFrom } = require('../src/sources/entsoe');
+  const paks = getPlant('paks-1');
+  const full = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ unitName: `PA_gép${n}`, powerMw: 240, nominalMw: 0 }));
+  assert.strictEqual(unitsRunningFrom(paks, full), 4);
+});
+
+test('one turbine of a block still draws that block cooling water', () => {
+  // Each turbine has its own condenser on the block's circuit, so half a block running
+  // is a whole block withdrawing. Counting it as idle would understate the draw.
+  const { unitsRunningFrom } = require('../src/sources/entsoe');
+  const paks = getPlant('paks-1');
+  const half = [
+    { unitName: 'PA_gép1', powerMw: 220, nominalMw: 0 },
+    { unitName: 'PA_gép2', powerMw: 3, nominalMw: 0 },
+    { unitName: 'PA_gép3', powerMw: 220, nominalMw: 0 },
+    { unitName: 'PA_gép4', powerMw: 3, nominalMw: 0 },
+  ];
+  assert.strictEqual(unitsRunningFrom(half && paks, half), 2);
+});
+
+test('no matching units yields no opinion rather than zero', () => {
+  // Zero is a claim - "the plant is dark" - and an empty document is not evidence for
+  // it. The caller has to be able to fall back.
+  const { unitsRunningFrom } = require('../src/sources/entsoe');
+  const paks = getPlant('paks-1');
+  assert.strictEqual(unitsRunningFrom(paks, []), null);
+  assert.strictEqual(unitsRunningFrom(paks, [{ unitName: 'MÁ2_gép4', powerMw: 140 }]), null);
+  assert.strictEqual(unitsRunningFrom(paks, null), null);
+});
+
+test('the document rating wins over the nameplate split when it is present', () => {
+  const { unitsRunningFrom } = require('../src/sources/entsoe');
+  const paks = getPlant('paks-1');
+  // 15 MW against a stated 220 rating is house load at 7%; against a stated 100 the
+  // same 15 MW is 15% and the machine is turning. Same reading, different conclusion,
+  // decided by the rating - which is why the document's own figure has to win when it
+  // has one, rather than the nameplate divided evenly.
+  assert.strictEqual(unitsRunningFrom(paks, [{ unitName: 'PA_gép1', powerMw: 15, nominalMw: 220 }]), 0);
+  assert.strictEqual(unitsRunningFrom(paks, [{ unitName: 'PA_gép1', powerMw: 15, nominalMw: 100 }]), 1);
+});

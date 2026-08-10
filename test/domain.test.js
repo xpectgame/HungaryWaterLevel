@@ -438,3 +438,38 @@ test('a station with no usable upstream series is estimated, not silently zero',
   assert.notStrictEqual(lajta.flowM3s, 0, 'an unavailable gauge must never read as zero flow');
   assert.ok(balance.inflow.estimatedCount >= 1);
 });
+
+test('a measured unit count survives whichever cooling model is asked for', () => {
+  // How many blocks are turning is a fact about the plant, not an artefact of the water
+  // model chosen to describe it. It used to appear only under model=units, so the
+  // site's default view hid the figure even when ENTSO-E had measured it.
+  const { buildPowerWater } = require('../src/domain/snapshot');
+  const availability = {
+    'paks-1': { unitsOnline: 1, unitCount: 4, source: 'entsoe', basis: 'generation', declaredOnline: 4 },
+  };
+
+  for (const coolingModel of ['linear', 'thermal', 'units']) {
+    const built = buildPowerWater({ readings: {}, generation: null, coolingModel, availability });
+    const paks = built.plants.find((p) => p.id === 'paks-1');
+    assert.ok(paks.units, `units missing under model=${coolingModel}`);
+    assert.strictEqual(paks.units.online, 1, `under model=${coolingModel}`);
+    assert.strictEqual(paks.units.total, 4);
+    assert.strictEqual(paks.units.basis, 'generation');
+    // The two sources disagreed - outage notices said four, output said one. That gap
+    // is the story, so it is carried rather than flattened.
+    assert.strictEqual(paks.units.declaredOnline, 4);
+  }
+});
+
+test('without availability the unit count says it was inferred', () => {
+  const { buildPowerWater } = require('../src/domain/snapshot');
+  const built = buildPowerWater({
+    readings: {},
+    generation: { generationMw: { nuclear: 1900 } },
+    coolingModel: 'units',
+  });
+  const paks = built.plants.find((p) => p.id === 'paks-1');
+  assert.strictEqual(paks.units.basis, 'inferred');
+  assert.strictEqual(paks.units.known, false);
+  assert.strictEqual(paks.units.declaredOnline, null);
+});

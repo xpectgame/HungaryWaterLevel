@@ -2286,8 +2286,20 @@ function renderPlants(){
     const label = conf==='measured' ? '' : conf==='unavailable'
       ? ' <small style="color:var(--ink-faint)">nincs élő adat</small>'
       : ' <small style="color:var(--ink-faint)">becsült</small>';
+    // A blokkszám a hűtővíz-mennyiség fele: ha kettő áll a négyből, a folyóból feleannyit
+    // vesznek ki. Ott van a szám mellett, hogy honnan tudjuk - a mérés és a következtetés
+    // ugyanúgy néz ki, amíg valaki ki nem mondja, melyik.
+    const u = p.units;
+    const units = u
+      ? ` <small style="color:var(--ink-faint)" title="${u.basis==='generation'
+          ? 'blokkonkénti mért teljesítményből (ENTSO-E A73)'
+          : u.basis==='outage-notices'
+            ? 'üzemszünet-bejelentésekből (ENTSO-E A80)'
+            : 'a termelésből következtetve — alsó becslés'}">`+
+        `${u.online}/${u.total} blokk${u.basis==='generation'?' ✓':''}</small>`
+      : '';
     return `<div class="bar clickable" data-plant="${p.id}" tabindex="0" role="button">`+
-      `<div class="nm" title="${p.name}">${p.name}</div>`+
+      `<div class="nm" title="${p.name}">${p.name}${units}</div>`+
       `<div class="track"><div class="fill" style="width:${Math.max(0.6,(w/max)*100).toFixed(1)}%;`+
       `background:linear-gradient(90deg,var(--ember-dim),var(--ember))"></div></div>`+
       `<div class="n">${fmt(w,1)}${label}</div></div>`;

@@ -47,10 +47,9 @@ function buildPowerWater({ readings, generation, coolingModel, availability }) {
       method: plant.status === 'operating' ? 'no live figure' : `plant status: ${plant.status}`,
     };
 
-    // Outage data, when present, replaces the inference the units model would make.
-    const unitsOnline = availability && availability[plant.id]
-      ? availability[plant.id].unitsOnline
-      : undefined;
+    // Availability, when present, replaces the inference the units model would make.
+    const known = (availability && availability[plant.id]) || null;
+    const unitsOnline = known ? known.unitsOnline : undefined;
     const water = computePlantWater(plant, allocation.powerMw, { model: coolingModel, unitsOnline });
     waterByPlant[plant.id] = water;
 
@@ -81,8 +80,28 @@ function buildPowerWater({ readings, generation, coolingModel, availability }) {
         method: allocation.method,
         caveat: allocation.caveat || null,
       },
-      units: water.unitCount
-        ? { online: water.unitsOnline, total: water.unitCount, known: water.unitsKnown }
+      // Reported whichever cooling model is selected. How many blocks are turning is a
+      // fact about the plant, not an artefact of the water model chosen to describe it -
+      // and it was previously visible only under `model=units`, so the site's default
+      // view never showed it even when the figure was measured.
+      units: water.unitCount || (known && plant.unitCount)
+        ? {
+          online: Number.isFinite(water.unitsOnline) ? water.unitsOnline : known.unitsOnline,
+          total: water.unitCount || plant.unitCount,
+          known: water.unitsKnown || Boolean(known),
+          // Three different claims wearing the same number, and the difference is the
+          // whole confidence story: `generation` means each unit's own output was read,
+          // `outage-notices` means nobody filed anything against it, and neither means
+          // it was inferred from a plant total and is a lower bound.
+          basis: known ? known.basis : 'inferred',
+          // Kept when the two sources disagree. A stopped unit with no outage notice is
+          // either an unfiled outage or a machine on house load, and flattening that
+          // into one number would hide the one thing worth noticing.
+          declaredOnline:
+            known && known.declaredOnline !== null && known.declaredOnline !== known.unitsOnline
+              ? known.declaredOnline
+              : null,
+        }
         : null,
       water: {
         coolingType: water.coolingType,

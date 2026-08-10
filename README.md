@@ -144,6 +144,33 @@ beépített teljesítmény arányában osztjuk szét — `confidence: "estimated
 ilyen mező visz magával egy `caveat` mezőt, mert a valós menetrend költségalapú, nem
 kapacitásarányos. **Az összegük megbízható, a köztük lévő felosztás nem.**
 
+**Az ENTSO-E ezt a korlátot feloldja.** A Transparency Platform `A73` dokumentuma
+**gépegységenként** közli a termelést, tehát a gázflotta felosztása sem becslés többé.
+Négy dokumentumot használunk (`npm run probe -- --entsoe`): `A75` termelési mix,
+`A73` gépegységenkénti teljesítmény, `A80` üzemszünetek, `A65` rendszerterhelés
+keresztellenőrzésnek. Token kell hozzá (`ENTSOE_TOKEN`), ingyenes.
+
+### 6/a. A blokkszámot mérésből vesszük, nem bejelentésből
+
+A hűtővíz nem a megawattal skálázódik, hanem a **járó blokkok számával** — a szivattyú a
+blokkhoz tartozik, nem a teljesítményéhez. Két forrás kínálkozik, és az első összevetésnél
+**ellentmondtak egymásnak**: az `A80` (üzemszünet-bejelentések) szerint mind a négy paksi
+blokk elérhető volt, miközben az `A73` szerint nyolc generátorból hét 5–11 MW-on állt — ez
+házi fogyasztás, nem termelés. Egy üzemszünet-bejelentés papír; a termelés a gép. A
+blokkszám ezért az `A73`-ból jön, az `A80` pedig arra marad, amit az `A73` nem tud: hogy
+egy álló blokk szándékosan áll-e, és meddig.
+
+A válaszban a `units.basis` mezőben látszik, melyikből: `generation` (mérve),
+`outage-notices` (bejelentésből), `inferred` (a termelésből következtetve, alsó becslés).
+Ha a kettő eltér, a `declaredOnline` megőrzi a másik állítást is — a különbség maga a hír.
+
+Egy buktató, ami csendben tévedett: **Paks nyolc generátorként van közzétéve**
+(`PA_gép1`…`PA_gép8`), nem négy blokként — egy VVER-440 blokk két turbógenerátort visz. A
+korábbi minta (`^paks`) semmire nem illett, egy ilyen minta pedig soha nem hibázik el:
+némán azt jelenti, hogy minden blokk megy. A generátorszám most blokkra képződik, és egy
+blokk akkor vesz vizet, ha **bármelyik** turbinája forog — mindegyiknek saját kondenzátora
+van ugyanazon a körön.
+
 ### 7. Vízkivétel ≠ vízfogyasztás
 
 A vázlat ezt helyesen írta le, ezért elsőrendű mezővé tettük. Ez a legtöbb sajtóban
