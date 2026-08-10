@@ -401,11 +401,13 @@ async function fetchOutageWindow(cfg, { from, to }, depth = 0) {
     const tooMany = /exceeds the allowed maximum/i.test((err && err.body) || '');
     if (!tooMany || depth >= MAX_OUTAGE_SPLITS) throw err;
 
+    // Sequentially, not in parallel. A split can itself split, so the fan-out doubles
+    // per level - and firing them together turns one rejected request into a burst
+    // against a rate-limited public service, for no gain: this runs on a fifteen-minute
+    // poll and has no deadline worth a thundering herd.
     const middle = new Date((from.getTime() + to.getTime()) / 2);
-    const [earlier, later] = await Promise.all([
-      fetchOutageWindow(cfg, { from, to: middle }, depth + 1),
-      fetchOutageWindow(cfg, { from: middle, to }, depth + 1),
-    ]);
+    const earlier = await fetchOutageWindow(cfg, { from, to: middle }, depth + 1);
+    const later = await fetchOutageWindow(cfg, { from: middle, to }, depth + 1);
 
     const merged = new Map();
     for (const outage of [...earlier, ...later]) merged.set(`${outage.unitName}|${outage.start}`, outage);
