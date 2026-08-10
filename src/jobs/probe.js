@@ -1182,16 +1182,26 @@ async function probeRainNormals() {
         const items = usable(Array.isArray(rows) ? rows[0] : null);
         const perMonth = Array.from({ length: 12 }, () => ({ sum: 0, samples: 0, days: new Set() }));
         for (const item of items) {
+          const mm = Number(item.Adat);
+          // The same filter the live adapter applies. Without it Sándorfalva's February
+          // carried a -443 mm sample - a sensor reset or a correction, not rain - which
+          // summed straight through into a normal of 31 mm for the whole year.
+          if (!Number.isFinite(mm) || mm < 0) continue;
           const when = new Date(item.UTCTime);
           const bucket = perMonth[when.getUTCMonth()];
-          bucket.sum += Number(item.Adat);
+          bucket.sum += mm;
           bucket.samples += 1;
           bucket.days.add(when.toISOString().slice(0, 10));
         }
         perMonth.forEach((bucket, month) => {
           // Most of the month has to have reported. Distinct days rather than samples,
           // because cadence varies from four a day to one.
-          if (bucket.days.size >= 24) buckets[month].push(bucket.sum);
+          if (bucket.days.size < 24) return;
+          // Hungary's wettest recorded month at a single gauge is around 250 mm. Past
+          // 400 the value is an artefact, and one artefact year poisons the normal that
+          // every later comparison is made against.
+          if (bucket.sum > 400) return;
+          buckets[month].push(bucket.sum);
         });
       } catch (err) {
         failures += 1;
@@ -1215,8 +1225,10 @@ async function probeRainNormals() {
 
   const complete = Object.values(out).filter((entry) => entry.months === 12).length;
   console.log(`\n${complete} of ${gauges.length} gauges have all twelve months.`);
+  // One line, deliberately: the log is read back through an API that returns whole
+  // trailing chunks, and a pretty-printed document turns 47 gauges into 900 lines.
   console.log('\n----- paste into src/config/rain-normals.json -----');
-  console.log(JSON.stringify(out, null, 1));
+  console.log(JSON.stringify(out));
 }
 
 /**

@@ -189,6 +189,62 @@ async function fetchGeneration(env = process.env, at = new Date()) {
   };
 }
 
+/**
+ * Synthetic rainfall, shaped like the real thing rather than uniform.
+ *
+ * Rain is the least uniform quantity in this project: most days at most gauges are zero,
+ * and a month's total is a handful of events. A fixture that sprinkles a little rain
+ * everywhere every day would make every consumer look correct while hiding the two cases
+ * that matter - a gauge with a genuine zero, and a run of dry days. So this generates
+ * discrete wet days from the same deterministic noise the rivers use.
+ */
+async function fetchRainfall({ days = 30, now = new Date() } = {}) {
+  const { listRainGauges, normalForWindow } = require('../config/rain-gauges');
+  const to = now instanceof Date ? now : new Date(now);
+  const from = new Date(to.getTime() - days * DAY_MS);
+  const gauges = {};
+
+  for (const gauge of listRainGauges()) {
+    const seed = seedFor(gauge.id);
+    // Aim the synthetic total at a fraction of this gauge's own normal, so the fixture
+    // exercises the deficit arithmetic instead of hovering at exactly normal.
+    const normal = normalForWindow(gauge.id, from.toISOString(), to.toISOString()) || 45;
+    const aim = normal * (0.15 + 0.85 * ((noise(seed) + 1) / 2));
+
+    const daily = [];
+    let total = 0;
+    for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
+      const at = new Date(from.getTime() + dayIndex * DAY_MS);
+      const roll = noise(Math.floor(at.getTime() / DAY_MS) * 3.1 + seed);
+      // About one day in five is wet; the rest are honest zeroes.
+      const mm = roll > 0.6 ? round((aim / 6) * (1 + roll), 1) : 0;
+      total += mm;
+      daily.push({ date: at.toISOString().slice(0, 10), mm });
+    }
+
+    const wet = daily.filter((d) => d.mm > 0);
+    gauges[gauge.id] = {
+      totalMm: round(total, 1),
+      samples: days,
+      wetDays: wet.length,
+      firstAt: from.toISOString(),
+      lastAt: new Date(to.getTime() - 6 * 3600 * 1000).toISOString(),
+      lastRainAt: wet.length ? new Date(`${wet[wet.length - 1].date}T05:00:00Z`).toISOString() : null,
+      daily,
+    };
+  }
+
+  return {
+    source: 'fixture',
+    fetchedAt: to.toISOString(),
+    windowDays: days,
+    from: from.toISOString(),
+    to: to.toISOString(),
+    gauges,
+    errors: [],
+  };
+}
+
 /** Paks refuels one unit at a time, mostly outside the winter peak. */
 function seasonalOutage(at) {
   const month = at.getMonth();
@@ -200,4 +256,4 @@ function round(v, digits) {
   return Math.round(v * f) / f;
 }
 
-module.exports = { fetchAll, fetchGeneration, stationFlow, seasonalFactor };
+module.exports = { fetchAll, fetchGeneration, fetchRainfall, stationFlow, seasonalFactor };

@@ -2,6 +2,7 @@
 
 const express = require('express');
 const { buildEvents } = require('../domain/events');
+const { buildArrivals } = require('../domain/arrival');
 const { pollableStations } = require('../config/stations');
 const { LAKES } = require('../config/lakes');
 const { activeNotes } = require('../config/notes');
@@ -39,6 +40,10 @@ module.exports = function eventRoutes(ctx) {
       await withMeta(
         {
           ...built,
+          // What is on its way, from the same history the events were derived from. Its
+          // own key rather than more events: an event happened, an arrival has not, and
+          // a reader must not have to check a timestamp to tell those apart.
+          arrivals: buildArrivals({ historyByStation }),
           // Kept in a separate list, never merged into `events`: one is arithmetic on
           // measurements, the other is a person's claim with a link. A reader has to be
           // able to tell which is which without reading carefully.

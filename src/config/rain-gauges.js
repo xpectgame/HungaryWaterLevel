@@ -58,6 +58,30 @@
 const NORMALS = require('./rain-normals.json');
 
 /**
+ * How many years a normal has to rest on before it is allowed to be one.
+ *
+ * Érsekcsanád came back with a single year of usable record. One year is not a normal,
+ * it is that year, and comparing this August against one previous August would produce a
+ * confident-looking ratio built on a coin toss. Below this bar the gauge still reports
+ * its rainfall - the measurement is fine - it just gets no baseline to be judged against.
+ */
+const MIN_YEARS = 3;
+
+/**
+ * A caveat that belongs next to every number this produces.
+ *
+ * The archive reaches ten years, so these are averages of roughly 2016-2025 rather than
+ * a 30-year climatological normal. That decade was itself dry in Hungary, so a deficit
+ * measured against it is SMALLER than the same deficit measured against a 1991-2020
+ * normal. The bias runs one way only, towards understating how unusual a dry spell is,
+ * which is the right direction for a number that must never overstate a drought.
+ */
+const BASELINE_NOTE =
+  'A "szokásos" érték az adott mérőállomás saját, körülbelül tízéves archívumából ' +
+  'számolt átlag, nem harmincéves klimatológiai normál. Ez a tíz év Magyarországon ' +
+  'száraz volt, így a hiány ehhez mérve inkább kisebbnek látszik a valóságosnál.';
+
+/**
  * The gauges, chosen for coverage rather than completeness.
  *
  * Picked from the 262 that were reporting, one to a few per water directorate, spread to
@@ -166,6 +190,7 @@ function getRainGaugeByTsz(tsz) {
 function monthlyNormal(gaugeId, month) {
   const entry = NORMALS[gaugeId];
   if (!entry || !Array.isArray(entry.mm)) return null;
+  if (!Number.isFinite(entry.years) || entry.years < MIN_YEARS) return null;
   const value = entry.mm[month - 1];
   return Number.isFinite(value) ? value : null;
 }
@@ -213,6 +238,8 @@ module.exports = {
   RAIN_GAUGES,
   COVERAGE,
   NORMALS,
+  MIN_YEARS,
+  BASELINE_NOTE,
   listRainGauges,
   getRainGauge,
   getRainGaugeByTsz,
