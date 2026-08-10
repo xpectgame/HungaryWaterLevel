@@ -387,13 +387,21 @@ async function fetchAvailability(plants, env = process.env, now = new Date()) {
   }
 
   // A window around now catches outages already running and those just starting.
-  // A day either side, and not a week. The platform caps this document at 200 instances
-  // and answers HTTP 400 above it - "The number of instances (320) exceeds the allowed
-  // maximum (200)" is what a nine-day window earned. A narrow window costs nothing here
-  // anyway: outages are returned when their own interval overlaps the request, so any
-  // window containing `now` catches everything currently in force, which is the only
-  // thing this document is asked for.
-  const from = new Date(now.getTime() - 86400000);
+  // Four days, between two limits that pull in opposite directions.
+  //
+  // Above: the platform caps this document at 200 instances and answers HTTP 400 over
+  // it - a nine-day window earned "The number of instances (320) exceeds the allowed
+  // maximum (200)".
+  //
+  // Below: a one-day window returned zero outages while A73 showed seven of Paks's
+  // eight generators sitting at 5-11 MW. So the period does NOT select outages whose
+  // own interval overlaps it - a long-running outage published weeks ago falls outside
+  // a narrow window and simply vanishes. Zero outages then reads as "everything is
+  // running", which is the most confident possible way to be wrong.
+  //
+  // Nine days gave 320 instances, so four should land near 140 - inside the cap with
+  // room, and wide enough to catch what is currently in force.
+  const from = new Date(now.getTime() - 3 * 86400000);
   const to = new Date(now.getTime() + 86400000);
   const url = buildUrl(cfg, { from, to });
 

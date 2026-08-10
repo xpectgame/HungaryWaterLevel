@@ -331,10 +331,13 @@ test('each document is requested inside the window the platform allows', () => {
   assert.ok(spanHours(a73) <= 24, `A73 window is ${spanHours(a73)} h, the platform allows 24`);
 
   const a80 = buildEntsoeUrl(cfg, {
-    from: new Date(now.getTime() - 86400000),
+    from: new Date(now.getTime() - 3 * 86400000),
     to: new Date(now.getTime() + 86400000),
   });
-  assert.ok(spanHours(a80) <= 96, `A80 window is ${spanHours(a80)} h; nine days returned 320 of a 200 cap`);
+  // Bounded from below as well: one day returned zero outages while A73 showed the
+  // plant nearly dark, because the period does not select by the outage's own interval.
+  assert.ok(spanHours(a80) >= 72, 'too narrow a window silently reports everything running');
+  assert.ok(spanHours(a80) <= 120, `A80 window is ${spanHours(a80)} h; nine days returned 320 of a 200 cap`);
 });
 
 // ---------------------------------------------------------------------------
