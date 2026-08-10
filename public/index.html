@@ -700,6 +700,7 @@ footer a{color:var(--ink-soft)}
   <p class="lead" id="rain-headline">&nbsp;</p>
   <div id="rain-regions" class="regions"></div>
   <div id="rain-gauges" class="rainlist"></div>
+  <p style="margin:12px 0 0"><button type="button" class="linkish" id="rain-more"></button></p>
   <p class="fineprint" id="rain-coverage"></p>
   <p class="fineprint" id="rain-baseline"></p>
 </section>
@@ -1659,6 +1660,7 @@ function renderRegions(regions){
 
 let rainDays = 30;
 let showRain = true;
+let rainGauges = [];
 
 /** Relative day count, because "8 napja" beats a date nobody subtracts from today. */
 function agoDays(n){
@@ -1675,16 +1677,28 @@ function agoDays(n){
  * forty dots comparable at a glance - a bar scaled to each gauge's own maximum would
  * make a wet gauge and a dry one look identical.
  */
+/* Forty-seven cards in one column is 17 000 pixels of phone. The driest are the story,
+   the rest are the evidence - so the story shows and the evidence is one tap away. */
+const RAIN_SHOWN = 12;
+let rainExpanded = false;
+
 function renderRainGauges(gauges){
   const el = $('rain-gauges');
-  if(!gauges || !gauges.length){ el.innerHTML=''; return; }
+  const more = $('rain-more');
+  if(!gauges || !gauges.length){ el.innerHTML=''; more.textContent=''; return; }
   const scale = 1.5; // full bar = 150% of normal, tick at 100%
 
-  el.innerHTML = gauges.slice().sort((a,b)=>{
+  const sorted = gauges.slice().sort((a,b)=>{
     if(a.ratioToNormal==null) return 1;
     if(b.ratioToNormal==null) return -1;
     return a.ratioToNormal - b.ratioToNormal;
-  }).map(g => {
+  });
+  const shown = rainExpanded ? sorted : sorted.slice(0, RAIN_SHOWN);
+  more.textContent = sorted.length <= RAIN_SHOWN ? ''
+    : rainExpanded ? 'Mutasd csak a legszárazabb ' + RAIN_SHOWN + '-t'
+    : 'Mind a ' + sorted.length + ' állomás mutatása';
+
+  el.innerHTML = shown.map(g => {
     const r = g.ratioToNormal;
     const width = r!=null ? Math.max(1.5, Math.min(r, scale)/scale*100) : 0;
     const dry = g.daysSinceRain;
@@ -1735,6 +1749,7 @@ async function loadRain(){
     // unmeasured rather than dry, and the baseline is a recent decade, not a normal.
     $('rain-coverage').textContent = (data.coverage && data.coverage.note) || '';
     $('rain-baseline').textContent = data.baselineNote || '';
+    rainGauges = data.gauges || [];
     rainMap = data.gauges || [];
     drawRainNodes();
   }catch(err){
@@ -2635,6 +2650,10 @@ function tick(){
   $('rain-layer').addEventListener('change', (e) => {
     showRain = e.target.checked;
     drawRainNodes();
+  });
+  $('rain-more').addEventListener('click', () => {
+    rainExpanded = !rainExpanded;
+    renderRainGauges(rainGauges);
   });
 
   // drawBase needs the geometry, so it runs inside loadStatic once geo.json has landed.
