@@ -407,6 +407,7 @@ async function probeEntsoe() {
     console.log('\nPaks units listed separately is what the units cooling model needs.');
   } catch (err) {
     console.log(`A73 FAILED: ${entsoe.describeError(err)}`);
+    console.log(`  raw body: ${JSON.stringify(String(err.body || '(empty)').slice(0, 400))}`);
   }
 
   try {
@@ -415,6 +416,32 @@ async function probeEntsoe() {
     console.log(JSON.stringify(availability.availability, null, 2));
   } catch (err) {
     console.log(`A80 FAILED: ${entsoe.describeError(err)}`);
+    console.log(`  raw body: ${JSON.stringify(String(err.body || '(empty)').slice(0, 400))}`);
+  }
+
+  // The nuclear series came back a flat 168 MW for a full day, which is not Paks and is
+  // not a parsing fault either - the series really says that. The mix sums to about
+  // 4 400 MW against a Hungarian morning load nearer 6 000, and the gap is roughly the
+  // size of Paks. So the question is whether B14 in this document is the whole fleet.
+  // A65 (total load) is the cross-check that settles it: if load is 6 000 while the mix
+  // is 4 400, the mix is incomplete rather than the country being short of power.
+  try {
+    const cfg2 = entsoe.config();
+    const now = new Date();
+    const url = entsoe.buildUrl(cfg2, {
+      from: new Date(now.getTime() - 6 * 3600 * 1000),
+      to: new Date(now.getTime() + 3600 * 1000),
+      documentType: 'A65',
+      processType: 'A16',
+      domainParam: 'outBiddingZone_Domain',
+    });
+    const { body } = await require('../lib/http').fetchText(url, { timeoutMs: 30000 });
+    const loads = [...body.matchAll(/<quantity>([\d.]+)<\/quantity>/g)].map((m) => Number(m[1]));
+    console.log(`\nA65 total load, last few: ${loads.slice(-4).join(', ')} MW`);
+    console.log('If load is far above the generation mix, the mix is missing a fleet.');
+  } catch (err) {
+    console.log(`\nA65 FAILED: ${entsoe.describeError(err)}`);
+    console.log(`  raw body: ${JSON.stringify(String(err.body || '(empty)').slice(0, 300))}`);
   }
 }
 
