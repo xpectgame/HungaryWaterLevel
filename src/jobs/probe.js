@@ -1135,6 +1135,91 @@ async function probeWellScan() {
 }
 
 /**
+ * Compute each registered gauge's monthly normals from its own ten-year archive.
+ *
+ * Prints a JSON document to paste into src/config/rain-normals.json. Baked rather than
+ * fetched live for the same reason the stage thresholds are: it is ten requests per
+ * gauge, it changes once a year at most, and a poll that needs 470 extra requests to
+ * answer "is this a lot of rain" would be paying for the answer every fifteen minutes.
+ *
+ * A month counts only if most of its days reported. Otherwise a gauge that went offline
+ * for three weeks of a July contributes a near-zero July to its own normal, which then
+ * makes the next dry July look average - the exact failure that would make this feature
+ * worse than not having it.
+ */
+async function probeRainNormals() {
+  console.log('\n########## rainfall normals ##########');
+  const { listRainGauges } = require('../config/rain-gauges');
+  const gauges = listRainGauges();
+  const YEARS = 10;
+  const now = new Date();
+
+  console.log(`${gauges.length} gauges, ${YEARS} years each\n`);
+  const out = {};
+
+  for (const gauge of gauges) {
+    // [month][year] -> {sum, samples}
+    const buckets = Array.from({ length: 12 }, () => []);
+    let failures = 0;
+
+    for (let back = 1; back <= YEARS; back += 1) {
+      const from = new Date(Date.UTC(now.getUTCFullYear() - back, 0, 1));
+      const to = new Date(Date.UTC(now.getUTCFullYear() - back + 1, 0, 1));
+      try {
+        const rows = await askSeries(
+          [
+            {
+              ItemId: 0,
+              Torzsszam: Number(gauge.tsz),
+              AdatFajtaKod: 71,
+              AdatTipusKod: 100,
+              StartTime: from.toISOString(),
+              EndTime: to.toISOString(),
+            },
+          ],
+          { timeoutMs: 90000 },
+        );
+        const items = usable(Array.isArray(rows) ? rows[0] : null);
+        const perMonth = Array.from({ length: 12 }, () => ({ sum: 0, samples: 0, days: new Set() }));
+        for (const item of items) {
+          const when = new Date(item.UTCTime);
+          const bucket = perMonth[when.getUTCMonth()];
+          bucket.sum += Number(item.Adat);
+          bucket.samples += 1;
+          bucket.days.add(when.toISOString().slice(0, 10));
+        }
+        perMonth.forEach((bucket, month) => {
+          // Most of the month has to have reported. Distinct days rather than samples,
+          // because cadence varies from four a day to one.
+          if (bucket.days.size >= 24) buckets[month].push(bucket.sum);
+        });
+      } catch (err) {
+        failures += 1;
+        if (failures === 1) console.log(`  ${gauge.id}: ${err.message}`);
+      }
+    }
+
+    const mm = buckets.map((values) =>
+      values.length ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10 : null,
+    );
+    const covered = buckets.filter((values) => values.length).length;
+    const years = Math.max(...buckets.map((values) => values.length), 0);
+
+    out[gauge.id] = { mm, years, months: covered };
+    console.log(
+      `  ${gauge.id.padEnd(18)} months ${String(covered).padStart(2)}/12  up to ${years} yr  ` +
+        `annual ${mm.every((v) => v !== null) ? mm.reduce((a, b) => a + b, 0).toFixed(0) : '?'} mm  ` +
+        `[${mm.map((v) => (v === null ? '-' : v.toFixed(0))).join(' ')}]`,
+    );
+  }
+
+  const complete = Object.values(out).filter((entry) => entry.months === 12).length;
+  console.log(`\n${complete} of ${gauges.length} gauges have all twelve months.`);
+  console.log('\n----- paste into src/config/rain-normals.json -----');
+  console.log(JSON.stringify(out, null, 1));
+}
+
+/**
  * Which (kind, type) pairs a station actually publishes.
  *
  * AdatFajtaKod 69 is "talajvízállás" and every well in vmoType 13 is a groundwater well,
@@ -1348,6 +1433,11 @@ async function main() {
 
   if (args.includes('--well-scan')) {
     await probeWellScan();
+    return;
+  }
+
+  if (args.includes('--rain-normals')) {
+    await probeRainNormals();
     return;
   }
 
