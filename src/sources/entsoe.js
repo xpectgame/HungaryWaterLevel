@@ -365,8 +365,14 @@ async function fetchAvailability(plants, env = process.env, now = new Date()) {
   }
 
   // A window around now catches outages already running and those just starting.
-  const from = new Date(now.getTime() - 7 * 86400000);
-  const to = new Date(now.getTime() + 2 * 86400000);
+  // A day either side, and not a week. The platform caps this document at 200 instances
+  // and answers HTTP 400 above it - "The number of instances (320) exceeds the allowed
+  // maximum (200)" is what a nine-day window earned. A narrow window costs nothing here
+  // anyway: outages are returned when their own interval overlaps the request, so any
+  // window containing `now` catches everything currently in force, which is the only
+  // thing this document is asked for.
+  const from = new Date(now.getTime() - 86400000);
+  const to = new Date(now.getTime() + 86400000);
   const url = buildUrl(cfg, { from, to });
 
   const { body } = await fetchText(url, { timeoutMs: cfg.timeoutMs });
@@ -479,8 +485,13 @@ async function fetchUnitGeneration(env = process.env, now = new Date()) {
   const cfg = config(env);
   if (!cfg.token) throw new Error(cfg.tokenError || 'ENTSOE_TOKEN is not set');
 
+  // Strictly inside one day. The platform enforces this and says so: "The time interval
+  // of Data Item Actual Generation Output per Generation Unit [16.1.A] must not span
+  // more than 1 day." The previous window was 24 hours back plus an hour of clock-skew
+  // headroom - 25 hours, and rejected outright. The hour of headroom that every other
+  // request here carries is the one thing this document will not tolerate.
   const url = buildUrl(cfg, {
-    from: new Date(now.getTime() - 24 * 3600 * 1000),
+    from: new Date(now.getTime() - 23 * 3600 * 1000),
     to: new Date(now.getTime() + 3600 * 1000),
     documentType: 'A73',
     processType: 'A16',

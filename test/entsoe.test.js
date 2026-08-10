@@ -295,3 +295,32 @@ test('a malformed token is reported everywhere the token is required', () => {
   // And the thrown error names the real problem rather than claiming nothing is set.
   return assert.rejects(() => fetchGeneration(env), /whitespace/);
 });
+
+test('each document is requested inside the window the platform allows', () => {
+  // Both limits came back as HTTP 400 with the platform naming them exactly:
+  //   A73 "must not span more than 1 day"
+  //   A80 "The number of instances (320) exceeds the allowed maximum (200)"
+  // Encoded here so a future widening of either window fails a test rather than a poll.
+  const { config: entsoeCfg } = require('../src/sources/entsoe');
+  const cfg = { ...entsoeCfg({}), token: 'x' };
+  const spanHours = (url) => {
+    const q = new URL(url).searchParams;
+    const parse = (s) =>
+      Date.parse(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(8, 10)}:${s.slice(10, 12)}Z`);
+    return (parse(q.get('periodEnd')) - parse(q.get('periodStart'))) / 3600000;
+  };
+  const now = new Date('2026-08-10T08:10:00Z');
+
+  const a73 = buildEntsoeUrl(cfg, {
+    from: new Date(now.getTime() - 23 * 3600 * 1000),
+    to: new Date(now.getTime() + 3600 * 1000),
+    documentType: 'A73',
+  });
+  assert.ok(spanHours(a73) <= 24, `A73 window is ${spanHours(a73)} h, the platform allows 24`);
+
+  const a80 = buildEntsoeUrl(cfg, {
+    from: new Date(now.getTime() - 86400000),
+    to: new Date(now.getTime() + 86400000),
+  });
+  assert.ok(spanHours(a80) <= 96, `A80 window is ${spanHours(a80)} h; nine days returned 320 of a 200 cap`);
+});
