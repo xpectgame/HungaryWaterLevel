@@ -242,6 +242,34 @@ function latestSample(entry) {
   return { flowM3s: best.value, timestamp: best.time.toISOString() };
 }
 
+/**
+ * Index a response by the ItemId the request assigned.
+ *
+ * The service omits `ItemId` from the JSON entirely when its value is zero - the
+ * default-value omission an ASP.NET serialiser does - so `Number(entry.ItemId)` is NaN
+ * for exactly one entry in every response. `duna-rajka` sits at index 0, and it had been
+ * losing its discharge to that NaN on every single poll: the station reported "no sample
+ * in the requested window" forever while all twenty-eight others worked, which reads like
+ * an upstream gauge outage rather than a bug on this side.
+ *
+ * An absent id therefore means zero. Only one request entry can carry zero, so the
+ * mapping stays unambiguous. An explicit id still wins over a defaulted one, in case the
+ * service ever starts omitting the field for some reason other than this one.
+ */
+function indexByItemId(entries) {
+  const byItemId = new Map();
+
+  for (const entry of entries) {
+    const explicit = entry && entry.ItemId !== undefined && entry.ItemId !== null && entry.ItemId !== '';
+    const id = explicit ? Number(entry.ItemId) : 0;
+    if (!Number.isFinite(id)) continue;
+    if (!explicit && byItemId.has(id)) continue;
+    byItemId.set(id, entry);
+  }
+
+  return byItemId;
+}
+
 let tokenProvider = null;
 
 /** One provider per process, so every station shares a single token. */
@@ -299,7 +327,7 @@ async function fetchAll(env = process.env) {
   try {
     const response = await postSeries(buildRequest(stations, cfg, new Date(), lakes), cfg);
     const entries = Array.isArray(response) ? response : [];
-    const byItemId = new Map(entries.map((entry) => [Number(entry.ItemId), entry]));
+    const byItemId = indexByItemId(entries);
 
     lakes.forEach((lake, index) => {
       const sample = latestSample(byItemId.get(2 * stations.length + index));
@@ -367,7 +395,7 @@ async function fetchStation(stationId, env = process.env) {
   const cfg = config(env);
   const response = await postSeries(buildRequest([station], cfg), cfg);
   const entries = Array.isArray(response) ? response : [];
-  const sample = latestSample(entries.find((entry) => Number(entry.ItemId) === 0) || entries[0]);
+  const sample = latestSample(indexByItemId(entries).get(0));
   if (!sample) return null;
 
   return {
@@ -386,6 +414,7 @@ module.exports = {
   seriesUrl,
   buildRequest,
   latestSample,
+  indexByItemId,
   mappedStations,
   resetTokenProvider,
   EXTERNAL_IDS,

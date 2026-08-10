@@ -243,6 +243,50 @@ test('a series with nothing usable reports nothing, not a fabricated sample', ()
   assert.strictEqual(vizugy.latestSample({ TsItemList: [{ UTCTime: 'nonsense', Adat: 5 }] }), null);
 });
 
+test('a response entry that omits ItemId is the one numbered zero', () => {
+  // Observed against the live service: it leaves `ItemId` out of the JSON entirely when
+  // its value is 0, so `Number(entry.ItemId)` was NaN for exactly one entry in every
+  // response. `duna-rajka` is index 0, and it had been silently reporting "no sample in
+  // the requested window" on every poll while the other twenty-eight gauges worked.
+  const entries = [
+    { TsItemList: [{ UTCTime: '2026-08-08T12:00:00Z', Adat: 411 }] }, // no ItemId at all
+    { ItemId: 1, TsItemList: [] },
+    { ItemId: 2, TsItemList: [] },
+  ];
+
+  const byItemId = vizugy.indexByItemId(entries);
+  assert.strictEqual(byItemId.get(0), entries[0], 'a missing ItemId must resolve to 0');
+  assert.strictEqual(byItemId.get(1), entries[1]);
+  assert.strictEqual(vizugy.latestSample(byItemId.get(0)).flowM3s, 411);
+});
+
+test('an explicit zero is not displaced by an entry that merely omits the field', () => {
+  // Defensive: if the service ever omits ItemId for some reason other than the zero
+  // default, the entry that actually claims 0 must keep it rather than being overwritten.
+  const explicit = { ItemId: 0, TsItemList: [{ UTCTime: '2026-08-08T12:00:00Z', Adat: 100 }] };
+  const bare = { TsItemList: [{ UTCTime: '2026-08-08T12:00:00Z', Adat: 999 }] };
+
+  assert.strictEqual(vizugy.indexByItemId([explicit, bare]).get(0), explicit);
+  assert.strictEqual(vizugy.indexByItemId([bare, explicit]).get(0), explicit);
+});
+
+test('every station in the request can be found in a response shaped like the real one', () => {
+  // End to end over the indexing rule: build the real request, answer it the way the
+  // service does - omitting ItemId 0 - and check that no station is left unmatched.
+  const stations = vizugy.mappedStations();
+  const body = vizugy.buildRequest(stations, vizugy.config(), new Date());
+
+  const response = body.map((entry) => {
+    const row = { TsItemList: [{ UTCTime: '2026-08-08T12:00:00Z', Adat: 1 }] };
+    if (entry.ItemId !== 0) row.ItemId = entry.ItemId;
+    return row;
+  });
+
+  const byItemId = vizugy.indexByItemId(response);
+  const missing = body.filter((entry) => !byItemId.has(entry.ItemId)).map((entry) => entry.ItemId);
+  assert.deepStrictEqual(missing, [], 'every requested series must be locatable in the response');
+});
+
 // ---------------------------------------------------------------------------
 // Request headers
 // ---------------------------------------------------------------------------

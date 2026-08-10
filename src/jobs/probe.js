@@ -288,9 +288,14 @@ async function probeAllStations() {
   console.log('\n########## live discharge, all mapped stations ##########');
 
   const { getStation } = require('../config/stations');
+  const { getLake } = require('../config/lakes');
   const result = await vizugy.fetchAll();
 
+  // The same call now returns lakes as well, and a lake is not in the station registry
+  // and has no discharge to compare against a mean. Printed separately rather than
+  // skipped: a lake missing from the response is exactly as interesting as a gauge is.
   const rows = Object.values(result.readings)
+    .filter((reading) => getStation(reading.stationId))
     .map((reading) => {
       const station = getStation(reading.stationId);
       return {
@@ -300,6 +305,8 @@ async function probeAllStations() {
       };
     })
     .sort((a, b) => b.reading.flowM3s - a.reading.flowM3s);
+
+  const lakeRows = Object.values(result.readings).filter((reading) => getLake(reading.stationId));
 
   console.log(`${rows.length} stations returned a sample, ${result.errors.length} did not.\n`);
   console.log(`  ${'station'.padEnd(28)} ${'role'.padEnd(9)} ${'m3/s'.padStart(9)} ${'mean'.padStart(7)}  ratio  latest`);
@@ -311,6 +318,10 @@ async function probeAllStations() {
         ` ${String(station.meanFlow ?? '-').padStart(7)}  ${ratio === null ? '   -' : ratio.toFixed(2)}` +
         `  ${reading.timestamp}${flag}`,
     );
+  }
+
+  for (const { stationId, waterLevelCm, timestamp } of lakeRows) {
+    console.log(`  ${stationId.padEnd(28)} ${'lake'.padEnd(9)} ${String(waterLevelCm).padStart(9)} cm   ${timestamp}`);
   }
 
   for (const error of result.errors) {
@@ -728,48 +739,245 @@ async function probeOperations() {
  * what comes back - specifically whether any sample carries a timestamp in the future,
  * which is the only thing that makes it a forecast rather than another copy of the past.
  */
+/** POST a TsShort body and hand back the rows. One place, so every probe below agrees. */
+async function askSeries(body, { timeoutMs = 30000 } = {}) {
+  const token = await createTokenProvider().getToken();
+  return fetchJson(`${VRAQUERY_BASE}/TS/TsShort`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    timeoutMs,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...browserHeaders('https://data.vizugy.hu'),
+    },
+  });
+}
+
+/** Non-null samples from a response entry, oldest first. */
+function usable(entry) {
+  return ((entry && entry.TsItemList) || [])
+    .filter((i) => i && i.Adat !== null && i.Adat !== undefined && i.Adat !== '')
+    .sort((a, b) => new Date(a.UTCTime) - new Date(b.UTCTime));
+}
+
+/** One line describing what a series contained. */
+function describeSeries(items, now) {
+  if (!items.length) return 'empty';
+  const ahead = items.filter((i) => new Date(i.UTCTime) > now);
+  const first = items[0];
+  const last = items[items.length - 1];
+  return (
+    `${String(items.length).padStart(4)} samples  ${first.UTCTime.slice(0, 16)} → ${last.UTCTime.slice(0, 16)}  ` +
+    `last=${last.Adat}` +
+    (ahead.length ? `  ${ahead.length} AHEAD OF NOW, to ${ahead[ahead.length - 1].UTCTime.slice(0, 16)}` : '')
+  );
+}
+
+/**
+ * Does the forecast series actually contain anything?
+ *
+ * A batch of six stations under AdatTipusKod 5 answered HTTP 500, which says nothing
+ * about whether a forecast exists - a single unsupported station fails the whole POST,
+ * and one request cannot tell you which. So this asks one station at a time, and asks
+ * each of the plausible codes, so a 500 is attributable to a station-and-code pair
+ * rather than to "the forecast".
+ *
+ * The test for a forecast is not that the call succeeds. It is that a sample carries a
+ * timestamp in the future; anything else is another copy of the past.
+ */
 async function probeForecast() {
-  console.log('\n########## forecast (AdatTipusKod 5) ##########');
-  const { EXTERNAL_IDS, config } = require('../sources/vizugy');
-  const cfg = config();
-  const wanted = ['duna-komarom', 'duna-budapest', 'duna-mohacs', 'tisza-szolnok', 'tisza-szeged', 'drava-ortilos'];
+  console.log('\n########## forecast ##########');
+  const { EXTERNAL_IDS } = require('../sources/vizugy');
   const now = new Date();
 
-  for (const atCode of [5, 100]) {
-    const body = wanted.map((id, index) => ({
-      ItemId: index,
-      Torzsszam: Number(EXTERNAL_IDS[id]),
-      AdatFajtaKod: 68,
-      AdatTipusKod: atCode,
-      // A forecast lives ahead of now, so the window has to reach forward.
-      StartTime: new Date(now.getTime() - 24 * 3600 * 1000).toISOString(),
-      EndTime: new Date(now.getTime() + 7 * 24 * 3600 * 1000).toISOString(),
-    }));
+  // Stage rather than discharge: a forecast, where it exists, is published as a
+  // predicted water level, because that is what a flood warning is expressed in.
+  const wanted = ['duna-komarom', 'duna-budapest', 'duna-mohacs', 'tisza-szolnok', 'tisza-szeged'];
 
-    console.log(`\nAdatTipusKod ${atCode} (${atCode === 5 ? 'előrejelzett' : 'operatív'}), stage, ±7 days:`);
+  // 5 is "előrejelzett" in /Base/AdatTipus. The others are the codes whose names leave
+  // room for a prediction, asked here so the answer is measured rather than assumed.
+  const CODES = [
+    [5, 'előrejelzett'],
+    [15, 'becsült'],
+    [6, 'számított'],
+    [100, 'operatív (control)'],
+  ];
+
+  for (const [atCode, label] of CODES) {
+    console.log(`\n--- AdatTipusKod ${atCode} (${label}) ---`);
+
+    for (const id of wanted) {
+      for (const [haf, unit] of [[68, 'stage cm'], [87, 'flow m3/s']]) {
+        const body = [
+          {
+            ItemId: 0,
+            Torzsszam: Number(EXTERNAL_IDS[id]),
+            AdatFajtaKod: haf,
+            AdatTipusKod: atCode,
+            StartTime: new Date(now.getTime() - 24 * 3600 * 1000).toISOString(),
+            EndTime: new Date(now.getTime() + 7 * 24 * 3600 * 1000).toISOString(),
+          },
+        ];
+
+        const tag = `  ${id.padEnd(15)} ${unit.padEnd(10)}`;
+        try {
+          const rows = await askSeries(body);
+          const entries = Array.isArray(rows) ? rows : [];
+          console.log(`${tag} ${entries.length ? describeSeries(usable(entries[0]), now) : 'no entry returned'}`);
+        } catch (err) {
+          console.log(`${tag} FAILED ${err.message}`);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Groundwater wells: what exists, and which of them answer.
+ *
+ * vmoType 13 is the well network. Groundwater is the half of the Hungarian water
+ * situation that surface gauges cannot see - the Danube can be running a normal August
+ * while the water table under the Homokhátság is at a record low, and it is the table
+ * that decides whether a maize crop survives.
+ *
+ * Two things have to be established before a well can go in a registry: that it returns
+ * a series at all (many are quarterly manual dips, not telemetry), and what its numbers
+ * mean, because AdatFajtaKod 69 is "talajvízállás" in centimetres and the sign convention
+ * - depth below the surface, or elevation above a datum - decides whether a bigger number
+ * is more water or less.
+ */
+async function probeGroundwater() {
+  console.log('\n########## groundwater wells (vmoType 13) ##########');
+
+  let rows = [];
+  for (const internetOnly of [true, false]) {
     try {
-      const token = await createTokenProvider({ authBaseUrl: cfg.authBaseUrl }).getToken();
-      const rows = await fetchJson(`${VRAQUERY_BASE}/TS/TsShort`, {
-        method: 'POST',
-        body: JSON.stringify(body),
-        timeoutMs: 30000,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          ...browserHeaders('https://data.vizugy.hu'),
-        },
-      });
+      const res = await fetchCatalogue(13, { internetOnly });
+      console.log(`${res.url}: ${Array.isArray(res.rows) ? res.rows.length : 'not an array'} entries`);
+      if (internetOnly && Array.isArray(res.rows)) rows = res.rows;
+    } catch (err) {
+      console.log(`  FAILED: ${err.message}`);
+    }
+  }
+  if (!rows.length) return;
 
-      for (const entry of Array.isArray(rows) ? rows : []) {
-        const items = (entry.TsItemList || []).filter((i) => i && i.Adat !== null && i.Adat !== undefined);
-        const ahead = items.filter((i) => new Date(i.UTCTime) > now);
-        const id = wanted[Number(entry.ItemId)] || `ItemId ${entry.ItemId}`;
+  console.log(`\nOne record, in full:\n${JSON.stringify(rows[0], null, 2)}`);
+
+  const byVizig = new Map();
+  for (const row of rows) byVizig.set(row.Vizig, (byVizig.get(row.Vizig) || 0) + 1);
+  console.log(`\nwells per directorate: ${[...byVizig].map(([v, n]) => `${v}:${n}`).join('  ')}`);
+
+  // One well per directorate, so the sample spans the country rather than one basin -
+  // the point of a groundwater layer is regional contrast.
+  const sample = [];
+  for (const [vizig] of byVizig) {
+    const pick = rows.find((r) => r.Vizig === vizig && r.Lat != null && r.Lon != null);
+    if (pick) sample.push(pick);
+  }
+  console.log(`\nAsking ${sample.length} wells, one per directorate, AdatFajtaKod 69 (talajvízállás), 90 days:`);
+
+  const now = new Date();
+  const start = new Date(now.getTime() - 90 * 24 * 3600 * 1000).toISOString();
+
+  for (const [haf, label] of [[69, 'talajvízállás'], [299, 'talajnedvesség'], [70, 'rétegvízszint']]) {
+    console.log(`\n--- AdatFajtaKod ${haf} (${label}) ---`);
+    try {
+      const rowsOut = await askSeries(
+        sample.map((well, index) => ({
+          ItemId: index,
+          Torzsszam: Number(well.Tsz),
+          AdatFajtaKod: haf,
+          AdatTipusKod: 100,
+          StartTime: start,
+          EndTime: new Date(now.getTime() + 3600 * 1000).toISOString(),
+        })),
+      );
+      const byItemId = require('../sources/vizugy').indexByItemId(Array.isArray(rowsOut) ? rowsOut : []);
+      sample.forEach((well, index) => {
+        const items = usable(byItemId.get(index));
         console.log(
-          `  ${id.padEnd(16)} ${String(items.length).padStart(4)} samples, ${String(ahead.length).padStart(4)} in the future` +
-            (ahead.length
-              ? ` — first ${ahead[0].UTCTime} = ${ahead[0].Adat}, last ${ahead[ahead.length - 1].UTCTime} = ${ahead[ahead.length - 1].Adat}`
-              : ''),
+          `  Tsz ${String(well.Tsz).padEnd(8)} ${String(well.Nev).slice(0, 26).padEnd(26)} ` +
+            `${well.Vizig}  ${describeSeries(items, now)}`,
         );
+      });
+    } catch (err) {
+      console.log(`  FAILED: ${err.message}`);
+    }
+  }
+}
+
+/**
+ * Rain gauges: what exists, and what the units are.
+ *
+ * vmoType 14 is the meteorological network. 71 is "csapadékösszeg" in millimetres, but a
+ * sum is a sum over something - if the series is hourly then a month's total is a sum of
+ * 720 values, and if it is daily then adding hourly-shaped assumptions to it inflates the
+ * total by an order of magnitude. The sample spacing in the output settles it, which is
+ * why the window here is long enough to see the spacing rather than one value.
+ */
+async function probeRain() {
+  console.log('\n########## precipitation (vmoType 14) ##########');
+
+  let rows = [];
+  for (const internetOnly of [true, false]) {
+    try {
+      const res = await fetchCatalogue(14, { internetOnly });
+      console.log(`${res.url}: ${Array.isArray(res.rows) ? res.rows.length : 'not an array'} entries`);
+      if (internetOnly && Array.isArray(res.rows)) rows = res.rows;
+    } catch (err) {
+      console.log(`  FAILED: ${err.message}`);
+    }
+  }
+  if (!rows.length) return;
+
+  console.log(`\nOne record, in full:\n${JSON.stringify(rows[0], null, 2)}`);
+
+  const byVizig = new Map();
+  for (const row of rows) byVizig.set(row.Vizig, (byVizig.get(row.Vizig) || 0) + 1);
+  console.log(`\nstations per directorate: ${[...byVizig].map(([v, n]) => `${v}:${n}`).join('  ')}`);
+
+  const sample = [];
+  for (const [vizig] of byVizig) {
+    const pick = rows.find((r) => r.Vizig === vizig && r.Lat != null && r.Lon != null);
+    if (pick) sample.push(pick);
+  }
+  console.log(`\nAsking ${sample.length} stations, one per directorate, 30 days:`);
+
+  const now = new Date();
+  const start = new Date(now.getTime() - 30 * 24 * 3600 * 1000).toISOString();
+
+  for (const [haf, label] of [[71, 'csapadékösszeg mm'], [105, 'csapadékintenzitás mm/h'], [81, 'léghőmérséklet °C']]) {
+    console.log(`\n--- AdatFajtaKod ${haf} (${label}) ---`);
+    try {
+      const rowsOut = await askSeries(
+        sample.map((station, index) => ({
+          ItemId: index,
+          Torzsszam: Number(station.Tsz),
+          AdatFajtaKod: haf,
+          AdatTipusKod: 100,
+          StartTime: start,
+          EndTime: new Date(now.getTime() + 3600 * 1000).toISOString(),
+        })),
+      );
+      const byItemId = require('../sources/vizugy').indexByItemId(Array.isArray(rowsOut) ? rowsOut : []);
+      sample.forEach((station, index) => {
+        const items = usable(byItemId.get(index));
+        const total = items.reduce((sum, i) => sum + Number(i.Adat), 0);
+        console.log(
+          `  Tsz ${String(station.Tsz).padEnd(8)} ${String(station.Nev).slice(0, 26).padEnd(26)} ` +
+            `${station.Vizig}  ${describeSeries(items, now)}` +
+            (haf === 71 && items.length ? `  sum=${total.toFixed(1)}` : ''),
+        );
+      });
+      // The spacing is the whole question for a "sum" series.
+      const firstWithData = sample.map((_, i) => usable(byItemId.get(i))).find((items) => items.length > 2);
+      if (firstWithData) {
+        const gaps = firstWithData
+          .slice(1, 6)
+          .map((item, i) => (new Date(item.UTCTime) - new Date(firstWithData[i].UTCTime)) / 60000);
+        console.log(`  sample spacing, first few: ${gaps.join(', ')} minutes`);
+        console.log(`  first five: ${firstWithData.slice(0, 5).map((i) => `${i.UTCTime.slice(0, 16)}=${i.Adat}`).join('  ')}`);
       }
     } catch (err) {
       console.log(`  FAILED: ${err.message}`);
@@ -825,6 +1033,16 @@ async function main() {
 
   if (args.includes('--forecast')) {
     await probeForecast();
+    return;
+  }
+
+  if (args.includes('--groundwater')) {
+    await probeGroundwater();
+    return;
+  }
+
+  if (args.includes('--rain')) {
+    await probeRain();
     return;
   }
 
