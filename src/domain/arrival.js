@@ -31,32 +31,72 @@ const { getStation } = require('../config/stations');
  */
 
 /**
- * Travel times between paired gauges, in hours.
+ * Flood-wave celerity per river, in km/h.
  *
- * These are flood-wave travel times - the speed a change propagates, which is faster
- * than the water itself moves - taken from the river-kilometre distance and the
- * celerity that reach is normally quoted at. They are approximate by nature: a wave
- * moves faster in high water than in low, so each pair carries a range rather than a
- * single figure, and the payload quotes the range.
+ * A change propagates downstream faster than the water itself moves - roughly 1.5 times
+ * the mean velocity - and how much faster depends on the river's gradient and how full
+ * it is. So each river gets a band rather than a number, and every travel time below is
+ * derived from it and the river-kilometre distance already in the station registry.
  *
- * The Danube pairs are the well-documented ones. Komárom to Budapest is a little over a
- * day; Budapest to Mohács another day and a half. The Tisza is slower per kilometre
- * because its gradient is gentler - Szolnok to Szeged is famously about two days.
+ * Derived rather than tabulated on purpose: a hand-entered hours figure that disagrees
+ * with the distance between the two gauges is a typo nobody would ever notice, and it
+ * would silently tell people water was arriving hours before or after it did.
  *
- * Sources for the reach distances: the riverKm already in the station registry. The
- * celerity band is the standard 2-4 km/h for the Danube's Hungarian reach and 1.5-3 km/h
- * for the middle and lower Tisza.
+ * The Danube's Hungarian reach runs 4-8 km/h. The middle and lower Tisza are markedly
+ * slower - a gentle gradient and a wide floodplain - at 2-3.5, which is what makes
+ * Szolnok to Szeged the famous two-to-three days. The Dráva sits between them.
  */
-const PAIRS = Object.freeze([
-  { from: 'duna-komarom', to: 'duna-nagymaros', hours: [14, 24] },
-  { from: 'duna-nagymaros', to: 'duna-budapest', hours: [6, 12] },
-  { from: 'duna-budapest', to: 'duna-paks', hours: [18, 30] },
-  { from: 'duna-paks', to: 'duna-mohacs', hours: [16, 28] },
-  { from: 'tisza-tiszabecs', to: 'tisza-szolnok', hours: [60, 110] },
-  { from: 'tisza-szolnok', to: 'tisza-szeged', hours: [36, 60] },
-  { from: 'tisza-szeged', to: 'tisza-tiszasziget', hours: [2, 5] },
-  { from: 'drava-ortilos', to: 'drava-dravaszabolcs', hours: [18, 30] },
+const CELERITY_KMH = Object.freeze({
+  Duna: [4, 8],
+  Tisza: [2, 3.5],
+  Dráva: [3.5, 6.5],
+});
+
+/**
+ * Gauge pairs, upstream first.
+ *
+ * Adjacent gauges only. Tiszabecs to Szolnok was dropped deliberately: 410 km with the
+ * Szamos, the Bodrog, the Sajó and the Hernád all joining in between is not the same
+ * water arriving later, it is a different river, and a single travel time across it
+ * would be a fiction.
+ *
+ * Tributaries do still join between the pairs that remain, which is why what this
+ * produces is an indication of what is coming rather than a routed volume.
+ */
+const REACHES = Object.freeze([
+  ['duna-komarom', 'duna-nagymaros'],
+  ['duna-nagymaros', 'duna-budapest'],
+  ['duna-budapest', 'duna-paks'],
+  ['duna-paks', 'duna-mohacs'],
+  ['tisza-szolnok', 'tisza-szeged'],
+  ['tisza-szeged', 'tisza-tiszasziget'],
+  ['drava-ortilos', 'drava-dravaszabolcs'],
 ]);
+
+/** Distance in river kilometres, which count down towards the mouth. */
+function reachKm(fromId, toId) {
+  const from = getStation(fromId);
+  const to = getStation(toId);
+  if (!from || !to || !Number.isFinite(from.riverKm) || !Number.isFinite(to.riverKm)) return null;
+  return from.riverKm - to.riverKm;
+}
+
+const PAIRS = Object.freeze(
+  REACHES.map(([from, to]) => {
+    const km = reachKm(from, to);
+    const band = CELERITY_KMH[getStation(from).river];
+    if (km === null || !band) {
+      throw new Error(`arrival: cannot derive a travel time for ${from} -> ${to}`);
+    }
+    // Fast celerity gives the earliest arrival, slow gives the latest.
+    return Object.freeze({
+      from,
+      to,
+      km,
+      hours: Object.freeze([Math.round(km / band[1]), Math.round(km / band[0])]),
+    });
+  }),
+);
 
 /** How much of a change is worth telling someone about. */
 const NOTABLE_PCT = 8;
@@ -132,6 +172,7 @@ function describePair(pair, historyByStation, now) {
     upstream: { id: upstream.id, name: upstream.name, river: upstream.river },
     downstream: { id: downstream.id, name: downstream.name, river: downstream.river },
     travelHours: { min: minHours, max: maxHours },
+    reachKm: pair.km,
     change: {
       pct: change.changePct,
       fromM3s: Math.round(change.fromValue * 10) / 10,
@@ -172,9 +213,10 @@ function buildArrivals({ historyByStation = {}, now = Date.now() } = {}) {
       'hullám szokásos futásidejéből számolt becslés: azt mutatja, hol tart most a víz, nem ' +
       'azt, hogy mennyi eső fog esni. Hivatalos vízjelzés: hidroinfo.hu.',
     method:
-      'A két mérce közötti futásidő a folyamkilométer-távolságból és az adott szakaszra ' +
-      'szokásos hullámsebességből adódik, ezért tartomány és nem egyetlen szám.',
+      'A két mérce közötti futásidő a folyamkilométer-távolságból és az adott folyóra ' +
+      'szokásos hullámsebességből adódik, ezért tartomány és nem egyetlen szám. A két ' +
+      'mérce között mellékfolyók is beletorkollnak, így ez irány és nem mennyiség.',
   };
 }
 
-module.exports = { buildArrivals, describePair, dailyChange, PAIRS, NOTABLE_PCT };
+module.exports = { buildArrivals, describePair, dailyChange, PAIRS, CELERITY_KMH, NOTABLE_PCT };

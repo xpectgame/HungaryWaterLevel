@@ -68,6 +68,21 @@ const NORMALS = require('./rain-normals.json');
 const MIN_YEARS = 3;
 
 /**
+ * Below this, a monthly "normal" is a gauge that was not measuring, not a dry month.
+ *
+ * Répcevis averages 0.0 mm in January, 0.0 in February and 0.1 in December across ten
+ * full years - and 96 mm in May. That is not the driest winter in Europe, it is an
+ * unheated gauge: a standard tipping-bucket does not register snow, so the months when
+ * precipitation falls as snow read as nothing. Nowhere in Hungary averages under about
+ * 20 mm in any month, so anything in single digits is an instrument limitation.
+ *
+ * Those months get no normal, which means a window touching them gets no comparison
+ * either. That is the right outcome: the alternative is telling somebody that the 30 mm
+ * of snow-melt they are standing in is three hundred percent of normal.
+ */
+const MIN_PLAUSIBLE_MONTHLY_MM = 8;
+
+/**
  * A caveat that belongs next to every number this produces.
  *
  * The archive reaches ten years, so these are averages of roughly 2016-2025 rather than
@@ -192,7 +207,8 @@ function monthlyNormal(gaugeId, month) {
   if (!entry || !Array.isArray(entry.mm)) return null;
   if (!Number.isFinite(entry.years) || entry.years < MIN_YEARS) return null;
   const value = entry.mm[month - 1];
-  return Number.isFinite(value) ? value : null;
+  if (!Number.isFinite(value) || value < MIN_PLAUSIBLE_MONTHLY_MM) return null;
+  return value;
 }
 
 /**
@@ -239,6 +255,7 @@ module.exports = {
   COVERAGE,
   NORMALS,
   MIN_YEARS,
+  MIN_PLAUSIBLE_MONTHLY_MM,
   BASELINE_NOTE,
   listRainGauges,
   getRainGauge,

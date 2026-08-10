@@ -248,6 +248,29 @@ test('the frontend is served from the app root', async () => {
     // a screenshot of today's readings.
     assert.match(html, /id="feed"/, 'the events feed must be present');
     assert.match(html, /\/api\/v1\/events/, 'the page must poll the events endpoint');
+
+    // Rainfall is the input side of the whole system, and the two caveats about it are
+    // not optional decoration: an empty Transdanubia has to read as unmeasured rather
+    // than dry, and the baseline has to admit it is a recent decade.
+    assert.match(html, /id="s-csapadek"/, 'the rainfall section must be present');
+    assert.match(html, /\/api\/v1\/rainfall/, 'the page must poll the rainfall endpoint');
+    assert.match(html, /id="rain-coverage"/, 'coverage limits must have somewhere to appear');
+    assert.match(html, /id="rain-baseline"/, 'the baseline caveat must have somewhere to appear');
+    assert.match(html, /id="layer-rain"/, 'the map needs a rain layer');
+
+    // The travel-time projection must never be able to render without the sentence
+    // saying it is not a forecast.
+    assert.match(html, /id="arrivals"/, 'the arrival list must be present');
+    assert.match(html, /id="arrivals-note"/, 'the arrival disclaimer must have somewhere to appear');
+
+    // The rainfall window buttons wear .sortbar for its styling, so anything that binds
+    // behaviour by that class picks them up too - which it did once, setting the bar
+    // sort to undefined and throwing on every redraw.
+    assert.doesNotMatch(
+      html,
+      /querySelectorAll\('\.sortbar button'\)/,
+      'bind the sort control by data-sort, not by the class the rain switcher shares',
+    );
     // Derived measurements and a person's sourced claim must not share a style.
     assert.match(html, /\.ev\.note/, 'editorial notes need their own visual treatment');
     assert.match(html, /szerkesztői jegyzet/, 'editorial notes must be labelled as written by a person');

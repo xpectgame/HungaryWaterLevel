@@ -192,6 +192,67 @@ paths:
       responses:
         "200": { description: GeoJSON FeatureCollection }
 
+  /rainfall:
+    get:
+      tags: [hydrology]
+      summary: Rainfall against each gauge's own long-term normal
+      description: |
+        47 gauges from the meteorological network (AdatFajtaKod 71). Each is compared
+        against a normal computed from that same instrument's ten-year archive, blended
+        across the calendar months the window spans.
+
+        Two limits are carried in the payload rather than left to be inferred.
+        `coverage` says the network is not national - two water directorates publish no
+        meteorological station at all and no river gauge reports rain - so an empty
+        Transdanubia means unmeasured, not dry. `baselineNote` says the baseline is a
+        recent decade rather than a 30-year climatological normal; that decade was dry
+        in Hungary, so a deficit measured against it is understated, never overstated.
+
+        A gauge with fewer than three years of record, or in a month it cannot measure
+        (an unheated gauge registers no snow), reports its rainfall with `normalMm: null`
+        rather than a baseline nobody should trust.
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, enum: [7, 30, 90], default: 30 }
+      responses:
+        "200": { description: Rainfall totals, regional roll-up and coverage limits }
+        "400": { description: Unsupported window }
+        "503": { description: Upstream unavailable; body is still a renderable document }
+
+  /rainfall/{id}:
+    get:
+      tags: [hydrology]
+      summary: One rain gauge with its daily series
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: days
+          in: query
+          schema: { type: integer, enum: [7, 30, 90], default: 30 }
+      responses:
+        "200": { description: Gauge with daily totals }
+        "404": { description: Unknown gauge, or it did not report in the window }
+
+  /events:
+    get:
+      tags: [hydrology]
+      summary: What changed, and what is on its way
+      description: |
+        `events` are derived arithmetic on stored series; `notes` are a person's sourced
+        claims and are deliberately never merged into them.
+
+        `arrivals` is the forward-looking part, and it is NOT a forecast: the service
+        catalogues one (AdatTipusKod 5) and returns HTTP 500 for it at every station.
+        What is published instead is where the water already is - the change measured at
+        the upstream gauge, plus the reach's flood-wave travel time, derived from the
+        river-kilometre distance and the river's celerity band. The payload carries its
+        own disclaimer so a consumer cannot render the numbers without it.
+      responses:
+        "200": { description: Derived events, editorial notes and arrivals }
+
   /meta/sources:
     get:
       tags: [meta]

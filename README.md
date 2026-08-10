@@ -31,12 +31,16 @@ ki valósként. Az éles bekötéshez lásd: [Éles üzem előtt](#éles-üzem-e
 | `GET /api/v1/powerplants` | Erőművek modellezett vízhasználata |
 | `GET /api/v1/powerplants/:id` | Egy erőmű + hőterhelés a befogadó folyóra |
 | `GET /api/v1/water-use` | Erőművi összesítés, vízkivétel szerint rendezve |
+| `GET /api/v1/lakes` | Balaton, Velencei-tó, Fertő — vízszint a saját rekordtartományában |
+| `GET /api/v1/rainfall` | Csapadék 47 állomáson, mindegyik a **saját sokéves átlagához** mérve |
+| `GET /api/v1/rainfall/:id` | Egy csapadékmérő napi bontásban |
+| `GET /api/v1/events` | Miből mi következik + **`arrivals`**: mi van úton a folyón lefelé |
 | `GET /api/v1/geojson` | Térképkész FeatureCollection |
 | `GET /api/v1/meta/sources` | Adatforrások, licenc, **ismert korlátok** |
 | `GET /api/v1/health` | Állapot és adatfrissesség |
 
 Paraméterek: `?method=instant|lagged` (mérleg), `?model=linear|thermal` (hűtésmodell),
-`?ungauged=true|false`, `?from=&to=&limit=`.
+`?ungauged=true|false`, `?from=&to=&limit=`, `?days=7|30|90` (csapadék).
 
 Teljes séma: `openapi.yaml`.
 
@@ -181,6 +185,50 @@ a lépcsős görbének a burkolói.
 Zárt láncú rendszer — a víz fel-le mozog, a termelés nem fogyasztja. Csak a tározófelület
 párolgását kell pótolni, amit az időjárás hajt, nem a teljesítmény. A `closed_loop`
 modell ezért **szándékosan figyelmen kívül hagyja** a `powerMw` értéket.
+
+### 10. Csapadék: a saját mérce archívuma az összehasonlítási alap
+
+Egy vízhozamadat megmondja, mennyi víz van a folyóban. Azt nem, hogy miért — aszály idején
+pedig egyedül ez a kérdés. A csapadék a rendszer bemenete, és mérhető: `AdatFajtaKod 71`,
+a meteorológiai hálózat (`vmoType 14`) 441 közzétett állomásából 262 jelentett három napon
+belül. **A minta növekmény**, nem folyószám, ezért egy időszak összege a mintáinak összege
+— ami azért lényeges, mert a mérési gyakoriság állomásonként 15 perc és 1 nap között
+változik, és az összegzés mindegyikre helyes.
+
+A „szokásos" érték **ugyanannak a mércének a saját tízéves archívumából** jön, nem
+klímaatlaszból. Egy atlaszérték rácscellára interpolált, és nagyobb mértékben térne el a
+műszertől, mint amekkora jelet mérni akarunk. Két korlátot a válasz kimond:
+
+* **Az alap egy friss évtized, nem harmincéves normál.** Ez az évtized Magyarországon
+  száraz volt, így a hiány ehhez mérve inkább *kisebbnek* látszik a valóságosnál. A torzítás
+  egy irányba mutat, és ez a helyes irány.
+* **A hálózat nem országos.** A Közép-Duna-völgyi és a Közép-dunántúli igazgatóság
+  területén nincs közzétett meteorológiai állomás, a Dél-dunántúlin egy sem jelentett, és a
+  folyami mércék közül **egy sem** ad csapadékot (mind az 1193-at megkérdeztük). A Dunántúl
+  ezért üres a térképen — nem azért, mert nem esett, hanem mert nem mérik ott.
+
+Két adatminőségi szűrő, mindkettő valós hibából: egy hónap csak akkor számít bele az
+átlagba, ha legalább 24 napja jelentett, és a 8 mm alatti havi „átlag" nem száraz hónap,
+hanem fűtetlen mérce — Répcevis tíz teljes januárja 0,0 mm, májusa 96 mm; egy billenőedényes
+mérő nem méri a havat.
+
+### 11. Amit ez az adatforrás nem ad — és ezért nincs benne
+
+Mindhármat lemértük, nem feltételeztük. `npm run probe -- --forecast --well-scan --matrix`
+megismétli.
+
+| Amit szeretnénk | Mit ad a szolgáltatás |
+|---|---|
+| **Előrejelzés** | `AdatTipusKod 5` („előrejelzett") **HTTP 500** minden állomásra, vízállásra és vízhozamra is, egyesével kérve is. A 6 („számított") és 15 („becsült") üres. Nincs mit lekérni. |
+| **Talajvíz** | `AdatFajtaKod 69` **0 találat az 524 közzétett kútból** 60 napra visszamenőleg, minden adattípussal. A sekély talajvízszint ezen az API-n nem jelenik meg. |
+| **Rétegvíz** | `AdatFajtaKod 70` működik, de 131 kút adott bármit 60 napra, és mindössze **12 jelentett egy héten belül** — abból 10 egyetlen igazgatóság területén. Ez nem országos kép. Ráadásul a rétegvíz a mély, zárt vízadó nyomásszintje: **nem azonos a talajvízzel**, és annak nevezni a legfélrevezetőbb dolog lenne, amit ez a projekt tehet. |
+| **Belvíz** | Nincs rá mérőkód. A belvizet elöntött területként (hektár) jelentik, nem idősorként. |
+
+Előrejelzés helyett az szerepel az oldalon, ami **őszintén állítható**: hol tart most a víz.
+Ami ma elhalad Komárom alatt, az holnap ér Budapestre — ez nem modell, hanem ugyanaz a víz és
+a szakasz futásideje. A futásidő a folyamkilométer-távolságból és a folyóra jellemző
+hullámsebességből **származtatott**, nem kézzel beírt: egy elgépelt óraszám, ami nem stimmel a
+két mérce távolságával, olyan hiba, amit soha senki nem venne észre.
 
 ---
 

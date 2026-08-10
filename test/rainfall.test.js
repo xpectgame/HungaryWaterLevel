@@ -11,6 +11,7 @@ const {
   monthlyNormal,
   NORMALS,
   MIN_YEARS,
+  MIN_PLAUSIBLE_MONTHLY_MM,
 } = require('../src/config/rain-gauges');
 const { summarise, dailyTotals, buildRainRequest } = require('../src/sources/vizugy-rain');
 const { config: vizugyConfig } = require('../src/sources/vizugy');
@@ -47,11 +48,34 @@ test('a normal built from too few years is withheld rather than published', () =
   }
 
   // ...and the ones that do qualify are physically plausible for Hungary: annual totals
-  // between 350 and 900 mm. A unit slip or a partial-month bug shows up here first.
+  // between 350 and 900 mm. A unit slip or a partial-month bug shows up here first, and
+  // it already has: a -443 mm February at Sándorfalva that the probe was summing raw.
   for (const [id, entry] of Object.entries(NORMALS)) {
     if (entry.years < MIN_YEARS || entry.months < 12) continue;
     const annual = entry.mm.reduce((sum, v) => sum + v, 0);
     assert.ok(annual > 350 && annual < 900, `${id} annual normal is ${annual.toFixed(0)} mm`);
+  }
+});
+
+test('a month a gauge cannot measure is withheld rather than published as a dry month', () => {
+  // Répcevis averages 0.0 mm across ten full Januaries and 96 mm in May. That is an
+  // unheated tipping-bucket, which does not register snow - not the driest winter in
+  // Europe. Serving it as a normal would tell somebody standing in snow-melt that they
+  // were having a three-hundred-percent month.
+  assert.strictEqual(monthlyNormal('repcevis', 1), null);
+  assert.strictEqual(monthlyNormal('repcevis', 12), null);
+  assert.ok(monthlyNormal('repcevis', 5) > 50, 'the summer half of the same gauge is fine');
+
+  // A window that touches an unmeasurable month gets no comparison either.
+  assert.strictEqual(normalForWindow('repcevis', '2026-12-20T00:00:00Z', '2027-01-19T00:00:00Z'), null);
+  assert.ok(normalForWindow('repcevis', '2026-06-01T00:00:00Z', '2026-07-01T00:00:00Z') > 40);
+
+  // Nothing that survives is in single digits anywhere.
+  for (const [id, entry] of Object.entries(NORMALS)) {
+    entry.mm.forEach((_, i) => {
+      const value = monthlyNormal(id, i + 1);
+      if (value !== null) assert.ok(value >= MIN_PLAUSIBLE_MONTHLY_MM, `${id} month ${i + 1} is ${value} mm`);
+    });
   }
 });
 

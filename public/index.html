@@ -370,6 +370,81 @@ svg.map text{user-select:none;-webkit-user-select:none}
   border-radius:1px;box-shadow:0 0 0 1px rgba(255,255,255,.85)}
 .reg .n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12.5px}
 
+/* Rain dots sit under the rivers and stay quiet: a background condition, not a
+   feature of the network. Stale gauges go hollow rather than vanishing. */
+.rainnode circle{opacity:.62}
+.rainnode .hit{fill:transparent;opacity:1;cursor:pointer}
+.rainnode.stale circle{fill:none;stroke:var(--ink-faint);stroke-width:1.2;stroke-dasharray:2 2;opacity:.7}
+.rainnode.stale .hit{stroke:none}
+.toggle{display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
+.toggle input{accent-color:var(--flow);cursor:pointer}
+.ramp{display:inline-flex;align-items:center;gap:0}
+.ramp .key{margin:0;border-radius:0}
+.ramp .key:first-of-type{border-radius:3px 0 0 3px}
+.ramp .key:last-of-type{border-radius:0 3px 3px 0;margin-right:6px}
+
+/* --- rainfall ---------------------------------------------------------------
+   Deficit and surplus are given genuinely different hues rather than two ends of
+   one ramp. A single blue-to-brown gradient makes "a bit dry" and "a bit wet" look
+   like neighbours, when the whole point of the section is that one of them is the
+   story and the other is not. */
+.lead{font-size:13.5px;color:var(--ink-soft);margin:0 0 14px}
+.fineprint{font-size:12.5px;color:var(--ink-faint);margin-top:12px;line-height:1.5}
+.subhead{font-size:14px;margin:22px 0 6px;color:var(--ink)}
+
+.rainlist{display:grid;gap:6px;margin-top:14px;
+  grid-template-columns:repeat(auto-fit,minmax(258px,1fr))}
+.rg{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:baseline;
+  padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff}
+.rg .nm{font-size:13px;font-weight:600}
+.rg .nm small{display:block;font-weight:400;font-size:11px;color:var(--ink-faint)}
+.rg .n{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:16px;font-weight:600;
+  white-space:nowrap;text-align:right}
+.rg .n span{font-size:11px;color:var(--ink-faint);margin-left:2px}
+.rg .bar{grid-column:1/-1;position:relative;height:7px;border-radius:4px;background:var(--sunk);margin-top:6px}
+.rg .bar i{display:block;height:100%;border-radius:4px}
+/* The normal is a tick on the bar, not a second bar: the question is always
+   "how far from that line", and two bars make the reader do the subtraction. */
+.rg .bar .norm{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.55;
+  border-radius:1px;box-shadow:0 0 0 1px rgba(255,255,255,.9)}
+.rg .sub{grid-column:1/-1;font-size:11.5px;color:var(--ink-faint);margin-top:5px}
+.rg.stale{background:repeating-linear-gradient(45deg,#fff,#fff 5px,#fafafa 5px,#fafafa 10px);
+  border-style:dashed}
+.rg.stale .n{color:var(--ink-faint)}
+
+/* Named once, spent twice: HTML bars paint with background, SVG dots with fill.
+   Setting only `background` left every dot on the map the browser's default black,
+   which read as a third kind of gauge marker rather than as rainfall. */
+.b-extreme-deficit{background:#a3341f}
+.b-severe-deficit{background:#cf6a2e}
+.b-deficit{background:#dfa53c}
+.b-near-normal{background:#5aa86e}
+.b-surplus{background:#2f7fb5}
+.b-extreme-surplus{background:#2b4f9e}
+circle.b-extreme-deficit{fill:#a3341f}
+circle.b-severe-deficit{fill:#cf6a2e}
+circle.b-deficit{fill:#dfa53c}
+circle.b-near-normal{fill:#5aa86e}
+circle.b-surplus{fill:#2f7fb5}
+circle.b-extreme-surplus{fill:#2b4f9e}
+/* No band means no baseline to judge against - drawn as an outline so it cannot be
+   mistaken for a reading at the dry end of the scale. */
+circle.nobase{fill:none;stroke:var(--ink-faint);stroke-width:1.1}
+
+/* --- what is on its way --- */
+.arrivals{display:grid;gap:7px}
+.arr{display:grid;grid-template-columns:auto 1fr auto;gap:11px;align-items:center;
+  padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;font-size:13px}
+.arr .dir{font-family:var(--mono);font-size:15px;font-weight:600;width:2.4em;text-align:center}
+.arr.rising .dir{color:#2f7fb5}
+.arr.falling .dir{color:#b0642a}
+.arr .when{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12px;
+  color:var(--ink-faint);white-space:nowrap;text-align:right}
+/* A change too small to expect anything from stays visible but recedes: removing it
+   would make "nothing is coming" indistinguishable from "we have no data". */
+.arr.quiet{background:#fcfdfd;color:var(--ink-faint)}
+.arr.quiet .dir{color:var(--ink-faint)}
+
 /* --- lakes --- */
 .lakes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(268px,1fr))}
 .lake{border:1px solid var(--line);border-radius:12px;padding:14px 15px;background:linear-gradient(180deg,#fbfeff,#f2fafc)}
@@ -491,6 +566,7 @@ footer a{color:var(--ink-soft)}
     <a href="#s-terkep">Térkép</a>
     <a href="#s-szelvenyek">Szelvények</a>
     <a href="#s-rendszerek">Folyórendszerek</a>
+    <a href="#s-csapadek">Csapadék</a>
     <a href="#s-hirek">Mi történik</a>
     <a href="#s-tavak">Tavak</a>
     <a href="#s-vizallas">Vízállás</a>
@@ -555,6 +631,7 @@ footer a{color:var(--ink-soft)}
     </defs>
     <g id="layer-abroad"></g>
     <g id="layer-country"></g>
+    <g id="layer-rain"></g>
     <g id="layer-rivers"></g>
     <g id="layer-lakes"></g>
     <g id="layer-places"></g>
@@ -564,6 +641,12 @@ footer a{color:var(--ink-soft)}
     <g id="layer-nodes"></g>
   </svg>
   <div class="legend">
+    <label class="toggle"><input type="checkbox" id="rain-layer" checked> csapadék az elmúlt 30 napban</label>
+    <span class="ramp" title="a sokéves átlaghoz mérve">
+      <i class="key b-extreme-deficit"></i><i class="key b-severe-deficit"></i><i class="key b-deficit"></i><i
+        class="key b-near-normal"></i><i class="key b-surplus"></i><i class="key b-extreme-surplus"></i>
+      sokkal kevesebb → sokkal több eső a szokásosnál
+    </span>
     <span><i class="key" style="background:var(--shallow)"></i>belépő szelvény</span>
     <span><i class="key" style="background:var(--silt)"></i>kilépő szelvény</span>
     <span><i class="key" style="background:var(--ink-faint)"></i>belső mérce (nem összegezzük)</span>
@@ -605,6 +688,22 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
+<section class="card" id="s-csapadek" style="margin-bottom:18px">
+  <div class="cardhead">
+    <h3>Csapadék — mennyi esett, és mennyi szokott</h3>
+    <div class="sortbar" role="group" aria-label="Időszak">
+      <button type="button" data-rain-days="7" aria-pressed="false">7 nap</button>
+      <button type="button" data-rain-days="30" aria-pressed="true">30 nap</button>
+      <button type="button" data-rain-days="90" aria-pressed="false">90 nap</button>
+    </div>
+  </div>
+  <p class="lead" id="rain-headline">&nbsp;</p>
+  <div id="rain-regions" class="regions"></div>
+  <div id="rain-gauges" class="rainlist"></div>
+  <p class="fineprint" id="rain-coverage"></p>
+  <p class="fineprint" id="rain-baseline"></p>
+</section>
+
 <section class="card" id="s-hirek" style="margin-bottom:18px">
   <h3>Mi történik, és miért</h3>
   <p style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">
@@ -613,6 +712,16 @@ footer a{color:var(--ink-soft)}
     hogy mi az oka: ez az, amit a határszelvényeinken mérünk.
   </p>
   <div id="regions" class="regions"></div>
+
+  <h4 class="subhead">Ami úton van</h4>
+  <p class="lead" style="margin-bottom:10px">
+    Nincs hivatalos előrejelzés ebben az adatforrásban, de az van, hogy hol tart most a víz.
+    Ami ma elhalad Komárom alatt, az holnap ér Budapestre — ez nem modell, hanem ugyanaz a víz
+    és a szakasz futásideje.
+  </p>
+  <div id="arrivals" class="arrivals"></div>
+  <p class="fineprint" id="arrivals-note"></p>
+
   <div id="feed" class="feed" style="margin-top:18px"></div>
   <p style="font-size:12.5px;color:var(--ink-faint);margin-top:14px" id="feed-note"></p>
 </section>
@@ -1546,6 +1655,118 @@ function renderRegions(regions){
   }).join('');
 }
 
+/* --- rainfall ------------------------------------------------------------ */
+
+let rainDays = 30;
+let showRain = true;
+
+/** Relative day count, because "8 napja" beats a date nobody subtracts from today. */
+function agoDays(n){
+  if(n==null) return '';
+  if(n===0) return 'ma';
+  if(n===1) return 'tegnap';
+  return n+' napja';
+}
+
+/**
+ * One gauge: what fell, what normally falls, and how long since it last rained.
+ *
+ * The bar is scaled so the normal always sits at the same place, which is what makes
+ * forty dots comparable at a glance - a bar scaled to each gauge's own maximum would
+ * make a wet gauge and a dry one look identical.
+ */
+function renderRainGauges(gauges){
+  const el = $('rain-gauges');
+  if(!gauges || !gauges.length){ el.innerHTML=''; return; }
+  const scale = 1.5; // full bar = 150% of normal, tick at 100%
+
+  el.innerHTML = gauges.slice().sort((a,b)=>{
+    if(a.ratioToNormal==null) return 1;
+    if(b.ratioToNormal==null) return -1;
+    return a.ratioToNormal - b.ratioToNormal;
+  }).map(g => {
+    const r = g.ratioToNormal;
+    const width = r!=null ? Math.max(1.5, Math.min(r, scale)/scale*100) : 0;
+    const dry = g.daysSinceRain;
+    const sub = g.stale
+      ? 'nem jelentett az elmúlt napokban'
+      : (g.normalMm!=null
+          ? `szokásos ${fmt(g.normalMm,0)} mm · ${dry!=null?'utoljára '+agoDays(dry)+' esett':'nem esett a vizsgált időszakban'}`
+          : 'nincs elég archívum az összehasonlításhoz');
+    return `<div class="rg${g.stale?' stale':''}" title="${g.region} · ${g.wetDays} csapadékos nap">`+
+      `<div class="nm">${g.name}<small>${g.region}</small></div>`+
+      `<div class="n">${fmt(g.totalMm,1)}<span>mm</span></div>`+
+      `<div class="bar"><i class="${g.band?'b-'+g.band:''}" style="width:${width.toFixed(1)}%"></i>`+
+        (g.normalMm!=null?`<i class="norm" style="left:${(100/scale).toFixed(1)}%"></i>`:'')+`</div>`+
+      `<div class="sub">${sub}</div>`+
+    `</div>`;
+  }).join('');
+}
+
+function renderRainRegions(regions){
+  const el = $('rain-regions');
+  if(!regions || !regions.length){ el.innerHTML=''; return; }
+  const scale = 1.5;
+
+  el.innerHTML = regions.map(r => {
+    const width = r.ratioToNormal!=null ? Math.max(1.5, Math.min(r.ratioToNormal,scale)/scale*100) : 0;
+    return `<div class="reg" title="${r.gaugeCount} állomás · ${fmt(r.minMm,1)}–${fmt(r.maxMm,1)} mm között">`+
+      `<div class="nm">${r.region}<br><span style="font-size:11px;color:var(--ink-faint)">${r.gaugeCount} állomás</span></div>`+
+      `<div class="track"><i class="${r.band?'b-'+r.band:''}" style="width:${width.toFixed(1)}%"></i>`+
+        `<i class="norm" style="left:${(100/scale).toFixed(1)}%"></i></div>`+
+      `<div class="n"><b>${r.ratioToNormal!=null?fmt(r.ratioToNormal*100,0)+'%':'–'}</b>`+
+      `<br><span style="color:var(--ink-faint);font-size:11px">${fmt(r.meanMm,0)} / ${fmt(r.normalMm,0)} mm</span></div>`+
+    `</div>`;
+  }).join('');
+}
+
+async function loadRain(){
+  try{
+    const data = await fetch('/api/v1/rainfall?days='+rainDays,{cache:'no-store'}).then(r=>r.json());
+    if(data.unavailable){
+      $('rain-headline').textContent = data.error || 'A csapadékadat most nem érhető el.';
+      $('rain-regions').innerHTML=''; $('rain-gauges').innerHTML='';
+      return;
+    }
+    $('rain-headline').textContent = (data.headline && data.headline.text) || '';
+    renderRainRegions(data.regions);
+    renderRainGauges(data.gauges);
+    // The two caveats that cannot be derived from the numbers: an empty Dunántúl is
+    // unmeasured rather than dry, and the baseline is a recent decade, not a normal.
+    $('rain-coverage').textContent = (data.coverage && data.coverage.note) || '';
+    $('rain-baseline').textContent = data.baselineNote || '';
+    rainMap = data.gauges || [];
+    drawRainNodes();
+  }catch(err){
+    $('rain-headline').textContent = 'A csapadékadat most nem érhető el.';
+  }
+}
+
+/* --- what is on its way --------------------------------------------------- */
+
+function renderArrivals(data){
+  const el = $('arrivals');
+  if(!data || !data.arrivals || !data.arrivals.length){
+    el.innerHTML = '<p class="lead" style="margin:0">Még nincs elég előzmény ahhoz, hogy megmondjuk, mi van úton.</p>';
+    $('arrivals-note').textContent='';
+    return;
+  }
+
+  el.innerHTML = data.arrivals.map(a => {
+    const quiet = !a.notable || a.alreadyArrived;
+    const when = a.alreadyArrived
+      ? 'már leért'
+      : `${a.travelHours.min}–${a.travelHours.max} óra`;
+    return `<div class="arr ${a.direction}${quiet?' quiet':''}" title="${a.reachKm} folyamkilométer">`+
+      `<div class="dir">${a.direction==='rising'?'▲':'▼'}</div>`+
+      `<div>${a.text}</div>`+
+      `<div class="when">${when}</div>`+
+    `</div>`;
+  }).join('');
+
+  $('arrivals-note').textContent = data.disclaimer + ' ' + data.method;
+}
+
 /* --- lakes -------------------------------------------------------------- */
 
 /**
@@ -1642,6 +1863,57 @@ function drawLakeNodes(){
     bindMarker(g, () => renderLakeTip(l), () => showLake(l.id));
     layer.appendChild(g);
   }
+}
+
+/* --- rain gauges on the map ---------------------------------------------- */
+
+let rainMap = [];
+
+/**
+ * Rain as small filled dots underneath everything else.
+ *
+ * Deliberately the quietest layer on the map: it is a background condition, not a
+ * feature of the river network, and forty dots drawn at the weight of a gauge marker
+ * would bury the thing the map is actually about. They sit below the river layer in
+ * document order for the same reason.
+ *
+ * A stale gauge is drawn hollow rather than skipped - a hole that opens and closes as
+ * instruments drop in and out reads as "it is dry here", which is the one thing it
+ * must not say.
+ */
+function drawRainNodes(){
+  const layer = $('layer-rain');
+  if(!layer) return;
+  layer.textContent = '';
+  if(!geo || !rainMap.length || !showRain) return;
+
+  for(const g of rainMap){
+    const [x,y] = px(g.lon, g.lat);
+    const node = svgEl('g',{ class:'rainnode'+(g.stale?' stale':'') });
+    node.appendChild(svgEl('circle',{
+      cx:x.toFixed(1), cy:y.toFixed(1), r:'3.4',
+      class: g.band ? 'b-'+g.band : 'nobase',
+    }));
+    node.appendChild(svgEl('circle',{ class:'hit', cx:x.toFixed(1), cy:y.toFixed(1),
+      r: hitFor(x, y, 3.4, hitRadius()).toFixed(1) }));
+    bindMarker(node, () => renderRainTip(g), () => {
+      $('s-csapadek').scrollIntoView({ behavior:'smooth', block:'start' });
+    });
+    layer.appendChild(node);
+  }
+}
+
+function renderRainTip(g){
+  const pct = g.ratioToNormal!=null ? fmt(g.ratioToNormal*100,0)+'%' : '–';
+  $('tip').innerHTML =
+    `<div class="t-name">${g.name}</div>`+
+    `<div class="t-val" style="color:var(--flow)">${fmt(g.totalMm,1)} `+
+    `<span style="font-size:12px;color:var(--ink-faint)">mm / ${rainDays} nap</span></div>`+
+    (g.normalMm!=null
+      ? `<div class="t-sub">szokásos ${fmt(g.normalMm,0)} mm — ez annak <b>${pct}</b>-a</div>`
+      : `<div class="t-sub">nincs elég archívum az összehasonlításhoz</div>`)+
+    `<div class="t-sub">${g.region}${g.daysSinceRain!=null?' · utoljára '+agoDays(g.daysSinceRain)+' esett':''}`+
+    (g.stale?' · nem jelentett az elmúlt napokban':'')+`</div>`;
 }
 
 function renderLakeTip(l){
@@ -2254,7 +2526,7 @@ async function refresh(){
     snapshot = s;
     if(st && st.stations) stations = st.stations;
     if(lk && lk.lakes){ lakes = lk.lakes; renderLakes(lk); }
-    if(ev){ renderRegions(ev.regions); renderFeed(ev); }
+    if(ev){ renderRegions(ev.regions); renderFeed(ev); renderArrivals(ev.arrivals); }
 
     $('synthetic').classList.toggle('hidden', !(s._meta && s._meta.synthetic));
     paint(s);
@@ -2328,10 +2600,14 @@ function tick(){
 (async function start(){
   tick(); setInterval(tick,1000);
   initNav();
-  for(const b of document.querySelectorAll('.sortbar button')){
+  // Selected by data-sort, not by the .sortbar class: the class is a visual style and
+  // the rainfall window switcher wears it too. Binding on the class made a rain button
+  // set barSort to undefined - BAR_SORTS[undefined].fn threw and took the whole redraw
+  // with it - and made a sort button silently un-press the rain window.
+  for(const b of document.querySelectorAll('[data-sort]')){
     b.addEventListener('click', () => {
       barSort = b.dataset.sort;
-      for(const other of document.querySelectorAll('.sortbar button')){
+      for(const other of document.querySelectorAll('[data-sort]')){
         other.setAttribute('aria-pressed', String(other === b));
       }
       // Both lists follow the one control: two sort orders on one screen would be a
@@ -2342,13 +2618,36 @@ function tick(){
   $('mode-now').addEventListener('click', () => setMode('now'));
   $('mode-normal').addEventListener('click', () => setMode('normal'));
   $('whatif-back').addEventListener('click', () => setMode('now'));
+
+  // Rainfall window. The map legend says "30 napban", so it is rewritten with the
+  // choice rather than left contradicting the dots it describes.
+  for(const btn of document.querySelectorAll('[data-rain-days]')){
+    btn.addEventListener('click', () => {
+      rainDays = Number(btn.dataset.rainDays);
+      for(const other of document.querySelectorAll('[data-rain-days]')){
+        other.setAttribute('aria-pressed', String(other === btn));
+      }
+      const label = $('rain-layer').parentElement;
+      label.lastChild.textContent = ` csapadék az elmúlt ${rainDays} napban`;
+      loadRain();
+    });
+  }
+  $('rain-layer').addEventListener('change', (e) => {
+    showRain = e.target.checked;
+    drawRainNodes();
+  });
+
   // drawBase needs the geometry, so it runs inside loadStatic once geo.json has landed.
   await loadStatic();
   await refresh();
   refreshHistory();
+  loadRain();
   // Upstream publishes quarter-hourly; polling faster only burns the function budget.
   setInterval(refresh, 60000);
   setInterval(refreshHistory, 300000);
+  // Rainfall is cached for half an hour upstream and most gauges report once a day,
+  // so asking more often than every ten minutes cannot return anything new.
+  setInterval(loadRain, 600000);
   // A tab left open for hours should be current the moment it is looked at again.
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refresh(); });
   openFromHash();
