@@ -371,6 +371,49 @@ function unitsOnlineFor(plant, outages, now = Date.now()) {
 }
 
 /**
+ * Fetch outages over a window, splitting it whenever the platform says it is too big.
+ *
+ * The window for this document cannot be chosen by picking a number, because it is
+ * squeezed from both sides and the squeeze moves:
+ *
+ *   Too wide - the platform caps the document at 200 instances and answers HTTP 400.
+ *              Nine days returned "The number of instances (320) exceeds the allowed
+ *              maximum (200)". Four days still gave 213.
+ *   Too narrow - one day returned zero outages while A73 showed seven of Paks's eight
+ *              generators sitting at 5-11 MW. The period does not select outages by
+ *              their own interval, so a long-running outage published weeks ago falls
+ *              outside a short window and vanishes. Zero outages then reads as "every
+ *              unit is running", which is the most confident possible way to be wrong.
+ *
+ * And how many instances a week contains depends on how busy the outage feed happens to
+ * be, so any fixed figure is a guess that expires. Splitting on the platform's own
+ * complaint needs no guess: ask for the whole window, and when it objects, halve and
+ * ask again. Merged on unit name and start time, because the halves share a boundary
+ * and an outage spanning it is returned by both.
+ */
+const MAX_OUTAGE_SPLITS = 4;
+
+async function fetchOutageWindow(cfg, { from, to }, depth = 0) {
+  try {
+    const { body } = await fetchText(buildUrl(cfg, { from, to }), { timeoutMs: cfg.timeoutMs });
+    return parseOutages(body);
+  } catch (err) {
+    const tooMany = /exceeds the allowed maximum/i.test((err && err.body) || '');
+    if (!tooMany || depth >= MAX_OUTAGE_SPLITS) throw err;
+
+    const middle = new Date((from.getTime() + to.getTime()) / 2);
+    const [earlier, later] = await Promise.all([
+      fetchOutageWindow(cfg, { from, to: middle }, depth + 1),
+      fetchOutageWindow(cfg, { from: middle, to }, depth + 1),
+    ]);
+
+    const merged = new Map();
+    for (const outage of [...earlier, ...later]) merged.set(`${outage.unitName}|${outage.start}`, outage);
+    return [...merged.values()];
+  }
+}
+
+/**
  * Fetch current unit availability, keyed by plant id.
  * Returns an empty result rather than throwing when no token is configured.
  */
@@ -386,27 +429,12 @@ async function fetchAvailability(plants, env = process.env, now = new Date()) {
     };
   }
 
-  // A window around now catches outages already running and those just starting.
-  // Four days, between two limits that pull in opposite directions.
-  //
-  // Above: the platform caps this document at 200 instances and answers HTTP 400 over
-  // it - a nine-day window earned "The number of instances (320) exceeds the allowed
-  // maximum (200)".
-  //
-  // Below: a one-day window returned zero outages while A73 showed seven of Paks's
-  // eight generators sitting at 5-11 MW. So the period does NOT select outages whose
-  // own interval overlaps it - a long-running outage published weeks ago falls outside
-  // a narrow window and simply vanishes. Zero outages then reads as "everything is
-  // running", which is the most confident possible way to be wrong.
-  //
-  // Nine days gave 320 instances, so four should land near 140 - inside the cap with
-  // room, and wide enough to catch what is currently in force.
-  const from = new Date(now.getTime() - 3 * 86400000);
-  const to = new Date(now.getTime() + 86400000);
-  const url = buildUrl(cfg, { from, to });
-
-  const { body } = await fetchText(url, { timeoutMs: cfg.timeoutMs });
-  const outages = parseOutages(body);
+  // Six days, fetched in pieces. See fetchOutageWindow for why neither end of the
+  // window can be chosen by picking a number.
+  const outages = await fetchOutageWindow(cfg, {
+    from: new Date(now.getTime() - 5 * 86400000),
+    to: new Date(now.getTime() + 86400000),
+  });
 
   const availability = {};
   for (const plant of plants) {

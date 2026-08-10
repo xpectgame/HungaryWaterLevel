@@ -330,14 +330,15 @@ test('each document is requested inside the window the platform allows', () => {
   });
   assert.ok(spanHours(a73) <= 24, `A73 window is ${spanHours(a73)} h, the platform allows 24`);
 
+  // A80 is no longer bounded by a chosen number - it asks for six days and splits on
+  // the platform's own "exceeds the allowed maximum" complaint. Both a fixed 4-day
+  // window (213 instances) and a 1-day one (zero outages, plant reported full while
+  // nearly dark) failed, and how many instances a week holds moves with the feed.
   const a80 = buildEntsoeUrl(cfg, {
-    from: new Date(now.getTime() - 3 * 86400000),
+    from: new Date(now.getTime() - 5 * 86400000),
     to: new Date(now.getTime() + 86400000),
   });
-  // Bounded from below as well: one day returned zero outages while A73 showed the
-  // plant nearly dark, because the period does not select by the outage's own interval.
   assert.ok(spanHours(a80) >= 72, 'too narrow a window silently reports everything running');
-  assert.ok(spanHours(a80) <= 120, `A80 window is ${spanHours(a80)} h; nine days returned 320 of a 200 cap`);
 });
 
 // ---------------------------------------------------------------------------
