@@ -908,6 +908,116 @@ async function probeGroundwater() {
 }
 
 /**
+ * Every published rain gauge, asked whether it is actually reporting.
+ *
+ * The one-per-directorate sample answered at six of eleven, which is enough to know the
+ * series exists and not enough to build a registry on: a gauge that stopped reporting in
+ * 2019 is still in the catalogue, and a drought map with holes in it is worse than no map.
+ * So this asks all of them and reports only the ones with a sample in the last three days.
+ *
+ * It also asks how far the archive reaches, because a rainfall total means nothing without
+ * a normal to compare it against. If the same gauge can be asked for the same weeks in
+ * earlier years, the normal is measured rather than hardcoded from a yearbook.
+ */
+async function probeRainScan() {
+  console.log('\n########## rain gauge scan ##########');
+
+  const { rows } = await fetchCatalogue(14, { internetOnly: true });
+  const usableRows = rows.filter((r) => r.Lat != null && r.Lon != null);
+  console.log(`${rows.length} published met stations, ${usableRows.length} with coordinates`);
+
+  const now = new Date();
+  const start = new Date(now.getTime() - 35 * 24 * 3600 * 1000).toISOString();
+  const end = new Date(now.getTime() + 3600 * 1000).toISOString();
+  const live = [];
+
+  // Chunked so one bad station cannot take the whole scan down with it.
+  const CHUNK = 50;
+  for (let offset = 0; offset < usableRows.length; offset += CHUNK) {
+    const batch = usableRows.slice(offset, offset + CHUNK);
+    try {
+      const out = await askSeries(
+        batch.map((station, index) => ({
+          ItemId: index,
+          Torzsszam: Number(station.Tsz),
+          AdatFajtaKod: 71,
+          AdatTipusKod: 100,
+          StartTime: start,
+          EndTime: end,
+        })),
+        { timeoutMs: 60000 },
+      );
+      const byItemId = require('../sources/vizugy').indexByItemId(Array.isArray(out) ? out : []);
+      batch.forEach((station, index) => {
+        const items = usable(byItemId.get(index));
+        if (!items.length) return;
+        const last = new Date(items[items.length - 1].UTCTime);
+        if (now - last > 3 * 24 * 3600 * 1000) return;
+        live.push({
+          station,
+          samples: items.length,
+          sum: items.reduce((total, i) => total + Number(i.Adat), 0),
+          last: items[items.length - 1].UTCTime,
+        });
+      });
+    } catch (err) {
+      console.log(`  chunk at ${offset}: FAILED ${err.message}`);
+    }
+  }
+
+  console.log(`\n${live.length} gauges reported within the last three days.\n`);
+
+  const byVizig = new Map();
+  for (const row of live) {
+    if (!byVizig.has(row.station.Vizig)) byVizig.set(row.station.Vizig, []);
+    byVizig.get(row.station.Vizig).push(row);
+  }
+
+  for (const vizig of [...byVizig.keys()].sort((a, b) => a - b)) {
+    const group = byVizig.get(vizig).sort((a, b) => b.samples - a.samples);
+    console.log(`--- Vízügyi igazgatóság ${vizig}: ${group.length} live gauges ---`);
+    for (const row of group.slice(0, 6)) {
+      const { station } = row;
+      console.log(
+        `  ${String(station.Tsz).padEnd(8)} ${String(station.Nev).slice(0, 28).padEnd(28)} ` +
+          `${station.Lat.toFixed(3)},${station.Lon.toFixed(3)}  ` +
+          `${String(row.samples).padStart(4)} samples  35d sum ${row.sum.toFixed(1).padStart(6)} mm  last ${row.last.slice(0, 16)}`,
+      );
+    }
+  }
+
+  // How far back does the archive go? Without this there is no normal to compare to.
+  const probeStation = live.sort((a, b) => b.samples - a.samples)[0];
+  if (probeStation) {
+    console.log(`\nArchive depth at ${probeStation.station.Nev} (Tsz ${probeStation.station.Tsz}), same weeks in earlier years:`);
+    for (const yearsBack of [1, 2, 3, 5, 10, 20]) {
+      const from = new Date(now.getTime() - (yearsBack * 365 + 35) * 24 * 3600 * 1000);
+      const to = new Date(now.getTime() - yearsBack * 365 * 24 * 3600 * 1000);
+      try {
+        const out = await askSeries([
+          {
+            ItemId: 0,
+            Torzsszam: Number(probeStation.station.Tsz),
+            AdatFajtaKod: 71,
+            AdatTipusKod: 100,
+            StartTime: from.toISOString(),
+            EndTime: to.toISOString(),
+          },
+        ]);
+        const items = usable(Array.isArray(out) ? out[0] : null);
+        const sum = items.reduce((total, i) => total + Number(i.Adat), 0);
+        console.log(
+          `  ${yearsBack} year(s) back (${from.toISOString().slice(0, 10)} → ${to.toISOString().slice(0, 10)}): ` +
+            `${String(items.length).padStart(4)} samples, ${sum.toFixed(1)} mm`,
+        );
+      } catch (err) {
+        console.log(`  ${yearsBack} year(s) back: FAILED ${err.message}`);
+      }
+    }
+  }
+}
+
+/**
  * Which (kind, type) pairs a station actually publishes.
  *
  * AdatFajtaKod 69 is "talajvízállás" and every well in vmoType 13 is a groundwater well,
@@ -1111,6 +1221,11 @@ async function main() {
 
   if (args.includes('--matrix')) {
     await probeMatrix();
+    return;
+  }
+
+  if (args.includes('--rain-scan')) {
+    await probeRainScan();
     return;
   }
 
