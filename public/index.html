@@ -200,6 +200,29 @@ svg.map text{user-select:none;-webkit-user-select:none}
 /* An invisible disc under every marker. A 3-pixel dot is not a touch target, and the
    alternative - drawing everything bigger - would bury the map under its own markers. */
 .hit{fill:transparent;stroke:none}
+
+/* Keyboard focus. Two rules, because the default outline is wrong in both places:
+   on the <svg> it would draw a box round the whole country, and on a marker it would
+   trace the invisible 15-unit touch target rather than the 3-pixel dot the reader is
+   actually looking at. So the marker's own glyph is stroked instead - whatever shape it
+   is: circle, plant polygon, lake rect, rain triangle.
+   :focus-visible, not :focus - a mouse click also focuses the marker, and a ring that
+   appears on every click reads as a rendering fault. */
+#map:focus{outline:none}
+#map:focus-visible{outline:2px solid var(--flow);outline-offset:2px;border-radius:4px}
+#map .mk:focus{outline:none}
+#map .mk:focus-visible .mark,
+#map .mk:focus-visible .core,
+#map .mk:focus-visible .glyph,
+#map .mk:focus-visible polygon,
+#map .mk:focus-visible path,
+#map .mk:focus-visible rect{stroke:var(--ink);stroke-width:4;paint-order:stroke}
+/* paint-order:stroke puts the stroke UNDER the fill, so only its outer half is visible -
+   4 draws as 2. That is the point: the fill carries the reading (a rain triangle's
+   colour IS its deficit band) and a centred stroke would eat it on a 4-unit glyph. */
+/* The halo doubles as the focus ring on a gauge: it is already centred on the dot and
+   already sized for the eye, so lighting it costs nothing and reads at a glance. */
+#map .node.mk:focus-visible .halo{opacity:.45}
 .node circle{transition:r .5s cubic-bezier(.2,.8,.2,1), opacity .4s}
 .node .halo{fill:var(--flow);opacity:.14}
 .node .core{fill:var(--flow);stroke:#fff;stroke-width:1.2}
@@ -623,7 +646,13 @@ footer a{color:var(--ink-soft)}
     <h2>A folyók most</h2>
     <div class="hint">A sodrás sebessége a tényleges vízhozamot követi. Koppints vagy kattints egy pontra.</div>
   </div>
-  <svg class="map" id="map" viewBox="0 0 800 518" role="img" aria-label="Magyarország folyói és vízrajzi szelvényei">
+  <!-- role="group", not role="img". An image is announced as one opaque thing and its
+       children are hidden, which would have made the focusable markers inside it silent.
+       tabindex="0" makes the map a single Tab stop; the arrow keys move between markers
+       inside it, and the label says so, because a stop that swallows the arrow keys
+       without warning is worse than one that is not focusable at all. -->
+  <svg class="map" id="map" viewBox="0 0 800 518" role="group" tabindex="0"
+       aria-label="Magyarország folyói és vízrajzi szelvényei. Nyílbillentyűkkel lehet lépkedni a szelvények között nyugatról keletre, Enterrel megnyílnak a részletek, Escape kilép a térképből.">
     <defs>
       <linearGradient id="basin" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="#fbfeff" stop-opacity="1"/>
@@ -1256,7 +1285,9 @@ function drawNodes(){
       g.appendChild(t);
     }
 
-    bindMarker(g, () => renderStationTip(st, flow), () => showStation(st.id));
+    // A felolvasó a mérést mondja ki, ne az alakot: „Duna – Budapest, 880 m³/s”.
+    bindMarker(g, () => renderStationTip(st, flow), () => showStation(st.id),
+      `${st.name}${flow!=null?`, ${fmt(flow,0)} köbméter per másodperc`:''}`);
     // Inserted at the front while iterating largest-first, so the biggest gauge ends up
     // last in the DOM and therefore on top. Once the touch targets are a fingertip wide
     // they overlap, and the browser gives the tap to whatever is painted highest - which
@@ -1280,7 +1311,8 @@ function drawNodes(){
       t.textContent = name;
       g.appendChild(t);
     }
-    bindMarker(g, () => renderPlantTip(p, mw, w), () => showPlant(p.id));
+    bindMarker(g, () => renderPlantTip(p, mw, w), () => showPlant(p.id),
+      `${p.name}, erőmű${Number.isFinite(w)?`, ${fmt(w,1)} köbméter per másodperc hűtővíz`:''}`);
     plantLayer.appendChild(g);
   }
 
@@ -1337,7 +1369,19 @@ let pointerKind = 'mouse';
 function tipEl(){ return $('tip'); }
 
 /** Wire one marker for both input models. `render` fills the tip, `open` goes deeper. */
-function bindMarker(g, render, open){
+/**
+ * Make a map marker usable by pointer, touch AND keyboard.
+ *
+ * The keyboard half was missing entirely: every marker listened for pointer and click
+ * events only, so the whole map — every gauge, plant, lake and rain station — was
+ * unreachable by Tab. The lists below the map carried the same information and were
+ * focusable, which is what hid it; but a reader who navigates by keyboard was being
+ * told the map is decorative, and on a public-interest page it is not.
+ *
+ * `label` is what a screen reader announces, so it has to say the reading rather than
+ * the shape: "Duna – Budapest, 880 m³/s" and not "circle".
+ */
+function bindMarker(g, render, open, label){
   const isMouse = (e) => (e.pointerType || 'mouse') === 'mouse';
   g.addEventListener('pointerdown', (e) => { pointerKind = e.pointerType || 'mouse'; });
   g.addEventListener('pointerenter', (e) => { if(isMouse(e) && !tipPinned){ render(); moveTip(e); tipEl().style.opacity='1'; } });
@@ -1349,6 +1393,114 @@ function bindMarker(g, render, open){
     render();
     pinTip(g, open);
   });
+
+  // tabindex="-1", not "0": focusable on purpose, but not a Tab stop of its own. There
+  // are about ninety markers across the four layers, and putting every one into the tab
+  // order would mean ninety presses to get past a map whose contents are all repeated
+  // in the focusable lists below it. The map is one stop; the arrow keys move inside it.
+  g.setAttribute('tabindex', '-1');
+  g.setAttribute('role', 'button');
+  g.classList.add('mk');
+  if(label) g.setAttribute('aria-label', label);
+
+  // Focus shows the reading the same way hover does; blur puts it away again. Anchored
+  // to the marker rather than to a pointer that is not involved.
+  g.addEventListener('focus', () => { if(tipPinned) return; render(); anchorTip(g); tipEl().style.opacity='1'; });
+  g.addEventListener('blur', () => { if(!tipPinned) hideTip(); });
+  g.addEventListener('keydown', (e) => {
+    if(e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    e.stopPropagation();
+    hideTip();
+    open();
+  });
+}
+
+/**
+ * Arrow-key navigation across the map, west to east.
+ *
+ * Sorted by screen position rather than by document order: the markers are appended one
+ * layer at a time — rain, then lakes, then plants, then gauges — so document order walks
+ * the map four times over and reads as random. West to east is the one ordering a reader
+ * can predict and follow on the picture.
+ */
+function mapMarkers(){
+  return [...document.querySelectorAll('#map .mk')]
+    // getBoundingClientRect, NOT getBBox. getBBox reports the box in the element's own
+    // coordinate system, before its own transform is applied - and the gauge and plant
+    // markers are groups drawn at a local origin and translated into place, so every one
+    // of them returns x = -18 (its halo radius) no matter where it sits on the map. The
+    // sort then compared 87 identical numbers and silently fell back to document order,
+    // which walks the map four times over, one layer at a time. Only the rain nodes,
+    // which draw at absolute coordinates, happened to sort correctly.
+    // getBoundingClientRect is in screen pixels with every transform applied, which is
+    // what "west to east" means to someone looking at the picture. It also returns zeros
+    // for a hidden element rather than throwing, so a hidden map degrades to document
+    // order instead of taking the keydown handler down with it.
+    .map((el) => ({ el, x: el.getBoundingClientRect().left }))
+    .sort((a, b) => a.x - b.x)
+    .map((m) => m.el);
+}
+
+function focusMarker(step){
+  const marks = mapMarkers();
+  if(!marks.length) return false;
+  const here = marks.indexOf(document.activeElement);
+  let next;
+  if(step === 'first') next = marks[0];
+  else if(step === 'last') next = marks[marks.length - 1];
+  // Coming in from the map itself: enter at the end the reader is travelling towards,
+  // so ArrowLeft from the map starts in the east rather than jumping to the far west.
+  else if(here < 0) next = step > 0 ? marks[0] : marks[marks.length - 1];
+  else next = marks[(here + step + marks.length) % marks.length];
+  next.focus();
+  return true;
+}
+
+function initMapKeys(){
+  const map = $('map');
+  if(!map) return;
+
+  // The map deliberately does NOT move focus into a marker when it receives focus.
+  // That was the first thing I wrote and it is a keyboard trap: the markers are
+  // tabindex="-1", so Shift+Tab out of the westernmost one goes to the previous
+  // TABBABLE element - which is the map, since it encloses them - and an auto-forward
+  // would throw focus straight back into the marker. There is no way out of the map by
+  // keyboard once that loop closes.
+  //
+  // So the map is a plain stop that announces what it is, and the first arrow press
+  // steps inside. That is also why the label spells out the keys: a stop that swallows
+  // the arrow keys without saying so is worse than one that is not focusable at all.
+  map.addEventListener('focusout', (e) => {
+    // relatedTarget is where focus is going. Without the check, moving between two
+    // markers would blink the tip off and on again.
+    if(!map.contains(e.relatedTarget)) hideTip();
+  });
+
+  map.addEventListener('keydown', (e) => {
+    const step = { ArrowRight:1, ArrowDown:1, ArrowLeft:-1, ArrowUp:-1, Home:'first', End:'last' }[e.key];
+    if(step !== undefined){
+      if(focusMarker(step)) e.preventDefault();
+      return;
+    }
+    // Escape hands the map back as a single stop, so Tab continues down the page from
+    // here rather than from wherever the ninetieth marker happened to be.
+    if(e.key === 'Escape'){
+      hideTip();
+      map.focus();
+      e.preventDefault();
+    }
+  });
+}
+
+/** Put the tip beside a marker — used by focus, where there is no pointer to follow. */
+function anchorTip(g){
+  const t = tipEl();
+  const r = g.getBoundingClientRect();
+  const x = Math.min(Math.max(8, r.left + r.width/2 - t.offsetWidth/2), innerWidth - t.offsetWidth - 8);
+  const above = r.top - t.offsetHeight - 12;
+  t.style.left = x + 'px';
+  t.style.top = (above > 8 ? above : Math.min(r.bottom + 12, innerHeight - t.offsetHeight - 8)) + 'px';
 }
 
 /** Anchor the tip to the marker rather than to the finger, which is covering it. */
@@ -1880,7 +2032,8 @@ function drawLakeNodes(){
       t.textContent = l.name;
       g.appendChild(t);
     }
-    bindMarker(g, () => renderLakeTip(l), () => showLake(l.id));
+    bindMarker(g, () => renderLakeTip(l), () => showLake(l.id),
+      `${l.name}${has?`, ${fmt(l.current.levelCm,0)} centiméter`:', nincs közzétett vízszint'}`);
     layer.appendChild(g);
   }
 }
@@ -1925,7 +2078,8 @@ function drawRainNodes(){
       r: hitFor(x, y, s, hitRadius()).toFixed(1) }));
     bindMarker(node, () => renderRainTip(g), () => {
       $('s-csapadek').scrollIntoView({ behavior:'smooth', block:'start' });
-    });
+    }, `${g.name}, ${fmt(g.totalMm,1)} milliméter csapadék ${rainDays} nap alatt`
+       + (g.normalMm!=null?`, a szokásos ${fmt(g.normalMm,0)} helyett`:''));
     layer.appendChild(node);
   }
 }
@@ -2668,6 +2822,7 @@ function tick(){
 (async function start(){
   tick(); setInterval(tick,1000);
   initNav();
+  initMapKeys();
   // Selected by data-sort, not by the .sortbar class: the class is a visual style and
   // the rainfall window switcher wears it too. Binding on the class made a rain button
   // set barSort to undefined - BAR_SORTS[undefined].fn threw and took the whole redraw

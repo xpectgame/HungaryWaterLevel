@@ -297,6 +297,58 @@ test('the frontend is served from the app root', async () => {
   }
 });
 
+/**
+ * The map, by keyboard.
+ *
+ * Every failure guarded here is SILENT - the page renders, nothing throws, and the only
+ * way to notice is to put the mouse down and try to use it. Three of the five were real
+ * states this file passed through.
+ */
+test('the map is navigable without a mouse', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const map = page.match(/<svg[^>]+id="map"[^>]*>/)[0];
+
+  // role="img" makes assistive technology treat the map as one opaque picture and hide
+  // its children, so focusable markers inside it would be announced as nothing at all.
+  assert.doesNotMatch(map, /role="img"/, 'role="img" hides the markers from screen readers');
+  assert.match(map, /role="group"/, 'the map is a group of markers, not a picture');
+  assert.match(map, /tabindex="0"/, 'the map must be a tab stop, or nothing inside it is reachable');
+  // A stop that swallows the arrow keys without saying so is worse than one that is not
+  // focusable: the reader presses Tab, hears a label, and has no idea what to do next.
+  assert.match(map, /aria-label="[^"]*[Nn]yíl/, 'the label must say the arrow keys work here');
+
+  // Dead code, not a broken feature: every handler below is defined on an element that
+  // never gets one, no error is raised, and the map is simply mouse-only again. This
+  // file sat in exactly that state.
+  assert.match(page, /^\s*initMapKeys\(\);/m, 'initMapKeys is defined but must also be called');
+
+  // getBBox reports the box BEFORE the element's own transform, and the gauge and plant
+  // markers are groups translated into place - so it returns the same number for all of
+  // them and the sort degrades to document order, which walks the map once per layer.
+  assert.doesNotMatch(
+    page,
+    /getBBox\(\)\.x/,
+    'order markers by getBoundingClientRect: getBBox ignores the marker\'s own transform',
+  );
+  assert.match(page, /getBoundingClientRect\(\)\.left/, 'markers are ordered west to east on screen');
+
+  // Markers are tabindex="-1" on purpose. At tabindex="0" there are eighty-seven of
+  // them between the map and the rest of the page, all repeating what the lists below
+  // already say.
+  assert.match(page, /setAttribute\('tabindex', '-1'\)/, 'markers must not each be a tab stop');
+  assert.match(page, /setAttribute\('aria-label'/, 'a marker must announce its reading, not its shape');
+
+  // The keyboard trap. Markers are tabindex="-1", so Shift+Tab out of the westernmost
+  // one goes to the previous TABBABLE element - which is the map, because it encloses
+  // them. Forwarding focus into a marker when the map receives focus closes the loop
+  // and there is no way out of the map by keyboard.
+  assert.doesNotMatch(
+    page,
+    /map\.addEventListener\('focus'/,
+    'do not forward focus into a marker: Shift+Tab lands back on the map and would loop',
+  );
+});
+
 test('a missing frontend asset degrades to a working page, not a 500', async () => {
   // Bundlers trace imports, not filesystem reads, so a deployment can arrive with every
   // module present and the HTML absent. The API is the product; that must not read as a
