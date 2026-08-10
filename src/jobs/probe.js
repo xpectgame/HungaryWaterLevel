@@ -986,6 +986,51 @@ async function probeRainScan() {
     }
   }
 
+  // The met network is not national. Directorates 2 (Budapest) and 4 (Székesfehérvár)
+  // have no meteorological stations in the catalogue at all, and 5 (Pécs) has 22 of which
+  // none reported - so on this network alone, Transdanubia is a hole and the Alföld is
+  // dense. A drought map that stops at the Danube is not a map of Hungary.
+  //
+  // Many river gauges have a rain gauge on the same post, though, and those live in
+  // vmoType 11. If they publish code 71 the hole closes, so ask before accepting it.
+  console.log('\n--- surface gauges (vmoType 11) asked for rainfall ---');
+  const surface = (await fetchCatalogue(11, { internetOnly: true })).rows.filter((r) => r.Lat != null);
+  const surfaceLive = [];
+  for (let offset = 0; offset < surface.length; offset += 50) {
+    const batch = surface.slice(offset, offset + 50);
+    try {
+      const out = await askSeries(
+        batch.map((station, index) => ({
+          ItemId: index,
+          Torzsszam: Number(station.Tsz),
+          AdatFajtaKod: 71,
+          AdatTipusKod: 100,
+          StartTime: start,
+          EndTime: end,
+        })),
+        { timeoutMs: 60000 },
+      );
+      const byItemId = require('../sources/vizugy').indexByItemId(Array.isArray(out) ? out : []);
+      batch.forEach((station, index) => {
+        const items = usable(byItemId.get(index));
+        if (!items.length) return;
+        if (now - new Date(items[items.length - 1].UTCTime) > 3 * 24 * 3600 * 1000) return;
+        surfaceLive.push({ station, samples: items.length, sum: items.reduce((t, i) => t + Number(i.Adat), 0) });
+      });
+    } catch (err) {
+      console.log(`  chunk at ${offset}: FAILED ${err.message}`);
+    }
+  }
+  console.log(`${surfaceLive.length} river gauges also report rainfall.`);
+  // Only the Transdanubian ones: that is the question this section exists to answer.
+  for (const row of surfaceLive.filter((r) => r.station.Lon < 19).sort((a, b) => a.station.Lon - b.station.Lon)) {
+    console.log(
+      `  ${String(row.station.Tsz).padEnd(8)} ${String(row.station.Nev).slice(0, 26).padEnd(26)} ` +
+        `vizig ${String(row.station.Vizig).padStart(2)}  ${row.station.Lat.toFixed(3)},${row.station.Lon.toFixed(3)}  ` +
+        `${String(row.samples).padStart(4)} samples  35d sum ${row.sum.toFixed(1)} mm  [${row.station.MdrNev ?? ''}]`,
+    );
+  }
+
   // How far back does the archive go? Without this there is no normal to compare to.
   const probeStation = live.sort((a, b) => b.samples - a.samples)[0];
   if (probeStation) {
