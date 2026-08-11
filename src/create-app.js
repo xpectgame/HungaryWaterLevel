@@ -22,6 +22,7 @@ const { createStore } = require('./store');
 const { withProviderFilter } = require('./store/provider-filter');
 const { TtlCache } = require('./lib/cache');
 const { createRouter } = require('./routes');
+const { feedRoute } = require('./routes/alerts');
 const { createCronHandler } = require('./jobs/cron-handler');
 
 /**
@@ -90,6 +91,12 @@ function createApp(ctx) {
   });
 
   app.use('/api/v1', createRouter(ctx));
+
+  // At the site root, not under /api/v1. A feed is something a reader subscribes to
+  // rather than an API call, /feed.xml is where a reader's software looks for it, and
+  // the URL has to survive an API version bump - the whole point of a subscription is
+  // that nobody touches it again.
+  app.use(feedRoute(ctx));
 
   // The scheduled ingest lives inside the app rather than in a separate serverless
   // function, so it is reachable no matter how the host decides to run this project -

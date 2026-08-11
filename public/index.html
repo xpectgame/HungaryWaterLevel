@@ -10,6 +10,9 @@
 <meta property="og:description" content="Élő vízmérleg 30 határszelvényből, negyedóránként frissítve.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>💧</text></svg>">
+<!-- A szerkesztőségek nem járnak vissza egy oldalra: feliratkoznak. Ez az a sor, amitől
+     a böngésző és az olvasó hírolvasója magától megtalálja a riasztásokat. -->
+<link rel="alternate" type="application/atom+xml" title="hovafolyik.hu — riasztások" href="/feed.xml">
 
 <style>
 /* ---------------------------------------------------------------------------
@@ -941,6 +944,11 @@ footer a{color:var(--ink-soft)}
   A vízhozam nem közvetlenül mért érték: vízállásból származik egy vízhozamgörbén keresztül,
   ami jó folyón is 5–10% hibát hordoz. Ezért van minden számnak hibasávja, és ezért nem jelentünk
   szignifikáns eltérést ott, ahol a különbség belefér.
+  <br><br>
+  <strong>Riasztások:</strong> <a href="/feed.xml">Atom-hírcsatorna</a> —
+  árvízi fokozat, tartós kisvíz, és rekordalacsony vízhozam a tízéves sorhoz mérve.
+  Ugyanez JSON-ban: <a href="/api/v1/alerts">/api/v1/alerts</a>.
+  Egy tartósan fennálló állapot egy tétel marad, nem küld új értesítést minden lekérdezéskor.
 </footer>
 
 </div>

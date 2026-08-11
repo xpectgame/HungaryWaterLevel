@@ -86,6 +86,18 @@ jobs:
           check /api/v1/powerplants plants
           check /api/v1/geojson features
           check /api/v1/meta/sources upstream
+          check /api/v1/alerts alerts
+
+      # The feed is XML, not JSON, so the check above cannot see it - and it is the one
+      # endpoint whose consumers never look at the site and would not notice it break.
+      # A single-line python invocation on purpose: an indented heredoc inside a YAML
+      # block scalar hands python leading whitespace and an IndentationError.
+      - name: The alert feed is well-formed Atom
+        run: |
+          set -e
+          curl -fsS http://127.0.0.1:3000/feed.xml -o feed.xml
+          curl -fsS -o /dev/null -w '%{content_type}' http://127.0.0.1:3000/feed.xml | grep -q 'application/atom+xml'
+          python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('feed.xml').getroot(); assert r.tag=='{http://www.w3.org/2005/Atom}feed', r.tag; print('  atom ok,', len(r.findall('{http://www.w3.org/2005/Atom}entry')), 'entries')"
 
       # The page itself, not just the API. A deployment can arrive with every module
       # present and the HTML absent - bundlers trace imports, not filesystem reads.
