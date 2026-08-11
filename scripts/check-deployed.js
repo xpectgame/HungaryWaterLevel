@@ -61,10 +61,29 @@ function line(ok, label, detail) {
   line(fresh, `newest reading is ${ageMin} min old`);
   if (!fresh) problems.push(`data is ${ageMin} minutes old`);
 
-  const errors = (health.lastPoll && health.lastPoll.errors) || health.upstreamErrors || [];
+  // `lastPoll.detail.errors`, not `lastPoll.errors`. The first version of this check read
+  // the shallower path, got undefined, and printed "0 upstream error(s)" as an `ok` -
+  // against a deployment that was in fact failing to store generation. A check that
+  // reports a field it cannot find as good news is worse than no check, because it is
+  // the one you believe. Both the flag and the count are read now.
+  const poll = health.lastPoll || {};
+  const detail = poll.detail || {};
+  const errors = detail.errors || [];
+  line(poll.ok !== false, `last poll ok=${poll.ok}`, poll.timestamp || 'never ran');
+  if (poll.ok === false) problems.push('the last poll reported failure');
+
   line(errors.length === 0, `${errors.length} upstream error(s) on the last poll`,
-    errors.length ? JSON.stringify(errors).slice(0, 300) : '');
-  if (errors.length) problems.push(`${errors.length} upstream error(s)`);
+    errors.length ? JSON.stringify(errors).slice(0, 400) : '');
+  if (errors.length) problems.push(`${errors.length} upstream error(s): ${JSON.stringify(errors).slice(0, 200)}`);
+
+  // Whether the poll actually WROTE what it fetched. A poll can succeed, store the
+  // stations, and quietly store no generation - which is exactly the shape of a MAVIR
+  // rate-limit, and invisible in every other field.
+  line(detail.generationStored !== false, `generation stored = ${detail.generationStored}`,
+    `${detail.stationsStored ?? '?'} station readings, ${detail.stationsRejected ?? '?'} rejected`);
+  if (detail.generationStored === false) {
+    problems.push('the last poll stored no generation - MAVIR did not answer usably (it rate-limits hard: a burst puts the whole host into 429)');
+  }
 
   // --- the ENTSO-E question -------------------------------------------------
   const snapshot = await get('/api/v1/snapshot');
@@ -87,9 +106,21 @@ function line(ok, label, detail) {
     );
   }
 
+  // Generation, which is a SEPARATE upstream from the one above: unit counts come from
+  // ENTSO-E, the megawatts from MAVIR's source-type aggregates. This started as an
+  // informational line and became a check the first time it ran against production,
+  // where it read 0 of 8 while ENTSO-E was working perfectly - two upstreams, one of
+  // them down, and the line that would have said so was not allowed to fail.
+  const withPower = plants.filter((p) => p.generation && Number.isFinite(p.generation.powerMw));
   const allocMeasured = plants.filter((p) => p.generation && p.generation.confidence === 'measured');
-  line(null, `${allocMeasured.length} of ${plants.length} plants have a measured generation figure`,
-    allocMeasured.map((p) => p.id).join(' '));
+  line(withPower.length > 0, `${withPower.length} of ${plants.length} plants have a generation figure at all`,
+    allocMeasured.length ? `${allocMeasured.length} measured: ${allocMeasured.map((p) => p.id).join(' ')}` : 'none measured');
+  if (withPower.length === 0) {
+    problems.push(
+      'no plant has any generation figure: the MAVIR source-type aggregate is not landing. ' +
+      'Every cooling-water number on the site depends on it, and this is independent of ENTSO-E.',
+    );
+  }
 
   // --- everything the frontend loads ---------------------------------------
   console.log('');
