@@ -396,6 +396,32 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .det-close{border:1px solid var(--line);background:#fff;font:inherit;font-size:11px;
   color:var(--ink-soft);padding:3px 9px;border-radius:99px;cursor:pointer}
 .det-close:focus-visible{outline:2px solid var(--flow);outline-offset:1px}
+
+/* --- groundwater ---------------------------------------------------------
+   The headline is a COUNT, never a level, so it is typeset as a count: a big
+   numerator over a stated denominator. A reader who takes away one number from
+   this section should take away "52 of 89", not a depth in centimetres that
+   would not mean anything across a network measuring in three conventions. */
+.gw-head{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:16px}
+.gw-stat{border:1px solid var(--line);border-radius:12px;padding:12px 14px;
+  background:linear-gradient(180deg,#fbfeff,#f2fafc)}
+.gw-stat .n{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:30px;
+  font-weight:600;line-height:1.05;color:var(--deep)}
+.gw-stat .n small{font-size:14px;color:var(--ink-faint);font-weight:400}
+.gw-stat .lbl{font-size:12px;color:var(--ink-soft);margin-top:5px;line-height:1.35}
+.gw-stat.alarm .n{color:#9c2b16}
+.gw-list{display:grid;gap:7px}
+.gw-row{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr) auto;gap:10px;
+  align-items:baseline;border:1px solid var(--line);border-radius:9px;padding:7px 11px;background:#fff}
+.gw-row .nm{font-weight:600;font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gw-row .nm small{display:block;font-weight:400;font-size:11px;color:var(--ink-faint)}
+.gw-row .verdict{font-size:12px;line-height:1.3}
+.gw-row .age{font-size:11px;color:var(--ink-faint);font-family:var(--mono);white-space:nowrap}
+.gw-row.rec{border-color:#e6bcae;background:#fdf6f4}
+@media(max-width:560px){
+  .gw-row{grid-template-columns:minmax(0,1fr) auto}
+  .gw-row .verdict{grid-column:1/-1}
+}
 .barhead{display:grid;grid-template-columns:minmax(96px,1.3fr) 1fr minmax(74px,auto);gap:10px;
   font-size:11px;color:var(--ink-faint);margin-bottom:7px}
 .barhead .mid{position:relative}
@@ -678,6 +704,7 @@ footer a{color:var(--ink-soft)}
     <a href="#s-csapadek">Csapadék</a>
     <a href="#s-hirek">Mi történik</a>
     <a href="#s-tavak">Tavak</a>
+    <a href="#s-retegviz">Rétegvíz</a>
     <a href="#s-vizallas">Vízállás</a>
     <a href="#s-eromuvek">Erőművek</a>
     <a href="#s-elozmeny">48 óra</a>
@@ -867,6 +894,35 @@ footer a{color:var(--ink-soft)}
     átváltás a tó felszínéből jön: egy centiméter a Balatonon 5,94 millió m³, a Velencei-tavon
     0,24 millió. Ez becslés, nem mérés — a tó nem henger, a partközeli sávban egy centi
     nagyobb területet fed le, mint amivel itt számolunk.
+  </p>
+</section>
+
+<section class="card" id="s-retegviz" style="margin-bottom:18px">
+  <h3>A víz, ami nem látszik</h3>
+  <p class="lead" style="margin-bottom:6px">
+    A folyó és a tó a felszínen van. Alattuk <b>rétegvíz</b>: a mélyebb, lezárt vízadó, amiből
+    az ivóvizünk nagy része jön, és ami nem egy esőtől töltődik újra, hanem évtizedek alatt.
+    Ezt a legnehezebb észrevenni, mert nem látszik rajta, ha fogy.
+  </p>
+  <p class="fineprint" style="margin:0 0 14px">
+    Ez nem a talajvíz — nem a kerti kút vize, hanem az alatta lévő réteg. A talajvízszintet
+    ez az adatforrás egyáltalán nem közli, semmilyen kóddal, egyetlen kútnál sem.
+  </p>
+
+  <div id="gw-head" class="gw-head"></div>
+  <div id="gw-list" class="gw-list"></div>
+  <p id="gw-more-wrap" style="margin:10px 0 0">
+    <button type="button" id="gw-more" class="det-close" hidden></button>
+  </p>
+
+  <p class="fineprint" id="gw-coverage" style="margin-top:14px"></p>
+  <p class="fineprint" id="gw-why" style="margin-top:8px">
+    Itt nincs országos átlag, és ez szándékos. Minden kút a saját nullpontjához méri a
+    mélységet, és a hálózat nem ugyanabban az egységben teszi: van, ahol méterben, van, ahol
+    centiméterben, néhol pedig fordított előjellel. Ezeket a számokat összeátlagolni annyit
+    tenne, mint métert és centimétert összeadni — kijönne belőle egy tizedesjegyes szám, ami
+    semmit nem jelent. Amit viszont lehet: minden kutat a <b>saját</b> tíz évéhez mérni, és
+    megszámolni, hányban alacsony most a víz. Minden alábbi szám így készült.
   </p>
 </section>
 
@@ -2195,6 +2251,104 @@ async function loadRain(){
   }
 }
 
+/* --- groundwater ----------------------------------------------------------
+
+   The one section on this page with no headline quantity, because there is no
+   honest one to print. Every other section can say "411 m3/s" or "38 cm"; this
+   one cannot, since the 106 wells behind it measure depth against their own
+   datums in at least three different conventions and averaging them would be
+   adding metres to centimetres.
+
+   So the headline is a COUNT of wells sitting low against their own records,
+   and the section says out loud why it is a count. That is not a hedge - it is
+   the strongest true statement available, and it happens to be the one a reader
+   can actually act on: "half the monitored wells are at their lowest August on
+   record" needs no unit at all.
+-------------------------------------------------------------------------- */
+
+const GW_SHOWN = 14;
+let gwExpanded = false;
+let gwWells = [];
+
+function renderGroundwater(data){
+  const head = $('gw-head');
+  const s = data && data.summary;
+  if(!s || !s.registered){
+    head.innerHTML = '<p class="lead" style="margin:0">A rétegvíz-adat most nem érhető el.</p>';
+    $('gw-list').innerHTML=''; $('gw-more').hidden = true;
+    return;
+  }
+
+  const month = MONTH_ADJ[(data.month||1)-1];
+  const stat = (n, of, label, alarm) =>
+    `<div class="gw-stat${alarm?' alarm':''}">`+
+      `<div class="n">${n}${of!=null?`<small> / ${of}</small>`:''}</div>`+
+      `<div class="lbl">${label}</div>`+
+    `</div>`;
+
+  head.innerHTML =
+    stat(s.recordLow, s.comparable,
+      `kút áll mélyebben, mint bármelyik ${month} napon az elmúlt tíz évben`, s.recordLow > s.comparable/4)+
+    // "a saját", never art(month): the article belongs to "saját", which is always
+    // consonant-initial. Running art() on the month here produced "az saját augusztusi".
+    stat(s.low, s.comparable, `kút a saját ${month} alsó negyedében áll`)+
+    stat(s.comparable, s.registered, 'kút hasonlítható össze a saját múltjával');
+
+  gwWells = (data.wells||[]).filter(w=>w.rank)
+    .sort((a,b)=>(a.rank.percentile ?? 999)-(b.rank.percentile ?? 999));
+  drawGroundwaterList();
+
+  // Two caveats that cannot be read off the numbers: the network is not a uniform
+  // national grid, and the wells that dropped out did so for different reasons.
+  const cov = data.coverage || {};
+  const missing = (cov.missingDirectorates||[]).map(d=>d.name).join(', ');
+  const dropped = s.statuses || {};
+  const bits = [];
+  if(dropped['no-record']) bits.push(`${dropped['no-record']} kútnak nincs tízéves archívuma`);
+  if(dropped['no-month']) bits.push(`${dropped['no-month']} kútnak épp erre a hónapra nincs`);
+  if(dropped.incommensurable) bits.push(
+    `${dropped.incommensurable} kút mai értéke más egységben jön, mint a saját archívuma — ` +
+    `ezeket inkább nem hasonlítjuk össze, mint rosszul`);
+  if(dropped.stale) bits.push(`${dropped.stale} kutat régebben olvastak le, mint hogy mainak lehessen tekinteni`);
+
+  $('gw-coverage').innerHTML =
+    `${cov.wells||0} megfigyelőkút, ${(cov.directorates||[]).length} vízügyi igazgatóság területén`+
+    (missing?`. Nincs benne: ${missing}` : '')+
+    `. A hálózat legsűrűbb Budapest és Debrecen körül, és a Dunántúl déli felén ritka — ` +
+    `ahol nincs pont, ott nem mérünk, nem az, hogy ott rendben van.`+
+    (bits.length?`<br>${cap(bits.join('; '))}.`:'');
+}
+
+function drawGroundwaterList(){
+  const el = $('gw-list');
+  const more = $('gw-more');
+  const shown = gwExpanded ? gwWells : gwWells.slice(0, GW_SHOWN);
+
+  el.innerHTML = shown.map(w => {
+    const hp = historyPhrase(w.rank);
+    const age = w.ageDays==null ? '' : w.ageDays<=1 ? 'ma' : `${w.ageDays} napja`;
+    return `<div class="gw-row${w.rank.band==='record-low'?' rec':''}">`+
+      `<div class="nm">${w.name}<small>${w.settlement||''}</small></div>`+
+      `<div class="verdict ${hp?hp.cls:''}">${hp?hp.text:''}</div>`+
+      `<div class="age">${age}</div>`+
+    `</div>`;
+  }).join('');
+
+  more.hidden = gwWells.length <= GW_SHOWN;
+  more.textContent = gwExpanded
+    ? 'kevesebb'
+    : `mind a ${gwWells.length} kút`;
+}
+
+async function loadGroundwater(){
+  try{
+    const data = await fetch('/api/v1/groundwater',{cache:'no-store'}).then(r=>r.json());
+    renderGroundwater(data);
+  }catch(err){
+    $('gw-head').innerHTML = '<p class="lead" style="margin:0">A rétegvíz-adat most nem érhető el.</p>';
+  }
+}
+
 /* --- what is on its way --------------------------------------------------- */
 
 function renderArrivals(data){
@@ -3350,18 +3504,26 @@ function tick(){
     rainExpanded = !rainExpanded;
     renderRainGauges(rainGauges);
   });
+  $('gw-more').addEventListener('click', () => {
+    gwExpanded = !gwExpanded;
+    drawGroundwaterList();
+  });
 
   // drawBase needs the geometry, so it runs inside loadStatic once geo.json has landed.
   await loadStatic();
   await refresh();
   refreshHistory();
   loadRain();
+  loadGroundwater();
   // Upstream publishes quarter-hourly; polling faster only burns the function budget.
   setInterval(refresh, 60000);
   setInterval(refreshHistory, 300000);
   // Rainfall is cached for half an hour upstream and most gauges report once a day,
   // so asking more often than every ten minutes cannot return anything new.
   setInterval(loadRain, 600000);
+  // Groundwater is cached for an hour upstream and moves centimetres a month. Half an
+  // hour is already far more often than the number can change.
+  setInterval(loadGroundwater, 1800000);
   // A tab left open for hours should be current the moment it is looked at again.
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refresh(); });
   openFromHash();

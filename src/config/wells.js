@@ -52,18 +52,20 @@
  * NO DEPTH IS PUBLISHED AS A DEPTH. A mean of these numbers would be a fabrication with
  * a decimal point on it. What is published is each well against its own ten-year record
  * for the same calendar month - a percentile, which is unit-free and sign-free - and the
- * count of wells sitting low. "Thirty-one of 106 wells are below their own ten-year
- * August quartile" is a real national statement built entirely out of within-well
- * comparisons, and it is the strongest one this data can support.
+ * count of wells sitting low. "79 of 89 comparable wells are below their own ten-year
+ * August quartile, and 52 of them are lower than any August day in that record" is a real
+ * national statement built entirely out of within-well comparisons, and it is the
+ * strongest one this data can support.
  *
  * ---------------------------------------------------------------------------
  * WHERE THE WELLS ARE, WHICH IS NOT EVERYWHERE
  * ---------------------------------------------------------------------------
  * 524 wells are published; 160 answered inside 60 days; 106 had reported within 30 when
  * this registry was built (2026-08-11). Those 106 are spread over nine of the twelve
- * directorates, and unevenly: Budapest and Debrecen together are more than half of them,
- * and Szeged, Nyíregyháza and Szolnok are absent or nearly so. `COVERAGE` below says so
- * in the payload rather than leaving a reader to infer it from a thin-looking map.
+ * directorates, and very unevenly: Budapest (38) and Debrecen (24) are more than half of
+ * them; Szeged has one; Baja, Gyula and Nyíregyháza have none at all. `wellCoverage()`
+ * puts that in the payload rather than leaving a reader to infer it from a thin-looking
+ * map - an empty county here means unmeasured, not fine.
  *
  * The thirty-day bar is deliberate and load-bearing. At seven days the same scan finds
  * 48 wells, two thirds of them around Budapest - a national groundwater map of the Buda
@@ -99,7 +101,7 @@ const VIZIG = Object.freeze({
   7: 'Közép-Tisza-vidéki (Szolnok)',
   8: 'Észak-magyarországi (Miskolc)',
   9: 'Tiszántúli (Debrecen)',
-  10: 'Közép-Tisza-vidéki',
+  10: 'Körös-vidéki (Gyula)',
   11: 'Alsó-Tisza-vidéki (Szeged)',
   12: 'Felső-Tisza-vidéki (Nyíregyháza)',
 });
