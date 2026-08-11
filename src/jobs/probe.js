@@ -1189,11 +1189,12 @@ async function probeWellScan(args = []) {
 
   // Every field the catalogue carries for a well, printed once.
   //
-  // The first scan came back with values spanning -8156.95 to -2.33, which cannot all be
-  // the same quantity in the same unit. Either some wells report depth below ground in cm
-  // and others in mm, or a few report an absolute elevation - and the difference decides
-  // whether a national number can be built at all. If the catalogue names a datum, a
-  // terrain elevation or a unit, it is in this row and guessing is unnecessary.
+  // The first scan came back with values spanning -8156.95 to -2.33, which looked like two
+  // different units in one column. The catalogue settles it: each well carries `Npt`, its
+  // datum in metres above the Baltic, and the series is a depth against that datum. So a
+  // reading is interpretable per well, and `Npt` is what makes it checkable rather than
+  // assumed - without it, -8156.95 is either a deep karst well or a broken record and
+  // there is no way to tell which.
   if (rows.length) {
     console.log(`\ncatalogue fields: ${Object.keys(rows[0]).join(', ')}`);
     console.log(`sample row: ${JSON.stringify(rows[0])}`);
@@ -1242,8 +1243,17 @@ async function probeWellScan(args = []) {
           if (!items.length) return;
           answered += 1;
           const last = new Date(items[items.length - 1].UTCTime);
-          if (now - last > 7 * 24 * 3600 * 1000) return;
-          live.push({ well, samples: items.length, last: items[items.length - 1] });
+          // Everything that answered at all, with its age, rather than a pass/fail at
+          // seven days. A groundwater network is not telemetry: much of it is an observer
+          // with a dip meter on a weekly or fortnightly round, so a seven-day cut silently
+          // discards wells that are working exactly as intended. The age is recorded and
+          // the cut is made later, where it can be seen.
+          live.push({
+            well,
+            samples: items.length,
+            last: items[items.length - 1],
+            ageDays: Math.round((now - last) / 86400000),
+          });
         });
       } catch (err) {
         console.log(`  chunk at ${offset}: FAILED ${err.message}`);
@@ -1251,9 +1261,12 @@ async function probeWellScan(args = []) {
     }
 
     const tag = `${haf}/${atk}`;
+    const within = (d) => live.filter((r) => r.ageDays <= d).length;
     console.log(
       `  ${tag.padEnd(8)} ${String(label).padEnd(14)} ${String(TYPE_LABEL[atk] || atk).padEnd(12)} ` +
-        `answered ${String(answered).padStart(4)}  live ${String(live.length).padStart(4)}`,
+        `answered ${String(answered).padStart(4)}  ` +
+        `within 7d ${String(within(7)).padStart(4)}  14d ${String(within(14)).padStart(4)}  ` +
+        `30d ${String(within(30)).padStart(4)}`,
     );
     // The full list, not a sample. The previous pass kept the first twenty for the emitted
     // document, which is fine for reading a log and useless for building a registry: it
@@ -1271,28 +1284,57 @@ async function probeWellScan(args = []) {
   }
   for (const f of found) {
     console.log(`\n--- AdatFajtaKod ${f.haf} (${f.label}) x AdatTipusKod ${f.atk}: ` +
-      `${f.answered} wells in 60 days, ${f.live.length} within the last week ---`);
+      `${f.answered} wells answered inside 60 days ---`);
     for (const row of [...f.live].sort((a, b) => b.samples - a.samples).slice(0, 20)) {
       console.log(
         `  ${String(row.well.Tsz).padEnd(8)} ${String(row.well.Nev).slice(0, 26).padEnd(26)} ` +
           `vizig ${String(row.well.Vizig).padStart(2)}  ${row.well.Lat.toFixed(3)},${row.well.Lon.toFixed(3)}  ` +
+          `npt ${String(row.well.Npt).padStart(7)}  ` +
           `${String(row.samples).padStart(4)} samples  last ${row.last.UTCTime.slice(0, 16)} = ${row.last.Adat}`,
       );
     }
-    // What the values look like as a population, which is the thing that decides whether
-    // they can be published as numbers at all. A median of -27 next to a minimum of -8157
-    // is not a dry well, it is two different units in one column.
-    const values = f.live.map((r) => Number(r.last.Adat)).filter(Number.isFinite).sort((a, b) => a - b);
+
+    // How many directorates this actually covers.
+    //
+    // 48 wells sounds national and is not: the first pass was two thirds Budapest. A
+    // groundwater map that is really a map of the Buda hills has to say so, and the only
+    // way to know is to count before building anything on it.
+    const byVizig = new Map();
+    for (const row of f.live) byVizig.set(row.well.Vizig, (byVizig.get(row.well.Vizig) || 0) + 1);
+    console.log(`  directorates: ${[...byVizig.entries()].sort((a, b) => b[1] - a[1])
+      .map(([v, n]) => `${v}:${n}`).join(' ')}`);
+
+    // What the values look like against their own datum, in metres above the Baltic.
+    // A raw column running -8157 to +8.6 is uninterpretable; the same column plus each
+    // well's Npt is an elevation, and an elevation can be sanity-checked against the
+    // terrain it sits under.
+    const rows2 = f.live
+      .map((r) => ({ v: Number(r.last.Adat), npt: Number(r.well.Npt), name: r.well.Nev }))
+      .filter((r) => Number.isFinite(r.v));
+    const values = rows2.map((r) => r.v).sort((a, b) => a - b);
     if (values.length) {
       const at = (q) => values[Math.min(values.length - 1, Math.floor(q * values.length))];
-      console.log(`  values: min ${values[0]}  p25 ${at(0.25)}  median ${at(0.5)}  p75 ${at(0.75)}  max ${values[values.length - 1]}`);
+      console.log(`  raw:     min ${values[0]}  p25 ${at(0.25)}  median ${at(0.5)}  p75 ${at(0.75)}  max ${values[values.length - 1]}`);
+      for (const [div, unit] of [[100, 'cm'], [1, 'm']]) {
+        const abs = rows2.filter((r) => Number.isFinite(r.npt)).map((r) => r.npt + r.v / div).sort((a, b) => a - b);
+        if (!abs.length) continue;
+        const a = (q) => abs[Math.min(abs.length - 1, Math.floor(q * abs.length))];
+        console.log(`  npt+v/${String(div).padEnd(3)} (${unit}): min ${a(0).toFixed(1)}  median ${a(0.5).toFixed(1)}  max ${abs[abs.length - 1].toFixed(1)} mBf`);
+      }
     }
   }
   // The whole point of the scan: a machine-readable list of wells worth registering.
+  //
+  // Npt travels with every well. It is the datum the reading is measured against, so
+  // without it the number in the registry is a quantity with no origin - and the one
+  // check that can catch a broken well (does datum plus depth land somewhere plausible
+  // under the terrain) becomes impossible after the fact.
   emitDocument('well-scan', found.map((f) => ({
-    adatFajtaKod: f.haf, adatTipusKod: f.atk, answered: f.answered, live: f.live.length,
+    adatFajtaKod: f.haf, adatTipusKod: f.atk, answered: f.answered,
     wells: f.live.map((r) => ({ tsz: r.well.Tsz, name: r.well.Nev, vizig: r.well.Vizig,
-      lat: r.well.Lat, lon: r.well.Lon, samples: r.samples, last: r.last.UTCTime, value: r.last.Adat })),
+      lat: r.well.Lat, lon: r.well.Lon, npt: r.well.Npt, telepules: r.well.Telepules,
+      uzem: r.well.Uzem, samples: r.samples, last: r.last.UTCTime, ageDays: r.ageDays,
+      value: r.last.Adat })),
   })), 'src/config/wells.json (after review)');
 }
 
