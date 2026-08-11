@@ -624,6 +624,41 @@ async function probeSite(baseUrl) {
           : '   (gauges differ from each other, as real rivers do)'),
     );
   }
+
+  // The sections that are not in the snapshot.
+  //
+  // /snapshot answering correctly says nothing about a route added since - and a new
+  // endpoint that 500s in production is invisible from here, because the page renders
+  // the rest of itself perfectly well without it. Each one is checked for the field that
+  // proves it did real work, not merely for HTTP 200: this project has been fooled by a
+  // 200 with an empty body more than once.
+  console.log('\n  the sections that are not in /snapshot:');
+  const extras = [
+    ['groundwater', '/api/v1/groundwater', (d) => {
+      const s = d.summary || {};
+      if (!s.registered) return { ok: false, note: 'no wells registered' };
+      if (!s.comparable) return { ok: false, note: `${s.registered} wells, none comparable - the bake or the feed is missing` };
+      return { ok: true, note: `${s.comparable}/${s.registered} comparable, ${s.low} low, ${s.recordLow} at a ten-year low` };
+    }],
+    ['rainfall', '/api/v1/rainfall?days=30', (d) => {
+      const gauges = Object.keys(d.gauges || {}).length;
+      return { ok: gauges > 0, note: `${gauges} gauges` };
+    }],
+    ['archive', '/api/v1/archive', (d) => ({
+      ok: Array.isArray(d.days) ? d.days.length > 0 : Boolean(d),
+      note: Array.isArray(d.days) ? `${d.days.length} days` : 'responded',
+    })],
+  ];
+
+  for (const [name, path, check] of extras) {
+    try {
+      const body = await fetchJson(`${base}${path}`, { timeoutMs: 30000 });
+      const { ok, note } = check(body);
+      console.log(`    ${name.padEnd(14)} ${ok ? 'OK  ' : 'EMPTY'}  ${note}`);
+    } catch (err) {
+      console.log(`    ${name.padEnd(14)} FAIL  ${err.message.split('\n')[0]}`);
+    }
+  }
 }
 
 /**
