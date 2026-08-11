@@ -653,7 +653,12 @@ async function probeMavirCharts() {
 
   let html;
   try {
-    html = await fetchText(url, { timeoutMs: 30000, headers: browserHeaders('https://rtdwweb.mavir.hu') });
+    // fetchText returns { body, contentType }, not a string - the first version of this
+    // called .matchAll on the wrapper object and died on the first line.
+    ({ body: html } = await fetchText(url, {
+      timeoutMs: 30000,
+      headers: browserHeaders('https://rtdwweb.mavir.hu'),
+    }));
   } catch (err) {
     console.log(`FAILED: ${err.message}`);
     console.log('A 429 means the host is rate limited - wait, do not retry in a loop.');
