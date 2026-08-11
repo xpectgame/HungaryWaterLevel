@@ -274,6 +274,26 @@ test('the frontend is served from the app root', async () => {
     // ten-year verdict it produced dark red text on a dark red block, unreadable. That
     // was the third time in this file one purpose's class landed on another's element -
     // after .sortbar on the rain switcher, and these same rules on the SVG marks.
+    // The map's SVG shapes and the HTML cards share several class names - `.lake`,
+    // `.node`, `.plant`, `.mark`. An SVG rule with `opacity` or `fill` on a BARE
+    // selector reaches the cards too, and the card rule does not override a property it
+    // never sets: `.lake{opacity:.55}` written for the map silently rendered the whole
+    // lakes section at 55% and made it look switched off. Fourth instance of this in
+    // this file, so it gets a rule: SVG-only properties belong behind `#map`.
+    // `opacity` specifically, not every SVG property: `fill` and `stroke-width` do
+    // nothing to an HTML div, so a bare `.river{fill:none}` is inert. `opacity` applies
+    // to both, which is exactly why it was the one that crossed over and why it was
+    // invisible - the card rule sets background and border and never touches opacity, so
+    // there was nothing to override it.
+    for (const cls of ['lake', 'node', 'plant', 'river', 'mark']) {
+      const rule = html.match(new RegExp(`^\\.${cls}\\{([^}]*)\\}`, 'm'));
+      if (!rule) continue;
+      assert.ok(
+        !/(^|;)\s*opacity\s*:/.test(rule[1]),
+        `.${cls} sets opacity on a bare selector, which reaches the HTML cards too; scope it to #map`,
+      );
+    }
+
     const phrase = html.slice(html.indexOf('function historyPhrase'));
     const body = phrase.slice(0, phrase.indexOf('\n}'));
     const verdictClasses = [...body.matchAll(/cls:\s*'([a-z-]+)'/g)].map((m) => m[1]);

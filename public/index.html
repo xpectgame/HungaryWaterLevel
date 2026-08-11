@@ -162,7 +162,12 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .abroad{fill:#e4ebee;stroke:#d0dee3;stroke-width:.6}
 .abroad-label{font-size:9px;letter-spacing:.22em;text-transform:uppercase;fill:#b3c8d0;pointer-events:none}
 .border-outline{fill:url(#basin);stroke:var(--deep);stroke-width:1.4;opacity:1;stroke-linejoin:round}
-.lake{fill:var(--shallow);opacity:.55;stroke:var(--flow);stroke-width:.5}
+/* #map, not bare `.lake`. The lake CARDS further down are also `.lake`, and this rule's
+   `opacity:.55` was the only place opacity was set on either - so the card rule below
+   overrode the background and the border and left every card rendering at 55%, which
+   made the whole lakes section look switched off. The map shape is what needs to be
+   translucent; a card is not. */
+#map .lake{fill:var(--shallow);opacity:.55;stroke:var(--flow);stroke-width:.5}
 
 .river{fill:none;stroke-linecap:round;stroke-linejoin:round}
 /* Context watercourses: present so the country reads as a river network, quiet enough
