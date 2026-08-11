@@ -3,7 +3,7 @@
 const express = require('express');
 const { listStations, getStation, UNGAUGED_INFLOW } = require('../config/stations');
 const { describeStage } = require('../domain/stage');
-const { rankFlow, loadHistory, QUANTILES } = require('../domain/flow-history');
+const { rankFlow, loadHistory, findAnalogues, QUANTILES } = require('../domain/flow-history');
 const { parseRange, toCsv } = require('../lib/params');
 const { asyncRoute } = require('../lib/async-route');
 const { withMeta } = require('./balance');
@@ -40,7 +40,15 @@ module.exports = function stationRoutes(ctx) {
     if (!station) return res.status(404).json({ error: `Unknown station '${req.params.id}'` });
 
     const readings = await store.latestReadings(config.maxReadingAgeMs);
-    return res.json(await withMeta(decorate(station, readings[station.id]), ctx));
+    const reading = readings[station.id];
+    const body = decorate(station, reading);
+    // Only on the single-station response, never on the list: this is a paragraph's
+    // worth of context for a gauge someone opened, and thirty copies of it would triple
+    // the payload the map polls every cycle for something the map never shows.
+    body.analogues = reading && Number.isFinite(reading.flowM3s)
+      ? findAnalogues(station.id, reading.flowM3s, { at: reading.timestamp })
+      : null;
+    return res.json(await withMeta(body, ctx));
   }));
 
   /** GET /stations/:id/timeseries?days=|from=&to=&limit=&format=csv */

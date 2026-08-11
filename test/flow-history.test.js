@@ -169,3 +169,63 @@ test('percentileWithin is monotonic across the whole range', () => {
   }
   assert.strictEqual(previous, 100);
 });
+
+// ---------------------------------------------------------------------------
+// Analogue years - the only forward-looking thing on the site, and not a forecast
+// ---------------------------------------------------------------------------
+
+const YEARLY = {
+  'tisza-szeged': {
+    2018: [null, null, null, null, null, null, null, 287.5, 252.25, null, null, null],
+    2019: [null, null, null, null, null, null, null, 297.5, 178.25, null, null, null],
+    2022: [null, null, null, null, null, null, null, 140.25, 266.68, null, null, null],
+    2025: [null, null, null, null, null, null, null, 131, 149.5, null, null, null],
+  },
+};
+
+const inAug = { at: Date.UTC(2026, 7, 15), document: YEARLY };
+
+test('only years within tolerance count as comparable', () => {
+  // "The closest year on record" is meaningless when the closest is twice the flow, and
+  // a reader who hears "the last time it was like this" will not go and check.
+  const { findAnalogues } = require('../src/domain/flow-history');
+  const r = findAnalogues('tisza-szeged', 135, inAug);
+  const years = r.matches.map((m) => m.year).sort();
+  assert.deepStrictEqual(years, [2022, 2025], 'only the two low Augusts are within 25% of 135');
+});
+
+test('a value unlike every past year returns nothing rather than the least-bad match', () => {
+  const { findAnalogues } = require('../src/domain/flow-history');
+  assert.strictEqual(findAnalogues('tisza-szeged', 900, inAug), null);
+});
+
+test('what happened next is per year, never averaged', () => {
+  // 2022 went +90% and 2025 +14%. "+52% on average" would be a number that happened in
+  // neither year, and it is exactly the number that would get quoted.
+  const { findAnalogues } = require('../src/domain/flow-history');
+  const r = findAnalogues('tisza-szeged', 135, inAug);
+  assert.strictEqual(r.matches.length, 2);
+  for (const m of r.matches) assert.ok(Number.isFinite(m.changePct));
+  assert.ok(!('averageChangePct' in r), 'an average would be quoted as though it were a forecast');
+});
+
+test('the closest year comes first', () => {
+  const { findAnalogues } = require('../src/domain/flow-history');
+  const r = findAnalogues('tisza-szeged', 135, inAug);
+  assert.strictEqual(r.matches[0].year, 2025, '131 is closer to 135 than 140.25 is');
+});
+
+test('December has no next month in the record and is refused', () => {
+  // January of the SAME year came eleven months BEFORE December. Reporting it as what
+  // happened next would present the past as the future.
+  const { findAnalogues } = require('../src/domain/flow-history');
+  const dec = { 'x': { 2022: Array.from({ length: 12 }, () => 100) } };
+  assert.strictEqual(findAnalogues('x', 100, { at: Date.UTC(2026, 11, 15), document: dec }), null);
+  assert.ok(findAnalogues('x', 100, { at: Date.UTC(2026, 10, 15), document: dec }), 'November is fine');
+});
+
+test('an unbaked document is absent, not an error', () => {
+  const { findAnalogues } = require('../src/domain/flow-history');
+  assert.strictEqual(findAnalogues('tisza-szeged', 135, { document: null }), null);
+  assert.strictEqual(findAnalogues('nincs-ilyen', 135, inAug), null);
+});

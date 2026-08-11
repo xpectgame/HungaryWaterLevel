@@ -229,6 +229,86 @@ function monthlyMedian(stationId, month, document = loadHistory()) {
   return Number.isFinite(record.p[3]) ? record.p[3] : null;
 }
 
+const YEARLY_PATH = path.join(__dirname, '..', 'config', 'flow-yearly.json');
+let cachedYearly;
+
+function loadYearly({ reload = false } = {}) {
+  if (cachedYearly !== undefined && !reload) return cachedYearly;
+  try {
+    cachedYearly = JSON.parse(fs.readFileSync(YEARLY_PATH, 'utf8'));
+  } catch {
+    cachedYearly = null;
+  }
+  return cachedYearly;
+}
+
+/**
+ * The years this month most resembles, and what the next month did in them.
+ *
+ * THIS IS NOT A FORECAST, and the distinction is the whole reason it is allowed to
+ * exist. The upstream publishes no forecast at all - AdatTipusKod 5 answers HTTP 500 -
+ * so anything shaped like one here would be invented. What this says instead is a fact
+ * about the past: "the last August this low was 2022, and September came in 90% higher".
+ * A reader can draw their own inference; the page does not draw it for them.
+ *
+ * Two rules keep it from becoming a forecast by accident:
+ *
+ *   - A year only counts as an analogue if it is within TOLERANCE of today. "The closest
+ *     year on record" is meaningless when the closest is twice the flow, and a reader
+ *     hearing "the last time it was like this" will not check.
+ *   - What happened next is reported per year, never averaged. Three years that went
+ *     up 90%, down 5% and up 12% are not "up 32% on average" - they are three different
+ *     things that happened, and the spread is the honest answer.
+ *
+ * @returns {object|null} null when there is no archive, no next month, or no close year
+ */
+const ANALOGUE_TOLERANCE = 0.25;   // +-25% of today's value counts as comparable
+const MAX_ANALOGUES = 3;
+
+function findAnalogues(stationId, value, opts = {}) {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const document = opts.document !== undefined ? opts.document : loadYearly();
+  const byYear = document && document[stationId];
+  if (!byYear) return null;
+
+  const at = opts.at ? new Date(opts.at) : new Date();
+  const month = at.getUTCMonth();
+  const next = (month + 1) % 12;
+
+  const matches = [];
+  for (const [year, months] of Object.entries(byYear)) {
+    const then = months[month];
+    const after = months[next];
+    if (!Number.isFinite(then) || then <= 0 || !Number.isFinite(after)) continue;
+    // December's "next month" is the following January, which is a different year and
+    // is not in this record. Skipping it is right: pretending January of the SAME year
+    // came after December would report the past as the future.
+    if (next < month) continue;
+    const distance = Math.abs(then - value) / value;
+    if (distance > ANALOGUE_TOLERANCE) continue;
+    matches.push({
+      year: Number(year),
+      thisMonthM3s: then,
+      nextMonthM3s: after,
+      changePct: round(((after - then) / then) * 100, 0),
+      distancePct: round(distance * 100, 0),
+    });
+  }
+
+  if (!matches.length) return null;
+  matches.sort((a, b) => a.distancePct - b.distancePct || b.year - a.year);
+
+  return {
+    month: month + 1,
+    nextMonth: next + 1,
+    valueM3s: round(value, 1),
+    yearsConsidered: Object.keys(byYear).length,
+    tolerancePct: ANALOGUE_TOLERANCE * 100,
+    matches: matches.slice(0, MAX_ANALOGUES),
+    note: 'What happened in comparable past years, not a forecast. The upstream publishes none.',
+  };
+}
+
 /** How much of the network has a usable record, for the methodology section. */
 function historyCoverage(document = loadHistory()) {
   if (!document) return { stations: 0, monthsComplete: 0, available: false };
@@ -250,6 +330,6 @@ function round(v, digits) {
 }
 
 module.exports = {
-  rankFlow, rankLake, loadHistory, loadLakeHistory, historyCoverage, percentileWithin,
+  rankFlow, rankLake, loadHistory, loadLakeHistory, loadYearly, findAnalogues, historyCoverage, percentileWithin,
   monthlyMedian, BANDS, QUANTILES, DOCUMENT_PATH, LAKE_DOCUMENT_PATH,
 };

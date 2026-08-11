@@ -525,6 +525,12 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .band-key{display:inline-block;margin-top:4px;color:var(--ink-faint)}
 .band-key i{display:inline-block;width:16px;height:9px;border-radius:2px;vertical-align:-1px;margin:0 2px;background:var(--flow)}
 .band-key .k-mid{opacity:.30} .band-key .k-wide{opacity:.18}
+/* The analogue years. Boxed, because it is the one block on the page that talks about
+   the future at all, and a reader has to see where that framing starts and stops. */
+.analog{margin:12px 0 0;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--sunk);font-size:13px}
+.analog ul{margin:6px 0 0;padding-left:18px}
+.analog li{margin:2px 0;color:var(--ink-soft)}
+.analog-note{display:block;margin-top:8px;font-size:11.5px;color:var(--ink-faint);line-height:1.45}
 .lake-season{font-size:12.5px;color:var(--ink-soft);margin:8px 0 2px;line-height:1.5}
 /* The annual reference, kept but visibly secondary to the seasonal one above it. */
 .meta-year{color:var(--ink-faint)}
@@ -1698,6 +1704,37 @@ function historyPhrase(h){
     case 'record-high':  return { cls:'hb-record-high',  text:`magasabb, mint bármelyik ${m} nap az elmúlt ${y} évben` };
   }
   return null;
+}
+
+const MONTH_NOM2 = ['január','február','március','április','május','június',
+                    'július','augusztus','szeptember','október','november','december'];
+
+/**
+ * "The last time it was this low, here is what happened next."
+ *
+ * The nearest this page comes to looking forward, and it is careful not to be. The
+ * upstream publishes no forecast - the endpoint answers HTTP 500 - so anything shaped
+ * like a prediction here would be made up. This says only what past years did from a
+ * comparable position, names each one, and leaves the inference to the reader.
+ *
+ * Never averaged. Three years that went +90%, +14% and −7% are not "+32% on average";
+ * they are three different things that happened, and the spread IS the answer.
+ */
+function analoguePhrase(a){
+  if(!a || !a.matches || !a.matches.length) return '';
+  // MONTH_NOM (-ban/-ben), not MONTH_ADJ: "ilyen volt augusztusi tájt" is not Hungarian.
+  const m = MONTH_NOM[a.month-1];
+  const nextName = MONTH_NOM2[a.nextMonth-1];
+  const rows = a.matches.map((x) =>
+    `<li><b>${x.year}</b> — akkor ${fmt(x.thisMonthM3s,0)} m³/s volt, `+
+    `${nextName}re <b class="${x.changePct>=0?'hb-high':'hb-low'}">`+
+    `${x.changePct>0?'+':''}${fmt(x.changePct,0)}%</b> `+
+    `(${fmt(x.nextMonthM3s,0)} m³/s)</li>`).join('');
+  return `<div class="analog"><b>Amikor korábban ilyen volt ${m}</b>`+
+    `<ul>${rows}</ul>`+
+    `<span class="analog-note">Ez nem előrejelzés: az OVF nem tesz közzé olyat. `+
+    `Csak annyit mond, mi történt a korábbi években ugyanebből a helyzetből — `+
+    `a ${a.yearsConsidered} vizsgált évből azok, amelyek ${a.tolerancePct}%-on belül vannak a mostani értékhez.</span></div>`;
 }
 
 /** The record itself, with its date - "a mélypont 2022. augusztus 29-én volt, 96 m³/s". */
@@ -2950,6 +2987,9 @@ async function showStation(id){
       (hist2.medianM3s!=null?` ${cap(art(MONTH_ADJ[hist2.month-1]))} ${MONTH_ADJ[hist2.month-1]} medián ${fmt(hist2.medianM3s,0)} m³/s.`:'')+
       ` ${recordSentence(hist2)}`+
       `<span class="det-hist-src"> ${hist2.years} év, ${hist2.days} nap adatából.</span></p>`:'')+
+    // Filled from /stations/:id below. The analogues ride only on the single-station
+    // response, so the list this card is drawn from does not carry them.
+    `<div id="det-analog"></div>`+
     stageDetail(stage)+
     // Hungarian only. The English `note` is documentation for whoever maintains the
     // registry, and printing it here put an English sentence in the middle of a
@@ -2962,6 +3002,17 @@ async function showStation(id){
   // Shareable: the hash names the gauge, so a link lands on the same section someone
   // was looking at rather than at the top of a long page.
   history.replaceState(null, '', '#szelveny=' + encodeURIComponent(id));
+
+  // Separate from the chart fetch on purpose: one failing must not blank the other, and
+  // the analogue block is text a reader can use even when the series is empty.
+  fetch(`/api/v1/stations/${encodeURIComponent(id)}`)
+    .then((r) => r.json())
+    .then((full) => {
+      const el = $('det-analog');
+      // The detail may have been replaced by another gauge while this was in flight.
+      if(el && location.hash.includes(encodeURIComponent(id))) el.innerHTML = analoguePhrase(full.analogues);
+    })
+    .catch(() => {});
 
   try{
     // 30 days, not 2. A two-day window has no shape, and the band below it would be a
