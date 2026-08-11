@@ -50,9 +50,11 @@ const BANDS = Object.freeze([
 
 const DOCUMENT_PATH = path.join(__dirname, '..', 'config', 'flow-history.json');
 const LAKE_DOCUMENT_PATH = path.join(__dirname, '..', 'config', 'lake-history.json');
+const WELL_DOCUMENT_PATH = path.join(__dirname, '..', 'config', 'well-history.json');
 
 let cached;
 let cachedLakes;
+let cachedWells;
 
 /**
  * The baked document, or null when it has not been baked yet.
@@ -90,6 +92,24 @@ function loadLakeHistory({ reload = false } = {}) {
 }
 
 /**
+ * The same shape again for groundwater, in no declared unit at all.
+ *
+ * A third file rather than a `unit` field, for the reason given above and then some: the
+ * wells do not even agree with each other. Each entry carries `rankable`, decided at bake
+ * time from that well's own decade, because a few wells report depth with the opposite
+ * sign and must never be ranked on the same scale as the rest.
+ */
+function loadWellHistory({ reload = false } = {}) {
+  if (cachedWells !== undefined && !reload) return cachedWells;
+  try {
+    cachedWells = JSON.parse(fs.readFileSync(WELL_DOCUMENT_PATH, 'utf8'));
+  } catch {
+    cachedWells = null;
+  }
+  return cachedWells;
+}
+
+/**
  * @param {string} stationId
  * @param {number} flowM3s        today's discharge
  * @param {object} [opts]
@@ -120,6 +140,101 @@ function rankLake(lakeId, levelCm, opts = {}) {
     levelCm,
     opts,
   );
+}
+
+/**
+ * Where a groundwater well sits in ten years of the same calendar month.
+ *
+ * The only statement this data supports. The reading is a depth against that well's own
+ * datum, in whatever unit that well reports - the network mixes metres and centimetres,
+ * and some wells reverse the sign - so the depth itself is not comparable to the well
+ * next to it, let alone averageable into a national figure. A percentile is comparable,
+ * because it is a statement about that well and nothing else.
+ *
+ * ---------------------------------------------------------------------------
+ * THE CHECK THIS FUNCTION EXISTS FOR
+ * ---------------------------------------------------------------------------
+ * A well's archive and its current reading are not guaranteed to be in the same
+ * convention. Four wells in the Aggtelek karst demonstrate it exactly:
+ *
+ *     Ragály K-1    ten-year August median  -80.61      today  +8039
+ *     Szuhafő B-1                           -65.21             +6556
+ *     Jósvafő-1                             -43.84             +4409
+ *     Rakaca K-6                            -16.31             +1638
+ *
+ * That is the same water each time - eighty metres down, sixty-five metres down - with
+ * the sign flipped and the unit changed by a factor of a hundred between the archive and
+ * the live feed. Ranked naively, +8039 against a decade centred on -80.61 is not merely
+ * wrong: it is the highest groundwater level in the entire record, published as a
+ * headline during a drought.
+ *
+ * So a reading is refused unless it is COMMENSURABLE with the record it would be judged
+ * against - inside the ten-year range, widened generously. The width matters in both
+ * directions: too tight and a genuine record low gets thrown away, which is the reading
+ * that matters most; too loose and a unit change sails through. Three times the observed
+ * span, or half the median magnitude when the span is small, separates them by a wide
+ * margin - a real record low is percentages outside the range, a convention change is
+ * multiples.
+ *
+ * A refusal is reported rather than silent. `null` here means the site says nothing about
+ * this well, and the count of refusals is surfaced so that an upstream that switches
+ * convention wholesale shows up as a visible gap instead of a quiet one.
+ */
+function rankWell(wellId, value, opts = {}) {
+  if (wellStatus(wellId, value, opts) !== 'ok') return null;
+
+  const document = opts.document !== undefined ? opts.document : loadWellHistory();
+  const ranked = rankAgainst(document, wellId, value, opts);
+  if (!ranked) return null;
+
+  // `medianM3s` and `ratioToMedian` are meaningless here and are not merely renamed: a
+  // ratio between two depths measured from an arbitrary datum is not a proportion of
+  // anything, and shipping one invites a reader - or a later version of this code - to
+  // say "18% lower than normal" about a number where that phrase has no referent.
+  const { medianM3s, ratioToMedian, unit, ...rest } = ranked;
+  return { ...rest, medianRaw: medianM3s, unit: 'raw' };
+}
+
+/**
+ * Why a well can or cannot be ranked, as a code rather than a bare null.
+ *
+ * `rankWell` has four different reasons to say nothing, and they mean opposite things to
+ * whoever is reading the site. "No archive for this well" is a gap in what OVF published;
+ * "the current reading is not in the same units as its own archive" is a gap that appeared
+ * in the feed and that somebody should look at. Collapsing both into null would hide the
+ * second behind the first, and the second is the one that indicates something changed.
+ */
+function wellStatus(wellId, value, opts = {}) {
+  const document = opts.document !== undefined ? opts.document : loadWellHistory();
+  const entry = document && document[wellId];
+  if (!entry) return 'no-record';
+  if (entry.rankable === false) return 'unrankable';
+  if (!Number.isFinite(value)) return 'no-reading';
+
+  const at = opts.at ? new Date(opts.at) : new Date();
+  const record = Array.isArray(entry.months) ? entry.months[at.getUTCMonth()] : null;
+  if (!record || !Array.isArray(record.p)) return 'no-month';
+  return commensurable(value, record) ? 'ok' : 'incommensurable';
+}
+
+/**
+ * Is this reading the same quantity, in the same unit, as the record?
+ *
+ * Not "is it normal" - an abnormal reading is the point of the whole exercise. This asks
+ * whether it is even the same measurement, which is a question about orders of magnitude
+ * rather than about hydrology.
+ */
+function commensurable(value, record) {
+  const lo = record.min ? record.min.value : Math.min(...record.p.filter(Number.isFinite));
+  const hi = record.max ? record.max.value : Math.max(...record.p.filter(Number.isFinite));
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return false;
+
+  const median = record.p[3];
+  // A well can be extremely stable - four of these have a ten-year span under a metre -
+  // so a margin built only from the span would reject an ordinary seasonal swing. The
+  // median magnitude is the second term for exactly that case.
+  const margin = Math.max(3 * (hi - lo), 0.5 * Math.abs(Number.isFinite(median) ? median : 0), 1);
+  return value >= lo - margin && value <= hi + margin;
 }
 
 /**
@@ -330,6 +445,7 @@ function round(v, digits) {
 }
 
 module.exports = {
-  rankFlow, rankLake, loadHistory, loadLakeHistory, loadYearly, findAnalogues, historyCoverage, percentileWithin,
-  monthlyMedian, BANDS, QUANTILES, DOCUMENT_PATH, LAKE_DOCUMENT_PATH,
+  rankFlow, rankLake, rankWell, wellStatus, loadHistory, loadLakeHistory, loadWellHistory, loadYearly,
+  findAnalogues, historyCoverage, percentileWithin, monthlyMedian,
+  BANDS, QUANTILES, DOCUMENT_PATH, LAKE_DOCUMENT_PATH, WELL_DOCUMENT_PATH,
 };

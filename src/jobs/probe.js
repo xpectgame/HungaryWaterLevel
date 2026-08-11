@@ -1784,11 +1784,17 @@ async function probeWellHistory(args = []) {
   const chunks = Math.ceil(wells.length / CHUNK);
   console.log(`${wells.length} wells, ${YEARS} years, ${chunks} per year = ${chunks * YEARS} requests\n`);
 
-  // well id -> month index -> daily means
+  // well id -> every daily mean it ever reported, kept flat until the whole decade is in.
+  //
+  // Flat rather than bucketed straight into months, because the decision that has to be
+  // made first is which values are the same measurement at all - and that can only be
+  // made against the well's whole record, not one month of it.
+  const daily = new Map();
   const perMonth = new Map();
   const extremes = new Map();
   const yearsIn = new Map();
   for (const well of wells) {
+    daily.set(well.id, []);
     perMonth.set(well.id, Array.from({ length: 12 }, () => []));
     extremes.set(well.id, Array.from({ length: 12 }, () => ({ min: null, max: null })));
     yearsIn.set(well.id, Array.from({ length: 12 }, () => new Set()));
@@ -1839,12 +1845,7 @@ async function probeWellHistory(args = []) {
           for (const [day, bucket] of byDay) {
             const month = Number(day.slice(5, 7)) - 1;
             if (daysInMonth[month] < MIN_DAYS_IN_MONTH) continue;
-            const mean = bucket.sum / bucket.n;
-            perMonth.get(well.id)[month].push(mean);
-            yearsIn.get(well.id)[month].add(year);
-            const ex = extremes.get(well.id)[month];
-            if (ex.min === null || mean < ex.min.value) ex.min = { value: round2(mean), year, day };
-            if (ex.max === null || mean > ex.max.value) ex.max = { value: round2(mean), year, day };
+            daily.get(well.id).push({ day, month, year, mean: bucket.sum / bucket.n });
           }
         });
       } catch (err) {
@@ -1852,6 +1853,46 @@ async function probeWellHistory(args = []) {
       }
     }
     console.log(`  ${year}: ${reached}/${wells.length} wells returned something`);
+  }
+
+  // Throw out the days that are not the same measurement as the rest of the well.
+  //
+  // Eleven of these wells have an archive whose own ten-year span is larger than its
+  // median by a factor of a hundred - Budakeszi-1 sits at -76 all decade and carries a
+  // single +7560, Zsámbék-14 at -177 with a span of 17961. That is the same convention
+  // change that separates the live feed from the archive, except here it is INSIDE the
+  // archive, and it does two kinds of damage at once: it drags the percentiles and the
+  // recorded maximum somewhere absurd, and it inflates the range so far that the
+  // commensurability check downstream can never fire again. A contaminated record does
+  // not merely produce a wrong answer, it disables the thing that would have caught it.
+  //
+  // The test is order of magnitude, not hydrology. Ten times the median magnitude is far
+  // outside anything a water table does in a decade and far inside a hundredfold unit
+  // change, so a genuine record low survives and a stray convention does not. Dropped
+  // counts are printed rather than swallowed: if a well starts shedding half its record,
+  // that is the upstream changing and it should be visible.
+  const OUTLIER_FACTOR = 10;
+  const dropped = new Map();
+  for (const well of wells) {
+    const rows = daily.get(well.id);
+    if (!rows.length) continue;
+    const centre = median(rows.map((r) => r.mean));
+    const allowed = OUTLIER_FACTOR * Math.max(Math.abs(centre), 1);
+    const kept = rows.filter((r) => Math.abs(r.mean - centre) <= allowed);
+    dropped.set(well.id, rows.length - kept.length);
+
+    for (const row of kept) {
+      perMonth.get(well.id)[row.month].push(row.mean);
+      yearsIn.get(well.id)[row.month].add(row.year);
+      const ex = extremes.get(well.id)[row.month];
+      if (ex.min === null || row.mean < ex.min.value) ex.min = { value: round2(row.mean), year: row.year, day: row.day };
+      if (ex.max === null || row.mean > ex.max.value) ex.max = { value: round2(row.mean), year: row.year, day: row.day };
+    }
+  }
+  const contaminated = [...dropped.entries()].filter(([, n]) => n > 0);
+  console.log(`\n${contaminated.length} wells had days in a different convention from their own record:`);
+  for (const [id, n] of contaminated.sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${id.padEnd(26)} ${String(n).padStart(4)} of ${String(daily.get(id).length).padStart(5)} days dropped`);
   }
 
   const out = {};
@@ -1914,6 +1955,20 @@ async function probeWellHistory(args = []) {
   console.log('percentiles are [5 10 25 50 75 90 95] of daily mean depth against each well\'s own datum,');
   console.log('in whatever unit that well reports - which is why nothing here may be averaged across wells');
   emitDocument('well-history', out, 'src/config/well-history.json');
+}
+
+/**
+ * The middle value, used as a robust centre.
+ *
+ * Robust is the operative word: the whole point of the caller is to find values that are
+ * a hundred times off, and a mean would be dragged there by the very outliers it is
+ * meant to be measuring against.
+ */
+function median(values) {
+  if (!values.length) return null;
+  const sorted = values.slice().sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 /** Linear-interpolated percentile of an ascending array - the same rule numpy defaults to. */
