@@ -69,12 +69,35 @@ function line(ok, label, detail) {
   const poll = health.lastPoll || {};
   const detail = poll.detail || {};
   const errors = detail.errors || [];
-  line(poll.ok !== false, `last poll ok=${poll.ok}`, poll.timestamp || 'never ran');
-  if (poll.ok === false) problems.push('the last poll reported failure');
 
-  line(errors.length === 0, `${errors.length} upstream error(s) on the last poll`,
-    errors.length ? JSON.stringify(errors).slice(0, 400) : '');
-  if (errors.length) problems.push(`${errors.length} upstream error(s): ${JSON.stringify(errors).slice(0, 200)}`);
+  // Two station gaps are permanent, documented properties of the upstream network rather
+  // than faults, and they make every poll report failure:
+  //
+  //   lajta-mosonmagyarovar   no usable gauge exists on the Lajta, so no törzsszám
+  //   tisza-tiszasziget       publishes stage but frequently no discharge
+  //
+  // A check that goes red every single run is a check nobody reads by the second week,
+  // and it would have buried the real finding above it. They are counted and shown, but
+  // they do not fail the run - anything else does.
+  const KNOWN_GAPS = new Set(['lajta-mosonmagyarovar', 'tisza-tiszasziget']);
+  const stationErrors = errors.flatMap((e) => e.stationErrors || []);
+  const unexpected = stationErrors.filter((e) => !KNOWN_GAPS.has(e.stationId));
+  const otherErrors = errors.filter((e) => !e.stationErrors);
+
+  line(true, `${stationErrors.length} station gap(s) on the last poll`,
+    `${stationErrors.length - unexpected.length} known, ${unexpected.length} unexpected`);
+
+  if (unexpected.length) {
+    line(false, 'unexpected station errors', JSON.stringify(unexpected).slice(0, 400));
+    problems.push(`${unexpected.length} unexpected station error(s): ${JSON.stringify(unexpected).slice(0, 200)}`);
+  }
+  if (otherErrors.length) {
+    line(false, `${otherErrors.length} non-station upstream error(s)`, JSON.stringify(otherErrors).slice(0, 400));
+    problems.push(`${otherErrors.length} upstream error(s): ${JSON.stringify(otherErrors).slice(0, 200)}`);
+  }
+  // `lastPoll.ok` is false whenever ANY station is missing, so it is false permanently
+  // and says nothing on its own. Reported, never failed on - the lines above decide.
+  line(true, `last poll ok=${poll.ok}`, poll.timestamp || 'never ran');
 
   // Whether the poll actually WROTE what it fetched. A poll can succeed, store the
   // stations, and quietly store no generation - which is exactly the shape of a MAVIR
