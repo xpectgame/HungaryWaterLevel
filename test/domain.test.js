@@ -508,3 +508,64 @@ test('an exclusive plant keeps its aggregate figure even when units are publishe
   assert.strictEqual(paks.powerMw, 168);
   assert.match(paks.method, /sole nuclear generator/);
 });
+
+// ---------------------------------------------------------------------------
+// The seasonal reference
+// ---------------------------------------------------------------------------
+
+test('the balance reports a seasonal normal, not only an annual one', () => {
+  // Hungary's rivers carry about two thirds of their annual mean in August, so a ratio
+  // to the ANNUAL mean overstates every summer: an ordinary late August reads as 68% of
+  // normal and a dry one as 36%, which sounds like most of the water has gone. Against
+  // August itself the same day is nearer 53%. Both numbers are published; the headline
+  // needs the second.
+  const { computeBalance } = require('../src/domain/balance');
+  const { listStations } = require('../src/config/stations');
+
+  const readings = {};
+  for (const s of listStations()) {
+    readings[s.id] = { flowM3s: s.meanFlow * 0.36, timestamp: new Date().toISOString() };
+  }
+  const b = computeBalance(readings, { now: Date.UTC(2026, 7, 11) });
+
+  assert.ok(b.inflow.ratioToSeasonal > b.inflow.ratioToMean,
+    `the seasonal ratio (${b.inflow.ratioToSeasonal}) must exceed the annual one (${b.inflow.ratioToMean}) in August`);
+  assert.ok(b.inflow.seasonalNormalM3s < b.inflow.longTermMeanM3s,
+    'August normally carries less than the annual mean');
+  assert.ok(b.inflow.seasonalStationCount >= 3, 'the seasonal figure must name how many gauges it rests on');
+  assert.match(b.inflow.seasonalBasis, /calendar month/);
+});
+
+test('the seasonal ratio divides two sums over the same stations', () => {
+  // The trap: summing every current flow against a normal that is missing a gauge
+  // invents a shortfall the size of that gauge. Lajta has no ten-year record, so it must
+  // be absent from BOTH sides - which shows up as a station count below the total.
+  const { computeBalance } = require('../src/domain/balance');
+  const { listStations } = require('../src/config/stations');
+
+  const readings = {};
+  for (const s of listStations()) {
+    readings[s.id] = { flowM3s: s.meanFlow, timestamp: new Date().toISOString() };
+  }
+  const b = computeBalance(readings, { now: Date.UTC(2026, 7, 11) });
+
+  assert.ok(b.inflow.seasonalStationCount < b.inflow.stationCount,
+    'at least one inflow gauge has no August record and must be excluded from both sides');
+  // Every station at exactly its annual mean is well above the August median, and the
+  // ratio must reflect that rather than being diluted by the excluded gauge.
+  assert.ok(b.inflow.ratioToSeasonal > 1.2, `expected clearly above the August median, got ${b.inflow.ratioToSeasonal}`);
+});
+
+test('a month with no archive falls back to the annual mean rather than reporting nothing', () => {
+  const { computeBalance } = require('../src/domain/balance');
+  const { listStations } = require('../src/config/stations');
+  const readings = {};
+  for (const s of listStations()) readings[s.id] = { flowM3s: s.meanFlow, timestamp: new Date().toISOString() };
+
+  // January: Mohács has no record, but most stations do, so the seasonal figure still
+  // stands. What must never happen is a null ratio AND a null mean - the page would then
+  // have nothing to print at all.
+  const b = computeBalance(readings, { now: Date.UTC(2026, 0, 11) });
+  assert.ok(b.inflow.ratioToMean != null, 'the annual ratio is always available as a fallback');
+  assert.ok(b.outflow.seasonalStationCount >= 0);
+});

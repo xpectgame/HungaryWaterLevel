@@ -1,6 +1,7 @@
 'use strict';
 
 const { listStations, UNGAUGED_INFLOW } = require('../config/stations');
+const { monthlyMedian } = require('./flow-history');
 
 /**
  * Hungary's instantaneous surface water balance.
@@ -133,6 +134,7 @@ function computeBalance(readings, opts = {}) {
       uncertaintyM3s: round(inflowSigma, 1),
       longTermMeanM3s: round(inflowNormal, 1),
       ratioToMean: inflowNormal > 0 ? round(inflowTotal / inflowNormal, 3) : null,
+      ...seasonal(inflow),
       dailyM3: Math.round(inflowTotal * SECONDS_PER_DAY),
       stationCount: inflow.stationCount,
       measuredCount: inflow.measuredCount,
@@ -145,6 +147,7 @@ function computeBalance(readings, opts = {}) {
       uncertaintyM3s: round(outflowSigma, 1),
       longTermMeanM3s: round(outflowNormal, 1),
       ratioToMean: outflowNormal > 0 ? round(outflowTotal / outflowNormal, 3) : null,
+      ...seasonal(outflow),
       dailyM3: Math.round(outflowTotal * SECONDS_PER_DAY),
       stationCount: outflow.stationCount,
       measuredCount: outflow.measuredCount,
@@ -183,6 +186,9 @@ function sumSide(stations, { get, now, method, historyLookup }) {
   let total = 0;
   let variance = 0;
   let climatologyTotal = 0;
+  let seasonalNormal = 0;
+  let seasonalActual = 0;
+  let seasonalCount = 0;
   let measuredCount = 0;
   let estimatedCount = 0;
   let laggedCount = 0;
@@ -239,6 +245,17 @@ function sumSide(stations, { get, now, method, historyLookup }) {
     variance += sigma * sigma;
     climatologyTotal += station.meanFlow;
 
+    // The seasonal reference, accumulated station by station so the comparison stays
+    // like-for-like: a station with no record for this month contributes to NEITHER the
+    // normal nor the total it is measured against. Summing all the current flows against
+    // a normal that is missing a gauge would invent a shortfall the size of that gauge.
+    const median = monthlyMedian(station.id, monthOf(now));
+    if (median !== null) {
+      seasonalNormal += median;
+      seasonalActual += flow;
+      seasonalCount += 1;
+    }
+
     detail.push({
       id: station.id,
       name: station.name,
@@ -269,6 +286,11 @@ function sumSide(stations, { get, now, method, historyLookup }) {
     climatologyM3s: climatologyTotal,
     // How wet the network is versus its long-term average - used to scale ungauged inflow.
     climatologyRatio: climatologyTotal > 0 ? total / climatologyTotal : 1,
+    // What this side normally carries IN THIS CALENDAR MONTH, and the total of the same
+    // stations right now. Both restricted to gauges with a ten-year record for the month.
+    seasonalNormalM3s: seasonalNormal,
+    seasonalActualM3s: seasonalActual,
+    seasonalCount,
     stationCount: stations.length,
     measuredCount,
     estimatedCount,
@@ -276,6 +298,41 @@ function sumSide(stations, { get, now, method, historyLookup }) {
     warnings,
     substituted,
     stations: detail,
+  };
+}
+
+/** UTC month index, so the comparison uses the same calendar the archive was bucketed by. */
+function monthOf(now) {
+  return new Date(now).getUTCMonth();
+}
+
+/**
+ * The seasonal block of a side's response.
+ *
+ * Reported next to `ratioToMean` rather than replacing it, because they answer different
+ * questions and both are worth asking - but the seasonal one is what a headline should
+ * use. Hungary's rivers run at roughly two thirds of their annual mean in August, so a
+ * perfectly ordinary late summer already reads as "68% of normal" against the year. A
+ * genuinely dry August then reads as 36%, which sounds like most of the water has gone
+ * when the honest figure against the season is nearer 56%. The first number is not
+ * wrong; it is answering "compared with the year" while the reader hears "compared with
+ * what should be there now".
+ *
+ * `ratioToSeasonal` divides two sums over the SAME stations, so it is a like-for-like
+ * comparison even where the archive is incomplete - and `seasonalCount` says how many
+ * gauges it rests on, so a consumer can decline to use it if that is too few.
+ */
+function seasonal(side) {
+  const covered = side.seasonalCount > 0;
+  return {
+    seasonalNormalM3s: covered ? round(side.seasonalNormalM3s, 1) : null,
+    ratioToSeasonal: covered && side.seasonalNormalM3s > 0
+      ? round(side.seasonalActualM3s / side.seasonalNormalM3s, 3)
+      : null,
+    seasonalStationCount: side.seasonalCount,
+    seasonalBasis: covered
+      ? 'median daily discharge for this calendar month over ten years, gauged stations with a record only'
+      : null,
   };
 }
 

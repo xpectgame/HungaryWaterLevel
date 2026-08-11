@@ -154,6 +154,26 @@ function bandFor(percentile) {
   return BANDS[BANDS.length - 1].code;
 }
 
+/**
+ * What this station normally carries in this calendar month - the median day.
+ *
+ * The number the whole balance was missing. Every ratio on the site was drawn against an
+ * ANNUAL mean, and Hungary's rivers run at about two thirds of their annual mean in
+ * August, so a normal late summer already reads as "68% of normal" before anything is
+ * wrong. A genuinely dry August then reads as 36%, which sounds like the rivers have
+ * half vanished when the honest figure against the season is nearer 56%.
+ *
+ * Returns null where the archive has no usable month, so a caller can leave that station
+ * out of both sides of its comparison rather than counting a zero.
+ */
+function monthlyMedian(stationId, month, document = loadHistory()) {
+  const station = document && document[stationId];
+  if (!station || !Array.isArray(station.months)) return null;
+  const record = station.months[month];
+  if (!record || !Array.isArray(record.p)) return null;
+  return Number.isFinite(record.p[3]) ? record.p[3] : null;
+}
+
 /** How much of the network has a usable record, for the methodology section. */
 function historyCoverage(document = loadHistory()) {
   if (!document) return { stations: 0, monthsComplete: 0, available: false };
@@ -174,4 +194,7 @@ function round(v, digits) {
   return Math.round(v * f) / f;
 }
 
-module.exports = { rankFlow, loadHistory, historyCoverage, percentileWithin, BANDS, QUANTILES, DOCUMENT_PATH };
+module.exports = {
+  rankFlow, loadHistory, historyCoverage, percentileWithin, monthlyMedian,
+  BANDS, QUANTILES, DOCUMENT_PATH,
+};

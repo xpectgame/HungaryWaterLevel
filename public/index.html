@@ -1591,6 +1591,41 @@ const MONTH_ADJ = ['januári','februári','márciusi','áprilisi','májusi','jú
 const art = (w) => /^[aáeéiíoóöőuúüű]/i.test(w) ? 'az' : 'a';
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/**
+ * Which "normal" a headline should compare against — the season's, not the year's.
+ *
+ * A ratio to the ANNUAL mean is the number this page led with for months, and it
+ * overstates every summer. Hungary's rivers carry about two thirds of their annual mean
+ * in August, so an entirely ordinary late summer already reads as "68% of normal". A
+ * genuinely dry August then reads as 36%, which sounds like most of the water has gone
+ * when the honest figure against the season is nearer 56%. The number was never wrong -
+ * it answers "compared with the year" while the reader hears "compared with what should
+ * be there now" - but a headline that is reliably misread is a headline that is wrong.
+ *
+ * Falls back to the annual mean, and SAYS so in the label, wherever the ten-year archive
+ * has no month for enough gauges. A quietly different denominator is the failure this
+ * whole change is about.
+ */
+const MONTH_NOM = ['januárban','februárban','márciusban','áprilisban','májusban','júniusban',
+                   'júliusban','augusztusban','szeptemberben','októberben','novemberben','decemberben'];
+
+function seasonalRatio(side){
+  if(side && side.ratioToSeasonal != null && side.seasonalStationCount >= 3){
+    return {
+      ratio: side.ratioToSeasonal,
+      normal: side.seasonalNormalM3s,
+      label: 'az ilyenkor szokásosnak',
+      suffix: MONTH_NOM[new Date().getMonth()],
+      seasonal: true,
+    };
+  }
+  if(side && side.ratioToMean != null){
+    return { ratio: side.ratioToMean, normal: side.longTermMeanM3s,
+             label: 'a sokéves ÉVES átlag', suffix: 'egész évben', seasonal: false };
+  }
+  return null;
+}
+
 function historyPhrase(h){
   // Under five years "az elmúlt N évben" is a claim the record cannot support. The probe
   // already refuses to publish such a month; this is the second lock, because the file
@@ -1669,15 +1704,17 @@ function renderHeadline(b){
   setNumber($('outflow'), b.outflow.totalM3s, 0);
 
   // The comparison first, the bookkeeping second. "3642 m³/s" tells a reader nothing;
-  // "a sokéves átlag 61%-a" tells them everything they came for.
+  // a percentage of normal tells them everything they came for - as long as "normal"
+  // means what they think it means. See seasonalRatio.
   const side = (key, metaId) => {
     const s = b[key];
     const el = $(metaId);
-    if(s.ratioToMean == null){ el.textContent = `${s.stationCount} szelvény`; return; }
-    const band = dryBand(s.ratioToMean);
+    const r = seasonalRatio(s);
+    if(r == null){ el.textContent = `${s.stationCount} szelvény`; return; }
+    const band = dryBand(r.ratio);
     el.innerHTML =
-      `<b class="${band.cls}">a sokéves átlag ${fmt(s.ratioToMean*100,0)}%-a</b>`+
-      `<br>${fmt(s.longTermMeanM3s,0)} m³/s lenne a normális · ${s.stationCount} szelvény · ±${fmt(s.uncertaintyM3s,0)}`;
+      `<b class="${band.cls}">${r.label} ${fmt(r.ratio*100,0)}%-a</b>`+
+      `<br>${fmt(r.normal,0)} m³/s lenne a szokásos ${r.suffix} · ${s.stationCount} szelvény · ±${fmt(s.uncertaintyM3s,0)}`;
   };
   side('inflow','inflow-meta');
   side('outflow','outflow-meta');
@@ -2327,9 +2364,14 @@ function renderFloodBanner(){
  */
 function renderDroughtBanner(b){
   const el = $('drought');
-  const ratio = b.inflow.ratioToMean;
-  if(ratio == null){ el.classList.add('hidden'); return; }
+  // The seasonal comparison, not the annual one. Against the year, a normal August
+  // already reads as 68% and a dry one as 36% - a number that sounds like catastrophe
+  // and is really the calendar. Against August itself, the same day reads 53%: still a
+  // drought, and now a figure a reader can trust.
+  const r = seasonalRatio(b.inflow);
+  if(r == null){ el.classList.add('hidden'); return; }
   el.classList.remove('hidden');
+  const ratio = r.ratio;
 
   const band = dryBand(ratio);
   // The threshold and the sentence come from one constant. They disagreed once - the
@@ -2341,24 +2383,37 @@ function renderDroughtBanner(b){
 
   if(ratio >= 0.85){
     el.className = 'banner ok';
-    el.innerHTML = `<strong>A határon beérkező vízmennyiség a sokéves átlag ${pct}%-a</strong> — `+
-      `nagyjából annyi, amennyi ilyenkor szokásos.`;
+    el.innerHTML = `<strong>A határon beérkező vízmennyiség ${r.label} ${pct}%-a</strong> — `+
+      // Not "roughly what is usual" at 115%: that is above usual, and a banner that
+      // calls a wet spell normal is the same failure as one that calls a normal August
+      // a catastrophe, pointing the other way. Also avoids saying "ilyenkor" twice.
+      (ratio >= 1.15
+        ? `a szokásosnál több víz érkezik.`
+        : `nagyjából a szokásos mennyiség.`);
     return;
   }
 
   el.className = 'banner ' + (ratio < 0.6 ? 'warn' : 'note');
   el.innerHTML =
-    `<strong>Kevés a víz: a beáramlás a sokéves átlag ${pct}%-a</strong> (${band.word}). `+
-    `Egy átlagos évben ilyenkor ${fmt(b.inflow.longTermMeanM3s,0)} m³/s érkezne a határon, most `+
-    `${fmt(b.inflow.totalM3s,0)}.`+
-    (low.length ? ` ${low.length} határszelvény a saját átlagának a ${fmt(LOW*100,0)}%-át sem éri el: `+
+    `<strong>Kevés a víz: a beáramlás ${r.label} ${pct}%-a</strong> (${band.word}). `+
+    `${r.seasonal?`${cap(r.suffix)} általában`:'Egy átlagos évben ilyenkor'} `+
+    `${fmt(r.normal,0)} m³/s érkezne a határon, most ${fmt(b.inflow.totalM3s,0)}.`+
+    // "its own average" is the ANNUAL one here, and saying so matters now that the
+    // headline beside it is seasonal: two different denominators in one paragraph, with
+    // only one of them named, is how a reader ends up comparing incomparable numbers.
+    (low.length ? ` ${low.length} határszelvény a saját éves átlagának a ${fmt(LOW*100,0)}%-át sem éri el: `+
       low.slice(0,4).map(s=>`${s.name.split('–').pop().trim()} ${fmt(s.ratioToMean*100,0)}%`).join(', ')+
       (low.length>4?` és még ${low.length-4}`:'')+'.' : '')+
     // The strongest thing this page can say, and it needs the ten-year record to say it:
     // not "less than average" - which is true most of the year on most of these rivers -
     // but "less than any day of this month in the whole record". A ratio cannot get here.
     recordLowSentence()+
-    `<br><span style="opacity:.85">Ez a sokéves átlaghoz mért arány, nem hivatalos aszályindex — az a talajnedvességet és a csapadékhiányt is nézi.</span>`;
+    `<br><span style="opacity:.85">`+
+    (r.seasonal
+      ? `Ez az elmúlt tíz év ${MONTH_ADJ[new Date().getMonth()]} mediánjához mért arány, nem az éves átlaghoz — `+
+        `a folyók nyár végén amúgy is az évi átlaguk alatt járnak, ahhoz mérve minden augusztus drámaibbnak látszana. `
+      : `Ez az éves sokéves átlaghoz mért arány; erre a hónapra még nincs elég év a tízéves sorban. `)+
+    `Nem hivatalos aszályindex — az a talajnedvességet és a csapadékhiányt is nézi.</span>`;
 }
 
 /** Border sections currently below anything in their ten-year record for this month. */
