@@ -3,7 +3,7 @@
 const express = require('express');
 const { computeBalance } = require('../domain/balance');
 const { buildSnapshot } = require('../domain/snapshot');
-const { parseRange, parseMethod, parseCoolingModel } = require('../lib/params');
+const { parseRange, parseMethod, parseCoolingModel, toCsv } = require('../lib/params');
 const { asyncRoute } = require('../lib/async-route');
 const { loadLagHistory } = require('../lib/lag-history');
 
@@ -55,6 +55,19 @@ module.exports = function balanceRoutes(ctx) {
       if (error) return res.status(400).json({ error });
 
       const series = await store.balanceSeries(fromMs, toMs, limit);
+
+      if (String(req.query.format).toLowerCase() === 'csv') {
+        const columns = ['timestamp', 'inflow_m3s', 'outflow_m3s', 'net_m3s'];
+        res.type('text/csv; charset=utf-8');
+        res.set('Content-Disposition', 'attachment; filename="hovafolyik-merleg.csv"');
+        return res.send(toCsv(columns, series.map((r) => ({
+          timestamp: r.timestamp,
+          inflow_m3s: r.inflowM3s ?? r.inflow,
+          outflow_m3s: r.outflowM3s ?? r.outflow,
+          net_m3s: r.netM3s ?? r.net,
+        }))));
+      }
+
       return res.json(
         await withMeta(
           {

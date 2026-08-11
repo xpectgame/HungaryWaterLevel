@@ -503,6 +503,13 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .t-hist.hb-record-low,.det-hist b.hb-record-low{background:#fbeae5}
 .t-hist.hb-record-high,.det-hist b.hb-record-high{background:#e8edf9}
 #tip .t-hist{font-size:12.5px;margin-top:5px;line-height:1.35}
+/* The ten-year envelope. Two flat washes of the same hue, no stroke: the reader has to
+   read the CURVE against them, so the bands must sit behind it without competing. */
+.spark .band-wide{fill:var(--flow);opacity:.10}
+.spark .band-mid{fill:var(--flow);opacity:.16}
+.band-key{display:inline-block;margin-top:4px;color:var(--ink-faint)}
+.band-key i{display:inline-block;width:16px;height:9px;border-radius:2px;vertical-align:-1px;margin:0 2px;background:var(--flow)}
+.band-key .k-mid{opacity:.30} .band-key .k-wide{opacity:.18}
 .lake-season{font-size:12.5px;color:var(--ink-soft);margin:8px 0 2px;line-height:1.5}
 /* The annual reference, kept but visibly secondary to the seasonal one above it. */
 .meta-year{color:var(--ink-faint)}
@@ -2912,14 +2919,32 @@ async function showStation(id){
   history.replaceState(null, '', '#szelveny=' + encodeURIComponent(id));
 
   try{
-    const h = await fetch(`/api/v1/stations/${encodeURIComponent(id)}/timeseries?days=2&limit=300`).then(r=>r.json());
+    // 30 days, not 2. A two-day window has no shape, and the band below it would be a
+    // flat stripe: the whole point of drawing the ten-year range is to see a curve
+    // travel through it.
+    const h = await fetch(`/api/v1/stations/${encodeURIComponent(id)}/timeseries?days=30&limit=600`).then(r=>r.json());
     const pts = (h.series||h.readings||[]).filter((p) => Number.isFinite(p.flowM3s));
     const svg = $('det-spark');
     if(pts.length < 2){ $('det-note').textContent = 'Még nincs elég tárolt előzmény ehhez a szelvényhez.'; return; }
 
+    // The ten-year envelope for the months this window covers. This is the thing that
+    // makes the chart readable without numbers: a reader who has never seen a m³/s can
+    // still see that the line is under the shaded area, and that is the whole finding.
+    const bands = h.bands || null;
+    const bandAt = (p) => {
+      if(!bands) return null;
+      const m = new Date(p.timestamp).getUTCMonth() + 1;
+      return bands.byMonth[m] || null;
+    };
+    const bandValues = bands ? Object.values(bands.byMonth).flatMap(b=>b.p).filter(Number.isFinite) : [];
+
     // The station's own long-term mean is included in the range so the reference line
-    // cannot fall outside the chart drawn to show the distance to it.
-    const values = pts.map(p=>p.flowM3s).concat(Number.isFinite(mean) ? [mean] : []);
+    // cannot fall outside the chart drawn to show the distance to it. The band edges go
+    // in for the same reason: a chart scaled to the curve alone would clip the very
+    // range it is being compared against.
+    const values = pts.map(p=>p.flowM3s)
+      .concat(Number.isFinite(mean) ? [mean] : [])
+      .concat(bandValues);
     const W=800,H=120, lo=Math.min(...values)*0.95, hi=Math.max(...values)*1.05;
     const x = (i) => ((i/(pts.length-1))*W).toFixed(1);
     const y = (v) => H - ((v-lo)/(hi-lo||1))*H;
@@ -2941,14 +2966,49 @@ async function showStation(id){
     if(Number.isFinite(mean)){
       const ny = y(mean).toFixed(1);
       normPath = `<path class="norm norm-in" d="M0 ${ny} L${W} ${ny}"/>`+
-        `<text class="norm-label norm-in" x="6" y="${(y(mean)-4).toFixed(1)}">sokéves átlag: ${fmt(mean,0)} m³/s</text>`;
+        `<text class="norm-label norm-in" x="6" y="${(y(mean)-4).toFixed(1)}">éves átlag: ${fmt(mean,0)} m³/s</text>`;
     }
 
-    svg.innerHTML = `<path class="area" d="${d} L${W} ${H} L0 ${H} Z"/>${normPath}<path d="${d}"/>${stagePath}`;
+    // Two nested ribbons: the middle half of the last ten years, and the middle 90%.
+    // Built as one polygon per band by running the upper edge left-to-right and the
+    // lower edge back, so a month boundary steps both edges at the same x - the seam is
+    // visible on purpose, because that is where the reference genuinely changes.
+    const ribbon = (loIdx, hiIdx, cls) => {
+      if(!bands) return '';
+      const top = [], bottom = [];
+      for(const [i,p] of pts.entries()){
+        const b = bandAt(p);
+        if(!b) return '';
+        top.push(`${x(i)} ${y(b.p[hiIdx]).toFixed(1)}`);
+        bottom.unshift(`${x(i)} ${y(b.p[loIdx]).toFixed(1)}`);
+      }
+      return `<path class="${cls}" d="M${top.join(' L')} L${bottom.join(' L')} Z"/>`;
+    };
+    // Indices into [5,10,25,50,75,90,95]: 0..6 is p5..p95, 2..4 is p25..p75.
+    const wide = ribbon(0, 6, 'band-wide');
+    const mid  = ribbon(2, 4, 'band-mid');
+
+    // The filled area under the curve is dropped when there is a band, because it sits
+    // on top of the thing the band exists to show: a solid wash from the curve to the
+    // floor hides exactly the region a reader needs to see the curve fall into. With a
+    // band, the line alone carries the curve and the bands carry the weight.
+    const area = wide ? '' : `<path class="area" d="${d} L${W} ${H} L0 ${H} Z"/>`;
+    svg.innerHTML = `${wide}${mid}${area}${normPath}<path d="${d}"/>${stagePath}`;
     const hrs = Math.round((Date.parse(pts[pts.length-1].timestamp)-Date.parse(pts[0].timestamp))/3600000);
-    $('det-note').innerHTML = `${pts.length} mérés az elmúlt ${hrs} órából — vízhozam <span style="color:var(--flow)">———</span>`+
+    const days = Math.round(hrs/24);
+    const anyBand = bands && Object.values(bands.byMonth)[0];
+    $('det-note').innerHTML =
+      `${pts.length} mérés az elmúlt ${days>=2?days+' napból':hrs+' órából'} — vízhozam <span style="color:var(--flow)">———</span>`+
       (stagePath ? ` és vízállás <span style="color:var(--deep)">- - -</span>, külön skálán` : '')+
-      (Number.isFinite(mean) ? `. A pontozott vonal a sokéves átlag.` : '.');
+      (Number.isFinite(mean) ? `. A pontozott vonal az éves átlag.` : '.')+
+      // The band needs one sentence, once, or it is just decoration. Said in days and
+      // years rather than in percentiles: "half of all August days" is a thing anyone
+      // can picture, "the interquartile range" is not.
+      (wide
+        ? `<br><span class="band-key"><i class="k-mid"></i> ide esett az ${MONTH_ADJ[new Date().getMonth()]} napok fele `+
+          `<i class="k-wide"></i> és ide a 90%-a, az elmúlt ${anyBand.years} évben. `+
+          `Ami a sávok alatt fut, az a szokásosnál kevesebb.</span>`
+        : '');
   }catch{ $('det-note').textContent = 'Az előzményt nem sikerült betölteni.'; }
 }
 

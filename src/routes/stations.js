@@ -3,8 +3,8 @@
 const express = require('express');
 const { listStations, getStation, UNGAUGED_INFLOW } = require('../config/stations');
 const { describeStage } = require('../domain/stage');
-const { rankFlow } = require('../domain/flow-history');
-const { parseRange } = require('../lib/params');
+const { rankFlow, loadHistory, QUANTILES } = require('../domain/flow-history');
+const { parseRange, toCsv } = require('../lib/params');
 const { asyncRoute } = require('../lib/async-route');
 const { withMeta } = require('./balance');
 
@@ -43,7 +43,7 @@ module.exports = function stationRoutes(ctx) {
     return res.json(await withMeta(decorate(station, readings[station.id]), ctx));
   }));
 
-  /** GET /stations/:id/timeseries?from=&to=&limit= */
+  /** GET /stations/:id/timeseries?days=|from=&to=&limit=&format=csv */
   router.get('/stations/:id/timeseries', asyncRoute(async (req, res) => {
     const station = getStation(req.params.id);
     if (!station) return res.status(404).json({ error: `Unknown station '${req.params.id}'` });
@@ -52,6 +52,24 @@ module.exports = function stationRoutes(ctx) {
     if (error) return res.status(400).json({ error });
 
     const series = await store.stationSeries(station.id, fromMs, toMs, limit);
+
+    // CSV is what a newsroom actually opens. The station id and name are repeated on
+    // every row rather than put in a header comment, because a comment is not CSV and
+    // the first thing anyone does with one of these is concatenate several.
+    if (String(req.query.format).toLowerCase() === 'csv') {
+      const columns = ['station_id', 'station_name', 'river', 'timestamp', 'flow_m3s', 'water_level_cm', 'quality'];
+      res.type('text/csv; charset=utf-8');
+      res.set('Content-Disposition', `attachment; filename="${station.id}.csv"`);
+      return res.send(toCsv(columns, series.map((r) => ({
+        station_id: station.id,
+        station_name: station.name,
+        river: station.river,
+        timestamp: r.timestamp,
+        flow_m3s: r.flowM3s,
+        water_level_cm: r.waterLevelCm ?? null,
+        quality: r.quality,
+      }))));
+    }
     return res.json(
       await withMeta(
         {
@@ -59,6 +77,12 @@ module.exports = function stationRoutes(ctx) {
           from: new Date(fromMs).toISOString(),
           to: new Date(toMs).toISOString(),
           count: series.length,
+          // The ten-year envelope for every calendar month this window touches, so a
+          // chart can draw the curve inside the range that is normal for the season
+          // rather than against a single flat annual line. Keyed by month so a window
+          // crossing a boundary steps where the seasons do, instead of smoothing over
+          // the one place the reference genuinely changes.
+          bands: bandsFor(station.id, fromMs, toMs),
           series: series.map((r) => ({
             timestamp: r.timestamp,
             flowM3s: r.flowM3s,
@@ -115,6 +139,36 @@ function decorate(station, reading) {
           history: rankFlow(station.id, reading.flowM3s, { at: reading.timestamp }),
         }
       : null,
+  };
+}
+
+/**
+ * The percentile envelope for each calendar month a time window covers.
+ *
+ * Returns `{ "8": { p: [...], years, days }, "9": {...} }`, 1-based months, and omits
+ * any month the archive has no usable record for - so a consumer draws a band where
+ * there is one and nothing where there is not, rather than a band that quietly narrows
+ * to a line.
+ */
+function bandsFor(stationId, fromMs, toMs) {
+  const document = loadHistory();
+  const entry = document && document[stationId];
+  if (!entry || !Array.isArray(entry.months)) return null;
+
+  const bands = {};
+  // Step a day at a time: a window is at most a few weeks here, and walking it is the
+  // one way to get exactly the months it touches without special-casing year rollover.
+  const DAY = 86400000;
+  for (let t = fromMs; t <= toMs + DAY; t += DAY) {
+    const month = new Date(t).getUTCMonth();
+    const record = entry.months[month];
+    if (!record || bands[month + 1]) continue;
+    bands[month + 1] = { p: record.p, years: record.years, days: record.days };
+  }
+  return {
+    quantiles: QUANTILES,
+    unit: entry.unit || 'm3s',
+    byMonth: bands,
   };
 }
 
