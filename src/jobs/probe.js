@@ -2272,6 +2272,28 @@ async function main() {
     return;
   }
 
+  // An unrecognised flag must not mean "do everything".
+  //
+  // Every branch above returns, so reaching here with arguments in hand means none of
+  // them named an action - and the default was to run the full discovery sweep against
+  // both upstreams. A single typo therefore cost MAVIR twenty requests and earned a 429
+  // across the whole host, which is how `--deployed` (a flag this CLI never had) turned
+  // into a rate-limit. Someone else's public service should not pay for our spelling.
+  const ACTIONS = new Set(['--vizugy', '--mavir', '--discover', '--portal']);
+  if (args.length && !args.some((a) => ACTIONS.has(a))) {
+    console.error(`Unrecognised probe arguments: ${args.join(' ')}`);
+    console.error(
+      '\nActions: --live --vizugy --mavir --discover --portal --thresholds --lakes --datatypes\n' +
+      '         --forecast --groundwater --rain --matrix --rain-scan --well-scan --rain-normals\n' +
+      '         --flow-history --lake-history --well-history --operations --mavir-charts\n' +
+      '         --mavir-sheet --entsoe --find=NAME --url=URL --page=URL --site=BASEURL\n' +
+      '\nRefusing to fall back to the full sweep: it is dozens of requests against two\n' +
+      'public services, and a typo is not a reason to spend them.',
+    );
+    process.exitCode = 2;
+    return;
+  }
+
   const doAll = !args.some((a) => a === '--vizugy' || a === '--mavir');
 
   if (doAll || args.includes('--vizugy')) {
