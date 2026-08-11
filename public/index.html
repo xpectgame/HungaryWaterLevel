@@ -498,6 +498,7 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .t-hist.hb-record-low,.det-hist b.hb-record-low{background:#fbeae5}
 .t-hist.hb-record-high,.det-hist b.hb-record-high{background:#e8edf9}
 #tip .t-hist{font-size:12.5px;margin-top:5px;line-height:1.35}
+.lake-season{font-size:12.5px;color:var(--ink-soft);margin:8px 0 2px;line-height:1.5}
 .det-hist{font-size:13px;color:var(--ink-soft);margin:10px 0 0;line-height:1.55}
 .det-hist-src{color:var(--ink-faint)}
 
@@ -911,7 +912,7 @@ footer a{color:var(--ink-soft)}
       <p><strong>Tíz év, ugyanaz a hónap.</strong> Minden szelvényre kiszámoltuk, hogy az elmúlt
       tíz évben milyen napi vízhozamok fordultak elő <em>ugyanabban a naptári hónapban</em>, és a
       mai értéket ehhez az eloszláshoz mérjük. Ezért tud az oldal olyat mondani, hogy „az augusztusi
-      napok legszárazabb 5%-ában”, vagy hogy „alacsonyabb, mint bármelyik augusztusi nap az elmúlt
+      napok legalacsonyabb 5%-ában”, vagy hogy „alacsonyabb, mint bármelyik augusztusi nap az elmúlt
       tíz évben” — ezt az arányszám önmagában nem tudja megmondani. A szelvény oldalán ott áll a
       hónap mediánja és az eddigi mélypont dátuma is.</p>
       <p>Amit ez nem tud: tíz év rövid. Ha a mai érték az egész rögzített időszaknál alacsonyabb,
@@ -1649,7 +1650,7 @@ function historyPhrase(h){
   const y = h.years;
   switch(h.band){
     case 'record-low':   return { cls:'hb-record-low',   text:`alacsonyabb, mint bármelyik ${m} nap az elmúlt ${y} évben` };
-    case 'very-low':     return { cls:'hb-very-low',     text:`${art(m)} ${m} napok legszárazabb 5%-ában` };
+    case 'very-low':     return { cls:'hb-very-low',     text:`${art(m)} ${m} napok legalacsonyabb 5%-ában` };
     case 'low':          return { cls:'hb-low',          text:`${art(m)} ${m} napok alsó negyedében` };
     case 'normal':       return { cls:'hb-normal',       text:`a szokásos ${m} sávban` };
     case 'high':         return { cls:'hb-high',         text:`${art(m)} ${m} napok felső negyedében` };
@@ -1674,13 +1675,22 @@ function renderStationTip(st, flow){
   const mean = st.longTermMeanM3s;
   const ratio = (flow!=null && mean) ? flow/mean : null;
   const stage = st.current && st.current.stage;
-  const hist = historyPhrase(st.current && st.current.history);
+  const hist2 = (st.current && st.current.history) || null;
+  const hist = historyPhrase(hist2);
   $('tip').innerHTML =
     `<div class="t-name">${st.name}</div>`+
     `<div class="t-val">${fmt(flow,1)} <span style="font-size:12px;color:var(--ink-faint)">m³/s</span></div>`+
     `<div class="t-sub">${st.role==='inflow'?'belépő':st.role==='outflow'?'kilépő':'belső mérce'}`+
-    (mean?` · sokéves átlag ${fmt(mean,0)}`:'')+
+    (mean?` · éves átlag ${fmt(mean,0)}`:'')+
     (ratio!=null?` · <b>${fmt(ratio*100,0)}%</b>`:'')+`</div>`+
+    // The same reading against THIS month, which is the comparison a reader is actually
+    // making. Both are shown: the annual one places the section on its own river, the
+    // seasonal one says whether today is unusual. On most of these gauges in August they
+    // differ by twenty points or more, and only the second one means "unusual".
+    (hist2 && hist2.ratioToMedian!=null
+      ? `<div class="t-sub">${MONTH_ADJ[hist2.month-1]} medián ${fmt(hist2.medianM3s,0)} · `+
+        `<b>${fmt(hist2.ratioToMedian*100,0)}%</b></div>`
+      : '')+
     (stage?`<div class="t-sub">vízállás <b>${fmt(stage.cm,0)} cm</b>`+
       (stage.grade?` · <b style="color:var(--alarm)">${stage.gradeName}</b>`
         : stage.aboveRecordLowCm!=null?` · ${fmt(stage.aboveRecordLowCm,0)} cm-rel a minimum fölött`:'')+`</div>`:'')+
@@ -2122,6 +2132,18 @@ function renderLakes(data){
         `<span>${fmt(s.recordHighCm,0)} cm</span></div>`
       : '';
 
+    // Where the level sits in ten years of THIS month. The rail above shows the whole
+    // recorded range, which is the right frame for a record but the wrong one for "is
+    // this normal": on a regulated lake the same centimetre is ordinary in March and
+    // very low in September, and the rail cannot say which.
+    const h = (c && c.history) || null;
+    const hp = historyPhrase(h);
+    const season = h && h.medianM3s!=null
+      ? `<div class="lake-season">${cap(MONTH_ADJ[h.month-1])} medián <b>${fmt(h.medianM3s,0)} cm</b>`+
+        (h.ratioToMedian!=null?` — ez annak a <b>${fmt(h.ratioToMedian*100,0)}%</b>-a`:'')+
+        (hp?` · <b class="${hp.cls}">${hp.text}</b>`:'')+`</div>`
+      : '';
+
     const facts =
       `<div class="facts">`+
       `<b>${fmt(l.surface.areaKm2,0)}</b> km² felszín`+
@@ -2132,7 +2154,7 @@ function renderLakes(data){
       `</div>`;
 
     return `<div class="lake ${has?'':'dim'}">`+
-      head + rail +
+      head + rail + season +
       trendRows(l) +
       (l.unavailableReason?`<p class="why">${l.unavailableReason}</p>`:'')+
       facts +
@@ -2251,6 +2273,10 @@ function renderRainTip(g){
 function renderLakeTip(l){
   const c = l.current, s = c && c.stage;
   const week = l.trend.week;
+  const h = (c && c.history) || null;
+  // Same phrasing function as the rivers: "az augusztusi napok legalacsonyabb 5%-ában"
+  // reads identically whether the number behind it was m3/s or cm.
+  const hp = historyPhrase(h);
   $('tip').innerHTML =
     `<div class="t-name">${l.name}</div>`+
     `<div class="t-val" style="color:var(--deep)">${c&&Number.isFinite(c.levelCm)?fmt(c.levelCm,0):'–'} `+
@@ -2258,7 +2284,16 @@ function renderLakeTip(l){
     `<div class="t-sub">${l.gauge?l.gauge+' mérce':'nincs közzétett vízszint'}`+
     (s&&s.aboveRecordLowCm!=null?` · ${fmt(s.aboveRecordLowCm,0)} cm-rel a minimum fölött`:'')+`</div>`+
     (week?`<div class="t-sub">7 nap: <b>${week.cm>0?'+':''}${fmt(week.cm,0)} cm</b>`+
-      (week.volumeMm3!=null?` · ${week.volumeMm3>0?'+':''}${fmt(week.volumeMm3,1)} millió m³`:'')+`</div>`:'');
+      (week.volumeMm3!=null?` · ${week.volumeMm3>0?'+':''}${fmt(week.volumeMm3,1)} millió m³`:'')+`</div>`:'')+
+    // The lake's own seasonal reference. The Balaton is regulated to a target that moves
+    // through the year - median 120 cm in March, 100 in August, 91 in September - so a
+    // level only means something once you know which month it is. That is the entire
+    // reason this line exists, and why an annual figure never appeared here.
+    (h && h.medianM3s!=null
+      ? `<div class="t-sub">${MONTH_ADJ[h.month-1]} medián ${fmt(h.medianM3s,0)} cm`+
+        (h.ratioToMedian!=null?` · <b>${fmt(h.ratioToMedian*100,0)}%</b>`:'')+`</div>`
+      : '')+
+    (hp?`<div class="t-hist ${hp.cls}">${hp.text}</div>`:'');
 }
 
 function showLake(id){
@@ -2806,8 +2841,17 @@ async function showStation(id){
     `<div style="font-size:12.5px;color:var(--ink-faint)">${role}${st.upstreamCountry?' · '+st.upstreamCountry+' felől':''}</div></div>`+
     `<div class="det-val">${live?fmt(live.flowM3s,1):'–'} <span style="font-size:14px;color:var(--ink-faint)">m³/s</span></div></div>`+
     `<div class="det-meta">`+
-      (mean?`<span>sokéves átlag <b>${fmt(mean,0)}</b> m³/s</span>`:'')+
-      (ratio!=null?`<span>most az átlag <b>${fmt(ratio*100,0)}%</b>-a</span>`:'')+
+      (mean?`<span>éves átlag <b>${fmt(mean,0)}</b> m³/s</span>`:'')+
+      (ratio!=null?`<span>az éves átlag <b>${fmt(ratio*100,0)}%</b>-a</span>`:'')+
+      // Both references side by side, each labelled. The annual one was previously the
+      // only figure and was read as "how unusual is this", which it cannot answer on a
+      // river whose August is always low.
+      (hist2 && hist2.medianM3s!=null
+        ? `<span>${MONTH_ADJ[hist2.month-1]} medián <b>${fmt(hist2.medianM3s,0)}</b> m³/s</span>`
+        : '')+
+      (hist2 && hist2.ratioToMedian!=null
+        ? `<span>az ilyenkor szokásos <b>${fmt(hist2.ratioToMedian*100,0)}%</b>-a</span>`
+        : '')+
       (stage?`<span>vízállás <b>${fmt(stage.cm,0)}</b> cm</span>`:'')+
       (stage&&stage.surfaceMasl!=null?`<span>vízszint <b>${fmt(stage.surfaceMasl,2)}</b> mBf</span>`:'')+
       (st.riverKm?`<span>folyamkilométer <b>${st.riverKm}</b></span>`:'')+

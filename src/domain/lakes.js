@@ -2,6 +2,7 @@
 
 const { LAKES, volumePerCm } = require('../config/lakes');
 const { describeStage } = require('./stage');
+const { rankLake } = require('./flow-history');
 
 /**
  * The state of Hungary's standing water.
@@ -104,6 +105,12 @@ function buildLakes(readings, historyByLake = {}) {
             source: reading.source,
             // Same records, same arithmetic, same code as a river gauge.
             stage: describeStage(levelCm, lake.id),
+            // Where this level sits in ten years of the same calendar month. The Balaton
+            // is regulated to a seasonal target - held high through the summer, drawn
+            // down before winter - so being under its annual average in October is the
+            // plan and being under it in June is a story. An annual figure cannot tell
+            // those apart, which is the whole reason this is here.
+            history: rankLake(lake.id, levelCm, { at: reading.timestamp }),
           }
         : null,
       trend: {

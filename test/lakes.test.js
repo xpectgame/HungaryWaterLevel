@@ -108,3 +108,36 @@ test('a lake reading still has to have a sane timestamp', () => {
     false,
   );
 });
+
+test('a lake level is ranked against its own calendar month', () => {
+  // The Balaton is regulated to a seasonal target - median 120 cm in March, 100 in
+  // August, 91 in September - so a level only means something once you know the month.
+  // Comparing it to an annual average would call the autumn drawdown a drought every
+  // year, and would miss a real one in spring.
+  const { rankLake } = require('../src/domain/flow-history');
+
+  const august = rankLake('balaton', 100, { at: Date.UTC(2026, 7, 11) });
+  const october = rankLake('balaton', 100, { at: Date.UTC(2026, 9, 11) });
+  if (!august || !october) return; // archive not baked in this checkout
+
+  assert.strictEqual(august.unit, 'cm', 'a lake is centimetres, not m3/s');
+  assert.ok(october.percentile > august.percentile,
+    `the same 100 cm must rank higher in October (${october.percentile}) than in August (${august.percentile}), ` +
+    'because the lake is drawn down for winter');
+});
+
+test('a lake below its gauge datum still ranks', () => {
+  // The Fertő sits near zero and goes negative. Discharge drops negatives as instrument
+  // faults; a level must not, or the low end of the distribution - the part a drought
+  // story needs - is cut off.
+  const { rankLake } = require('../src/domain/flow-history');
+  const r = rankLake('ferto', -10, { at: Date.UTC(2026, 7, 11) });
+  if (!r) return;
+  assert.ok(Number.isFinite(r.percentile), 'a negative level must still produce a percentile');
+  assert.strictEqual(r.band, 'record-low');
+});
+
+test('a lake with no archive reports nothing rather than guessing', () => {
+  const { rankLake } = require('../src/domain/flow-history');
+  assert.strictEqual(rankLake('tisza-to', 100, { at: Date.UTC(2026, 7, 11) }), null);
+});

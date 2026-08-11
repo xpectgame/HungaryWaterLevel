@@ -49,8 +49,10 @@ const BANDS = Object.freeze([
 ]);
 
 const DOCUMENT_PATH = path.join(__dirname, '..', 'config', 'flow-history.json');
+const LAKE_DOCUMENT_PATH = path.join(__dirname, '..', 'config', 'lake-history.json');
 
 let cached;
+let cachedLakes;
 
 /**
  * The baked document, or null when it has not been baked yet.
@@ -70,6 +72,24 @@ function loadHistory({ reload = false } = {}) {
 }
 
 /**
+ * The same document shape for lake LEVEL in centimetres.
+ *
+ * A separate file rather than a `unit` field inside one, because mixing m3/s and cm in a
+ * single lookup is how a discharge ends up being compared against a level: the ids do not
+ * overlap today, but nothing in the data would stop it, and the failure would be silent
+ * and absurd rather than loud.
+ */
+function loadLakeHistory({ reload = false } = {}) {
+  if (cachedLakes !== undefined && !reload) return cachedLakes;
+  try {
+    cachedLakes = JSON.parse(fs.readFileSync(LAKE_DOCUMENT_PATH, 'utf8'));
+  } catch {
+    cachedLakes = null;
+  }
+  return cachedLakes;
+}
+
+/**
  * @param {string} stationId
  * @param {number} flowM3s        today's discharge
  * @param {object} [opts]
@@ -78,19 +98,51 @@ function loadHistory({ reload = false } = {}) {
  * @returns {object|null} null when this station or month has no usable record
  */
 function rankFlow(stationId, flowM3s, opts = {}) {
-  if (!Number.isFinite(flowM3s)) return null;
-  const document = opts.document !== undefined ? opts.document : loadHistory();
-  const station = document && document[stationId];
-  if (!station || !Array.isArray(station.months)) return null;
+  return rankAgainst(
+    opts.document !== undefined ? opts.document : loadHistory(),
+    stationId,
+    flowM3s,
+    opts,
+  );
+}
+
+/**
+ * Where a lake sits in ten years of the same calendar month.
+ *
+ * The Balaton's level is regulated to a seasonal target - held up through the summer,
+ * drawn down before winter - so a comparison to its annual average says almost nothing:
+ * being below it in October is the plan, and being below it in June is a story.
+ */
+function rankLake(lakeId, levelCm, opts = {}) {
+  return rankAgainst(
+    opts.document !== undefined ? opts.document : loadLakeHistory(),
+    lakeId,
+    levelCm,
+    opts,
+  );
+}
+
+/**
+ * The shared ranking, over whichever document it is handed.
+ *
+ * `medianM3s` keeps its name even for a lake in centimetres. Renaming it per unit would
+ * mean every consumer branching on which one it got, and the alternative - a neutral
+ * `median` - would break the station responses already shipped. `unit` on the document
+ * says what the number is; this field says where it sits.
+ */
+function rankAgainst(document, id, value, opts = {}) {
+  if (!Number.isFinite(value)) return null;
+  const entry = document && document[id];
+  if (!entry || !Array.isArray(entry.months)) return null;
 
   const at = opts.at ? new Date(opts.at) : new Date();
   const month = at.getUTCMonth();
-  const record = station.months[month];
+  const record = entry.months[month];
   if (!record || !Array.isArray(record.p)) return null;
 
-  const percentile = percentileWithin(flowM3s, record);
-  const belowRecord = record.min ? flowM3s < record.min.value : false;
-  const aboveRecord = record.max ? flowM3s > record.max.value : false;
+  const percentile = percentileWithin(value, record);
+  const belowRecord = record.min ? value < record.min.value : false;
+  const aboveRecord = record.max ? value > record.max.value : false;
 
   return {
     month: month + 1,
@@ -102,9 +154,12 @@ function rankFlow(stationId, flowM3s, opts = {}) {
     belowRecord,
     aboveRecord,
     medianM3s: record.p[3],
+    unit: entry.unit || 'm3s',
     recordLow: record.min || null,
     recordHigh: record.max || null,
-    ratioToMedian: record.p[3] > 0 ? round(flowM3s / record.p[3], 3) : null,
+    // Guarded on > 0 rather than != 0: a lake level can sit at or below its gauge datum,
+    // and a ratio to a zero or negative median is not a percentage of anything.
+    ratioToMedian: record.p[3] > 0 ? round(value / record.p[3], 3) : null,
     // Carried so a consumer can decide whether "in N years" is worth saying, and so a
     // thin month cannot quietly pass itself off as a decade.
     years: record.years,
@@ -195,6 +250,6 @@ function round(v, digits) {
 }
 
 module.exports = {
-  rankFlow, loadHistory, historyCoverage, percentileWithin, monthlyMedian,
-  BANDS, QUANTILES, DOCUMENT_PATH,
+  rankFlow, rankLake, loadHistory, loadLakeHistory, historyCoverage, percentileWithin,
+  monthlyMedian, BANDS, QUANTILES, DOCUMENT_PATH, LAKE_DOCUMENT_PATH,
 };
