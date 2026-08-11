@@ -1508,6 +1508,118 @@ function writeDocument(name, doc) {
   return file;
 }
 
+/**
+ * The same ten-year monthly distribution, for lake LEVEL rather than river discharge.
+ *
+ * Separate from probeFlowHistory because the quantity is different in every way that
+ * matters: centimetres on a gauge datum rather than m3/s, AdatFajtaKod 68 rather than 87,
+ * and four lakes rather than twenty-nine. Sharing the loop would mean a flag deciding
+ * which of two unit systems every line meant.
+ *
+ * The reason to bake it: the Balaton has a REGULATED seasonal target level - held high
+ * through the summer for boating, drawn down before winter - so "12 cm below the
+ * long-term average" is a different statement in April than in October, and the annual
+ * mean cannot tell those apart. Same failure as the rivers, on a lake whose level is a
+ * standing news story.
+ */
+async function probeLakeHistory(args = []) {
+  console.log('\n########## lake level history ##########');
+  const { LAKES } = require('../config/lakes');
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
+
+  const YEARS = Number(arg('years')) || 10;
+  const now = new Date();
+  const MIN_DAYS_IN_MONTH = 20;
+  const MIN_YEARS = 5;
+
+  console.log(`${LAKES.length} lakes, ${YEARS} years each (${LAKES.length * YEARS} requests)\n`);
+  const out = {};
+
+  for (const lake of LAKES) {
+    const perMonth = Array.from({ length: 12 }, () => []);
+    const extremes = Array.from({ length: 12 }, () => ({ min: null, max: null }));
+    const yearsIn = Array.from({ length: 12 }, () => new Set());
+    let failures = 0;
+
+    for (let back = 1; back <= YEARS; back += 1) {
+      const year = now.getUTCFullYear() - back;
+      try {
+        const rows = await askSeries(
+          [
+            {
+              ItemId: 0,
+              Torzsszam: Number(lake.gaugeTsz),
+              AdatFajtaKod: 68,
+              AdatTipusKod: 100,
+              StartTime: new Date(Date.UTC(year, 0, 1)).toISOString(),
+              EndTime: new Date(Date.UTC(year + 1, 0, 1)).toISOString(),
+            },
+          ],
+          { timeoutMs: 120000 },
+        );
+
+        const byDay = new Map();
+        for (const item of usable(Array.isArray(rows) ? rows[0] : null)) {
+          const cm = Number(item.Adat);
+          // No sign filter here, unlike discharge: a lake level is measured against a
+          // gauge datum and CAN legitimately be negative. Dropping negatives would cut
+          // the low end off exactly the distribution a drought story needs.
+          if (!Number.isFinite(cm)) continue;
+          const day = item.UTCTime.slice(0, 10);
+          const bucket = byDay.get(day) || { sum: 0, n: 0 };
+          bucket.sum += cm;
+          bucket.n += 1;
+          byDay.set(day, bucket);
+        }
+
+        const daysInMonth = Array.from({ length: 12 }, () => 0);
+        for (const day of byDay.keys()) daysInMonth[Number(day.slice(5, 7)) - 1] += 1;
+
+        for (const [day, bucket] of byDay) {
+          const month = Number(day.slice(5, 7)) - 1;
+          if (daysInMonth[month] < MIN_DAYS_IN_MONTH) continue;
+          const mean = bucket.sum / bucket.n;
+          perMonth[month].push(mean);
+          yearsIn[month].add(year);
+          const ex = extremes[month];
+          if (ex.min === null || mean < ex.min.value) ex.min = { value: round2(mean), year, day };
+          if (ex.max === null || mean > ex.max.value) ex.max = { value: round2(mean), year, day };
+        }
+      } catch (err) {
+        failures += 1;
+        if (failures === 1) console.log(`  ${lake.id}: ${err.message}`);
+      }
+    }
+
+    const months = perMonth.map((values, month) => {
+      const years = yearsIn[month].size;
+      if (!values.length || years < MIN_YEARS) return null;
+      const sorted = values.slice().sort((a, b) => a - b);
+      return {
+        p: [5, 10, 25, 50, 75, 90, 95].map((q) => round2(percentileOf(sorted, q))),
+        min: extremes[month].min,
+        max: extremes[month].max,
+        days: values.length,
+        years,
+      };
+    });
+
+    const covered = months.filter(Boolean).length;
+    out[lake.id] = { months, unit: 'cm' };
+    console.log(
+      `  ${lake.id.padEnd(16)} months ${String(covered).padStart(2)}/12  ` +
+        `median [${months.map((m) => (m ? m.p[3].toFixed(0) : '-')).join(' ')}]`,
+    );
+    writeDocument('lake-history', out);
+  }
+
+  console.log('\npercentiles are [5 10 25 50 75 90 95] of daily mean level, cm on the gauge datum');
+  emitDocument('lake-history', out, 'src/config/lake-history.json');
+}
+
 /** Linear-interpolated percentile of an ascending array - the same rule numpy defaults to. */
 function percentileOf(sorted, q) {
   if (!sorted.length) return null;
@@ -1747,6 +1859,11 @@ async function main() {
 
   if (args.includes('--flow-history')) {
     await probeFlowHistory(args);
+    return;
+  }
+
+  if (args.includes('--lake-history')) {
+    await probeLakeHistory(args);
     return;
   }
 
