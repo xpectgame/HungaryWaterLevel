@@ -83,7 +83,12 @@ const { readXlsx, excelDate } = require('../lib/xlsx');
 const DEFAULTS = {
   // The publication app, not the portal that frames it. The host root answers 403.
   baseUrl: 'https://rtdwweb.mavir.hu/rtdwweb/webuser',
-  chartId: '4401', // "Erőművi termelés" - generation per power plant
+  // 9404 - "Erőművi termelés tüzelőanyag szerinti bontásban, nettó üzemirányítási mérés".
+  // NOT 4401: that is "Erőművi termelés" and returns four national totals - gross and
+  // net, planned and actual - with no fuel breakdown at all, so nothing in it resolves
+  // to a source type. Üzemirányítási (operational) rather than elszámolási (settlement),
+  // because settlement data is assembled later and this model wants the current hour.
+  chartId: '9404',
   // The only combination that answers; every other exportType or periodType is a 500.
   exportType: 'xlsx',
   periodType: 'hour',
@@ -105,7 +110,9 @@ const SERIES_ALIASES = {
   naturalGas: ['foldgaz', 'gaz', 'gas', 'naturalgas', 'natural gas'],
   oil: ['olaj', 'oil', 'fuel oil'],
   biomass: ['biomassza', 'biomass'],
-  waste: ['hulladek', 'waste'],
+  // 'szemetegeto' because that is what chart 9404 actually calls it; 'hulladek' matched
+  // nothing in the sheet and the column was being dropped on the floor.
+  waste: ['hulladek', 'szemetegeto', 'szemet', 'waste'],
   wind: ['szel', 'szeleromu', 'wind'],
   pv: ['nap', 'naperomu', 'pv', 'solar', 'fotovoltaikus'],
   hydro: ['viz', 'vizeromu', 'hydro'],
@@ -322,19 +329,51 @@ function parseSheet(rows) {
   return { timestamp: latest.stamp.toISOString(), byPlant, columns: header };
 }
 
+/**
+ * Fold the sheet's columns onto our source types.
+ *
+ * This is the step that was missing. `fetchGeneration` returned `generationMw: {}` with
+ * a comment saying the mapping happened "downstream" - it did not happen anywhere, so
+ * every plant fell through to `unavailable` and the entire cooling model was dark on the
+ * live site while looking perfectly healthy: 200 on every endpoint, no upstream error.
+ *
+ * Columns are SUMMED into their type rather than assigned, because 9404 splits several
+ * of ours in two: "Folyóvizes" and "Víztározós" are both hydro, "Egyéb" and "Egyéb
+ * megújuló" are both other. Assigning would silently keep whichever came last.
+ */
+function foldToSourceTypes(byPlant) {
+  const generationMw = {};
+  const unmapped = [];
+
+  for (const [name, mw] of Object.entries(byPlant)) {
+    // "Hazai termelés (erőművi szumma)" is the total of every column beside it. Folding
+    // it in as though it were a fuel would double the country's generation, and it is
+    // the widest column in the sheet - the single worst thing to get wrong here.
+    if (normalise(name).includes('szumma')) continue;
+
+    const sourceType = resolveSourceType(name);
+    if (!sourceType) { unmapped.push(name); continue; }
+    generationMw[sourceType] = (generationMw[sourceType] || 0) + mw;
+  }
+
+  return { generationMw, unmapped };
+}
+
 /** Fetch the current per-plant generation. Throws on transport failure. */
 async function fetchGeneration(env = process.env, now = new Date()) {
   const { rows } = await fetchSheet(env, now);
   const { timestamp, byPlant } = parseSheet(rows);
+  const { generationMw, unmapped } = foldToSourceTypes(byPlant);
 
   return {
     source: 'mavir',
     fetchedAt: new Date().toISOString(),
     timestamp,
     byPlant,
-    // The aggregate the rest of the project already consumes is derived downstream,
-    // once the column names are mapped onto the plant registry.
-    generationMw: {},
+    generationMw,
+    // Named rather than dropped: a column MAVIR adds or renames stops resolving, and the
+    // failure mode is a source type quietly reading low rather than an error.
+    unmappedColumns: unmapped,
   };
 }
 
@@ -342,6 +381,7 @@ module.exports = {
   fetchSheet,
   exportUrl,
   parseSheet,
+  foldToSourceTypes,
   fetchGeneration,
   parseGeneration,
   resolveSourceType,
