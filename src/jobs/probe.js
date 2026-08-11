@@ -1180,7 +1180,7 @@ async function probeRainScan() {
  * aquifer below it. Labelling one as the other would be the single most misleading thing
  * this project could publish.
  */
-async function probeWellScan() {
+async function probeWellScan(args = []) {
   console.log('\n########## well scan ##########');
 
   const { rows } = await fetchCatalogue(13, { internetOnly: true });
@@ -1191,7 +1191,21 @@ async function probeWellScan() {
   const start = new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString();
   const end = new Date(now.getTime() + 3600 * 1000).toISOString();
 
+  // The data TYPE, which the first pass never varied. It asked 100 (operatív) only, got
+  // almost nothing, and the conclusion recorded was "groundwater is not published" -
+  // when the real finding was "groundwater is not operational telemetry". A well read by
+  // an observer with a dip meter every week is not a live feed, and would never be filed
+  // as one. 100 is kept so the negative result stays reproducible.
+  const typeArg = (args.find((a) => a.startsWith('--types=')) || '').slice(8);
+  const TYPES = (typeArg ? typeArg.split(',') : ['100', '6', '15', '2', '1'])
+    .map(Number).filter(Number.isFinite);
+  const TYPE_LABEL = { 100: 'operatív', 5: 'előrejelzett', 6: 'számított', 15: 'becsült' };
+  console.log(`data types tried: ${TYPES.join(', ')}`);
+
+  const found = [];
+
   for (const [haf, label] of [[69, 'talajvízállás'], [70, 'rétegvízszint']]) {
+  for (const atk of TYPES) {
     const live = [];
     let answered = 0;
 
@@ -1204,7 +1218,7 @@ async function probeWellScan() {
             ItemId: index,
             Torzsszam: Number(well.Tsz),
             AdatFajtaKod: haf,
-            AdatTipusKod: 100,
+            AdatTipusKod: atk,
             StartTime: start,
             EndTime: end,
           })),
@@ -1224,19 +1238,39 @@ async function probeWellScan() {
       }
     }
 
+    const tag = `${haf}/${atk}`;
     console.log(
-      `\n--- AdatFajtaKod ${haf} (${label}): ${answered} wells returned anything in 60 days, ` +
-        `${live.length} within the last week ---`,
+      `  ${tag.padEnd(8)} ${String(label).padEnd(14)} ${String(TYPE_LABEL[atk] || atk).padEnd(12)} ` +
+        `answered ${String(answered).padStart(4)}  live ${String(live.length).padStart(4)}`,
     );
-    for (const row of live.sort((a, b) => b.samples - a.samples).slice(0, 25)) {
+    if (answered > 0) {
+      found.push({ haf, atk, label, answered, live: live.length, sample: live.slice(0, 20) });
+    }
+  }
+  }
+
+  console.log('\n===== combinations that returned anything =====');
+  if (!found.length) {
+    console.log('  none. Groundwater is genuinely not served by this API on any of these pairs.');
+    return;
+  }
+  for (const f of found) {
+    console.log(`\n--- AdatFajtaKod ${f.haf} (${f.label}) x AdatTipusKod ${f.atk}: ` +
+      `${f.answered} wells in 60 days, ${f.live} within the last week ---`);
+    for (const row of f.sample.sort((a, b) => b.samples - a.samples).slice(0, 20)) {
       console.log(
         `  ${String(row.well.Tsz).padEnd(8)} ${String(row.well.Nev).slice(0, 26).padEnd(26)} ` +
           `vizig ${String(row.well.Vizig).padStart(2)}  ${row.well.Lat.toFixed(3)},${row.well.Lon.toFixed(3)}  ` +
-          `Npt=${row.well.Npt ?? '-'}  ${String(row.samples).padStart(4)} samples  ` +
-          `last ${row.last.UTCTime.slice(0, 16)} = ${row.last.Adat}`,
+          `${String(row.samples).padStart(4)} samples  last ${row.last.UTCTime.slice(0, 16)} = ${row.last.Adat}`,
       );
     }
   }
+  // The whole point of the scan: a machine-readable list of wells worth registering.
+  emitDocument('well-scan', found.map((f) => ({
+    adatFajtaKod: f.haf, adatTipusKod: f.atk, answered: f.answered, live: f.live,
+    wells: f.sample.map((r) => ({ tsz: r.well.Tsz, name: r.well.Nev, vizig: r.well.Vizig,
+      lat: r.well.Lat, lon: r.well.Lon, samples: r.samples, last: r.last.UTCTime, value: r.last.Adat })),
+  })), 'src/config/wells.json (after review)');
 }
 
 /**
@@ -1872,7 +1906,7 @@ async function main() {
   }
 
   if (args.includes('--well-scan')) {
-    await probeWellScan();
+    await probeWellScan(args);
     return;
   }
 
