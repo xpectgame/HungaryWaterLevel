@@ -633,7 +633,57 @@ async function probeSite(baseUrl) {
  * the plant registry, and guessing at them is how one plant's output gets attributed to
  * another. One request, because twenty took the host to 429 and kept it there.
  */
-async function probeMavirSheet() {
+/**
+ * Which chart carries the per-source-type mix.
+ *
+ * Chart 4401 is configured as "Erőművi termelés" and returns four national totals -
+ * gross planned, gross actual, net planned, net actual - with no breakdown by fuel at
+ * all. Nothing in it resolves to a source type, so every plant falls through to
+ * `unavailable` and the whole cooling model goes dark. Whether 4401 changed under us or
+ * was always the wrong chart does not matter; the fix is the same, and it needs the id
+ * of the chart that does carry the mix.
+ *
+ * ONE request. The chart list is in the servlet page as data-chart-id attributes, and
+ * this host answers a burst with a 429 that takes the whole site down with it.
+ */
+async function probeMavirCharts() {
+  console.log('\n########## mavir chart catalogue ##########');
+  const { fetchText, browserHeaders } = require('../lib/http');
+  const url = 'https://rtdwweb.mavir.hu/rtdwweb/webuser/GenerateChartsServlet?hunLang=hu-hu&tabId=tab4402';
+
+  let html;
+  try {
+    html = await fetchText(url, { timeoutMs: 30000, headers: browserHeaders('https://rtdwweb.mavir.hu') });
+  } catch (err) {
+    console.log(`FAILED: ${err.message}`);
+    console.log('A 429 means the host is rate limited - wait, do not retry in a loop.');
+    return;
+  }
+
+  // Each option carries the id and a data-content blob with the human label in it.
+  const seen = new Map();
+  for (const m of html.matchAll(/data-chart-id="(\d+)"([\s\S]{0,400}?)(?=data-chart-id="|<\/select>|$)/g)) {
+    const id = m[1];
+    if (seen.has(id)) continue;
+    // The label is the longest run of non-markup text in the blob.
+    const text = m[2]
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&[a-z]+;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    seen.set(id, text.slice(0, 120));
+  }
+
+  console.log(`${seen.size} charts on tab4402\n`);
+  for (const [id, label] of seen) console.log(`  ${id}  ${label}`);
+  console.log('\nThe one to want is a generation MIX - fuel types, not national totals.');
+  console.log('Re-run with --mavir-sheet after setting MAVIR_CHART_ID, or probe one directly:');
+  console.log('  npm run probe -- --mavir-sheet --chart=<id>');
+}
+
+async function probeMavirSheet(args = []) {
+  const chart = (args.find((a) => a.startsWith('--chart=')) || '').slice(8);
+  if (chart) process.env.MAVIR_CHART_ID = chart;
   console.log('\n########## mavir generation export ##########');
   try {
     const { url, rows } = await mavir.fetchSheet();
@@ -1700,8 +1750,13 @@ async function main() {
     return;
   }
 
+  if (args.includes('--mavir-charts')) {
+    await probeMavirCharts();
+    return;
+  }
+
   if (args.includes('--mavir-sheet')) {
-    await probeMavirSheet();
+    await probeMavirSheet(args);
     return;
   }
 
