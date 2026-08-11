@@ -1743,6 +1743,147 @@ async function probeLakeHistory(args = []) {
   emitDocument('lake-history', out, 'src/config/lake-history.json');
 }
 
+/**
+ * Ten years of each registered well, as a distribution per calendar month.
+ *
+ * WHY A WELL CANNOT BE PUBLISHED AS A NUMBER, AND WHAT IS PUBLISHED INSTEAD
+ *
+ * The series is a depth against that well's own datum. Read across the network it spans
+ * -8157 to +8.6, because a karst well under the Buda hills sits eighty metres down and a
+ * well beside the Tisza sits at the surface - both correct, neither comparable. There is
+ * no national groundwater number to be had from this, and averaging one would be a
+ * fabrication dressed as a statistic.
+ *
+ * What IS comparable is a well against its own past. "Eighty centimetres below where this
+ * well normally stands in August" is a true and useful sentence whatever its datum, and
+ * ten wells all saying it at once is a regional signal. So the same ranking machinery the
+ * rivers and lakes use is pointed at each well's own record, and the raw depth is carried
+ * along for anyone who wants it rather than being the headline.
+ *
+ * Cheap compared to the flow bake: a well reports a handful of times a day rather than
+ * every fifteen minutes, so a whole year for forty wells fits in one request.
+ */
+async function probeWellHistory(args = []) {
+  console.log('\n########## groundwater history ##########');
+  const { listWells, WELL_KIND } = require('../config/wells');
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
+
+  const only = (arg('only') || '').split(',').filter(Boolean);
+  const wells = listWells().filter((w) => !only.length || only.includes(w.id));
+  const YEARS = Number(arg('years')) || 10;
+  const CHUNK = 40;
+  const now = new Date();
+  // Lower than the rivers' 20: a well read twice a day still misses days, and a month
+  // with fifteen readings is a perfectly good month for something that moves this slowly.
+  const MIN_DAYS_IN_MONTH = 10;
+  const MIN_YEARS = 5;
+
+  const chunks = Math.ceil(wells.length / CHUNK);
+  console.log(`${wells.length} wells, ${YEARS} years, ${chunks} per year = ${chunks * YEARS} requests\n`);
+
+  // well id -> month index -> daily means
+  const perMonth = new Map();
+  const extremes = new Map();
+  const yearsIn = new Map();
+  for (const well of wells) {
+    perMonth.set(well.id, Array.from({ length: 12 }, () => []));
+    extremes.set(well.id, Array.from({ length: 12 }, () => ({ min: null, max: null })));
+    yearsIn.set(well.id, Array.from({ length: 12 }, () => new Set()));
+  }
+
+  for (let back = 1; back <= YEARS; back += 1) {
+    const year = now.getUTCFullYear() - back;
+    let reached = 0;
+
+    for (let offset = 0; offset < wells.length; offset += CHUNK) {
+      const batch = wells.slice(offset, offset + CHUNK);
+      try {
+        const out = await askSeries(
+          batch.map((well, index) => ({
+            ItemId: index,
+            Torzsszam: Number(well.tsz),
+            AdatFajtaKod: WELL_KIND.adatFajtaKod,
+            AdatTipusKod: WELL_KIND.adatTipusKod,
+            StartTime: new Date(Date.UTC(year, 0, 1)).toISOString(),
+            EndTime: new Date(Date.UTC(year + 1, 0, 1)).toISOString(),
+          })),
+          { timeoutMs: 120000 },
+        );
+        const byItemId = require('../sources/vizugy').indexByItemId(Array.isArray(out) ? out : []);
+
+        batch.forEach((well, index) => {
+          const items = usable(byItemId.get(index));
+          if (!items.length) return;
+          reached += 1;
+
+          const byDay = new Map();
+          for (const item of items) {
+            const value = Number(item.Adat);
+            // No sign filter, and no plausibility filter either. A depth below a datum is
+            // negative nearly everywhere and positive where the water stands above it,
+            // and the extremes are the whole point of keeping a record.
+            if (!Number.isFinite(value)) continue;
+            const day = item.UTCTime.slice(0, 10);
+            const bucket = byDay.get(day) || { sum: 0, n: 0 };
+            bucket.sum += value;
+            bucket.n += 1;
+            byDay.set(day, bucket);
+          }
+
+          const daysInMonth = Array.from({ length: 12 }, () => 0);
+          for (const day of byDay.keys()) daysInMonth[Number(day.slice(5, 7)) - 1] += 1;
+
+          for (const [day, bucket] of byDay) {
+            const month = Number(day.slice(5, 7)) - 1;
+            if (daysInMonth[month] < MIN_DAYS_IN_MONTH) continue;
+            const mean = bucket.sum / bucket.n;
+            perMonth.get(well.id)[month].push(mean);
+            yearsIn.get(well.id)[month].add(year);
+            const ex = extremes.get(well.id)[month];
+            if (ex.min === null || mean < ex.min.value) ex.min = { value: round2(mean), year, day };
+            if (ex.max === null || mean > ex.max.value) ex.max = { value: round2(mean), year, day };
+          }
+        });
+      } catch (err) {
+        console.log(`  ${year} wells ${offset}-${offset + batch.length}: FAILED ${err.message.split('\n')[0]}`);
+      }
+    }
+    console.log(`  ${year}: ${reached}/${wells.length} wells returned something`);
+  }
+
+  const out = {};
+  for (const well of wells) {
+    const months = perMonth.get(well.id).map((values, month) => {
+      const years = yearsIn.get(well.id)[month].size;
+      if (!values.length || years < MIN_YEARS) return null;
+      const sorted = values.slice().sort((a, b) => a - b);
+      return {
+        p: [5, 10, 25, 50, 75, 90, 95].map((q) => round2(percentileOf(sorted, q))),
+        min: extremes.get(well.id)[month].min,
+        max: extremes.get(well.id)[month].max,
+        days: values.length,
+        years,
+      };
+    });
+    const covered = months.filter(Boolean).length;
+    // A well with nothing usable is omitted rather than stored as twelve nulls, so
+    // "is this well in the document" is the same question as "can it be ranked".
+    if (covered) out[well.id] = { months, unit: 'cm' };
+    console.log(
+      `  ${well.id.padEnd(26)} months ${String(covered).padStart(2)}/12  ` +
+        `median [${months.map((m) => (m ? m.p[3].toFixed(0) : '-')).join(' ')}]`,
+    );
+    writeDocument('well-history', out);
+  }
+
+  console.log(`\n${Object.keys(out).length}/${wells.length} wells have a usable record`);
+  console.log('percentiles are [5 10 25 50 75 90 95] of daily mean depth, cm against each well\'s own Npt datum');
+  emitDocument('well-history', out, 'src/config/well-history.json');
+}
+
 /** Linear-interpolated percentile of an ascending array - the same rule numpy defaults to. */
 function percentileOf(sorted, q) {
   if (!sorted.length) return null;
@@ -1987,6 +2128,11 @@ async function main() {
 
   if (args.includes('--lake-history')) {
     await probeLakeHistory(args);
+    return;
+  }
+
+  if (args.includes('--well-history')) {
+    await probeWellHistory(args);
     return;
   }
 
