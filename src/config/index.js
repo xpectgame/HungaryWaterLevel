@@ -78,7 +78,15 @@ function loadConfig(env = process.env) {
 
     // Must exceed the longest travel time in the station registry (~200 h) for the
     // lagged balance to have anything to look up.
-    retentionDays: numEnv(env.RETENTION_DAYS, 400),
+    // 0 means never delete, and that is now the default. 400 days made this a rolling
+    // thirteen-month window: it showed what was happening and kept no evidence of what
+    // had happened, so in ten years there would be nothing left of today. The ten-year
+    // comparisons this site is built on only exist because OVF happened to keep a decade;
+    // a record nobody preserved is a record nobody can check.
+    //
+    // The cost of keeping it is a few tens of megabytes a year. Set RETENTION_DAYS to a
+    // positive number to prune anyway - the option stays, the default flips.
+    retentionDays: numEnv(env.RETENTION_DAYS, 0),
 
     defaultBalanceMethod: strEnv(env.DEFAULT_BALANCE_METHOD) === 'lagged' ? 'lagged' : 'instant',
     defaultCoolingModel: ['thermal', 'units'].includes(strEnv(env.DEFAULT_COOLING_MODEL))

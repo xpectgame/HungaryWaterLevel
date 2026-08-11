@@ -87,6 +87,7 @@ jobs:
           check /api/v1/geojson features
           check /api/v1/meta/sources upstream
           check /api/v1/alerts alerts
+          check /archive baseline
 
       # The feed is XML, not JSON, so the check above cannot see it - and it is the one
       # endpoint whose consumers never look at the site and would not notice it break.

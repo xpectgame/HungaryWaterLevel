@@ -332,15 +332,32 @@ class PostgresStore {
     };
   }
 
-  async prune(retentionDays = 400) {
+  /**
+   * Delete old measurements - and by default, do not.
+   *
+   * 0 or less means keep everything. This used to default to 400 days, which quietly
+   * made the whole project a thirteen-month window: it could say what was happening and
+   * could prove nothing about what had happened. The measurements are the archive, and
+   * an archive that deletes itself is a cache.
+   *
+   * The poll log still rolls at 30 days regardless. That is operational noise about our
+   * own fetches, not a record of the rivers, and nobody will want it in 2036.
+   */
+  async prune(retentionDays = 0) {
+    const { rowCount: logRows } = await this.query(
+      `DELETE FROM ${this.t('poll_log')} WHERE ts < $1`, [Date.now() - 30 * 86400000],
+    );
+
+    if (!(retentionDays > 0)) return 0;
+
     const cutoff = Date.now() - retentionDays * 86400000;
     const results = await Promise.all([
       this.query(`DELETE FROM ${this.t('station_readings')} WHERE ts < $1`, [cutoff]),
       this.query(`DELETE FROM ${this.t('generation')} WHERE ts < $1`, [cutoff]),
       this.query(`DELETE FROM ${this.t('balance_snapshots')} WHERE ts < $1`, [cutoff]),
-      this.query(`DELETE FROM ${this.t('poll_log')} WHERE ts < $1`, [Date.now() - 30 * 86400000]),
     ]);
-    return results.slice(0, 3).reduce((sum, r) => sum + r.rowCount, 0);
+    void logRows;
+    return results.reduce((sum, r) => sum + r.rowCount, 0);
   }
 
   async stats() {

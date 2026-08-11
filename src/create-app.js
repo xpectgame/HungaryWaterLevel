@@ -24,6 +24,7 @@ const { TtlCache } = require('./lib/cache');
 const { createRouter } = require('./routes');
 const { feedRoute } = require('./routes/alerts');
 const shareRoutes = require('./routes/share');
+const archiveRoutes = require('./routes/archive');
 const { createCronHandler } = require('./jobs/cron-handler');
 
 /**
@@ -103,6 +104,11 @@ function createApp(ctx) {
   // site framing a gauge are not API calls, and both URLs have to outlive an API
   // version bump - an embed lives in someone else's published article.
   app.use(shareRoutes(ctx));
+
+  // The archive, at the root and outside the API version. A dated URL published today
+  // has to still resolve in ten years - that is the entire point of it - and /api/v1/
+  // is a promise about a response shape, not about permanence.
+  app.use(archiveRoutes(ctx));
 
   // The scheduled ingest lives inside the app rather than in a separate serverless
   // function, so it is reachable no matter how the host decides to run this project -
