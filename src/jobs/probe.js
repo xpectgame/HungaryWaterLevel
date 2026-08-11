@@ -1382,6 +1382,12 @@ async function probeFlowHistory(args = []) {
 
   console.log(`${stations.length} stations, ${YEARS} years each (${stations.length * YEARS} requests)\n`);
   const out = {};
+  // Second document from the same fetch: per station, per year, the median of each
+  // calendar month. 29 x 10 x 12 numbers, which is nothing, and it answers a question
+  // the percentiles cannot - "the last time August was this low, what did September
+  // do". That is not a forecast, it is what happened before from here, and it is the
+  // only forward-looking sentence this project can make honestly.
+  const yearly = {};
 
   for (const station of stations) {
     const external = EXTERNAL_IDS[station.id];
@@ -1430,15 +1436,28 @@ async function probeFlowHistory(args = []) {
         for (const day of byDay.keys()) {
           daysInMonth[Number(day.slice(5, 7)) - 1] += 1;
         }
+        // Daily means of THIS year alone, so the year's own monthly medians can be
+        // taken below. Separate from perMonth, which pools every year together.
+        const thisYear = Array.from({ length: 12 }, () => []);
+
         for (const [day, bucket] of byDay) {
           const month = Number(day.slice(5, 7)) - 1;
           if (daysInMonth[month] < MIN_DAYS_IN_MONTH) continue;
           const mean = bucket.sum / bucket.n;
           perMonth[month].push(mean);
+          thisYear[month].push(mean);
           yearsIn[month].add(year);
           const ex = extremes[month];
           if (ex.min === null || mean < ex.min.value) ex.min = { value: round2(mean), year, day };
           if (ex.max === null || mean > ex.max.value) ex.max = { value: round2(mean), year, day };
+        }
+
+        const yearMonths = thisYear.map((values) => {
+          if (!values.length) return null;
+          return round2(percentileOf(values.slice().sort((a, b) => a - b), 50));
+        });
+        if (yearMonths.some((v) => v !== null)) {
+          (yearly[station.id] = yearly[station.id] || {})[year] = yearMonths;
         }
       } catch (err) {
         failures += 1;
@@ -1469,12 +1488,17 @@ async function probeFlowHistory(args = []) {
     // if it times out at station 22 the artifact should still carry 22 stations rather
     // than nothing, because the alternative is asking for all 300 again.
     writeDocument('flow-history', out);
+    writeDocument('flow-yearly', yearly);
   }
 
   const complete = Object.values(out).filter((e) => e.months.every(Boolean)).length;
   console.log(`\n${complete} of ${stations.length} stations have all twelve months.`);
   console.log(`percentiles are [5 10 25 50 75 90 95] of daily mean discharge, m3/s`);
   emitDocument('flow-history', out, 'src/config/flow-history.json');
+
+  const yearCount = Object.values(yearly).reduce((n, y) => n + Object.keys(y).length, 0);
+  console.log(`\n${Object.keys(yearly).length} stations x ${yearCount} station-years of monthly medians`);
+  emitDocument('flow-yearly', yearly, 'src/config/flow-yearly.json');
 }
 
 /**
