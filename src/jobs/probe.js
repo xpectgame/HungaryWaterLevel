@@ -1869,18 +1869,50 @@ async function probeWellHistory(args = []) {
       };
     });
     const covered = months.filter(Boolean).length;
-    // A well with nothing usable is omitted rather than stored as twelve nulls, so
-    // "is this well in the document" is the same question as "can it be ranked".
-    if (covered) out[well.id] = { months, unit: 'cm' };
+
+    // Which direction is "wetter", decided from the well's own decade.
+    //
+    // Nearly every well reports a NEGATIVE depth below its datum, so a larger number is
+    // a higher water table. A handful - all in the Miskolc directorate - report a
+    // POSITIVE depth, where a larger number means DEEPER water and every verdict would
+    // come out backwards. Ranking those alongside the rest would not fail loudly; it
+    // would publish "unusually wet" during a drought.
+    //
+    // The two groups are separated by two orders of magnitude, not by a hairline: the
+    // positive-convention wells sit at 754 and above, and the only other wells that ever
+    // read positive are three artesian ones standing 2 to 9 above their datum. Anything
+    // in the empty gap between them would do; 100 is the round number in it.
+    //
+    // Excluded rather than flipped. Flipping would also require knowing the unit, and
+    // five wells out of 106 are not worth a second inference stacked on the first.
+    const medians = months.filter(Boolean).map((m) => m.p[3]);
+    const typical = medians.length ? medians.slice().sort((a, b) => a - b)[Math.floor(medians.length / 2)] : null;
+    const rankable = typical !== null && typical < 100;
+
+    if (covered) {
+      out[well.id] = {
+        months,
+        // Deliberately not 'cm' or 'm'. The unit differs between wells and this document
+        // never claims to know it; every consumer is expected to rank rather than print.
+        unit: 'raw',
+        rankable,
+        ...(rankable ? {} : {
+          note: 'Positive-downward depth convention: larger means deeper. Not ranked alongside the rest.',
+        }),
+      };
+    }
     console.log(
       `  ${well.id.padEnd(26)} months ${String(covered).padStart(2)}/12  ` +
+        `${rankable ? '     ' : ' SKIP'}  ` +
         `median [${months.map((m) => (m ? m.p[3].toFixed(0) : '-')).join(' ')}]`,
     );
     writeDocument('well-history', out);
   }
 
-  console.log(`\n${Object.keys(out).length}/${wells.length} wells have a usable record`);
-  console.log('percentiles are [5 10 25 50 75 90 95] of daily mean depth, cm against each well\'s own Npt datum');
+  const rankable = Object.values(out).filter((e) => e.rankable).length;
+  console.log(`\n${Object.keys(out).length}/${wells.length} wells have a usable record, ${rankable} of them rankable`);
+  console.log('percentiles are [5 10 25 50 75 90 95] of daily mean depth against each well\'s own datum,');
+  console.log('in whatever unit that well reports - which is why nothing here may be averaged across wells');
   emitDocument('well-history', out, 'src/config/well-history.json');
 }
 
