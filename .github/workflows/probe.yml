@@ -23,7 +23,7 @@ on:
         required: true
         default: both
         type: choice
-        options: [both, vizugy, mavir]
+        options: [both, vizugy, mavir, deployed]
       url:
         description: Optional single URL to probe instead (overrides target)
         required: false
@@ -36,7 +36,33 @@ on:
         type: string
 
 jobs:
+  # Is the DEPLOYED site working, and which upstreams is it actually reaching?
+  #
+  # Separate from the probe job because it asks a different question: not "what does OVF
+  # publish" but "is what we published to the world alive". It cannot be answered from a
+  # development sandbox - egress there is policy-filtered and hovafolyik.hu is not on the
+  # allowlist - so a runner is the only vantage point that can see the site from outside.
+  #
+  # It exists mainly to answer one recurring question honestly: a deployment with no
+  # ENTSO-E token returns 200 on every endpoint and quietly falls back to `inferred` unit
+  # counts, so "the API works" proves nothing. This looks for the fallback.
+  deployed:
+    name: Is the live site actually working
+    if: inputs.target == 'deployed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Check
+        env:
+          SITE_URL: ${{ inputs.url }}
+        run: node scripts/check-deployed.js "${SITE_URL:-https://www.hovafolyik.hu}"
+
   probe:
+    if: inputs.target != 'deployed'
     runs-on: ubuntu-latest
     # 60, not 20: --flow-history is 30 stations x 10 years of sub-hourly discharge, one
     # request each, sequentially because this is someone else's public service.

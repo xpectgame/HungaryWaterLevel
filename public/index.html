@@ -461,17 +461,30 @@ svg.map text{user-select:none;-webkit-user-select:none}
 /* No band means no baseline to judge against - drawn as an outline so it cannot be
    mistaken for a reading at the dry end of the scale. */
 .mark.nobase{fill:none;stroke:var(--ink-faint);stroke-width:1.1}
-/* The ten-year verdict. Same band colours as the rain layer, on purpose: a reader who
-   has learned that ochre means "dry" on the map should not have to relearn it in a
-   tooltip. These paint text, so they are `color`, not the `fill` the SVG marks use. */
+/* The ten-year verdict.
+   `hb-` and not the `b-` the map bands use, even though the two mean the same thing.
+   `.b-extreme-deficit` is a legend SWATCH - it paints a background, because that is what
+   a 10px square in a legend needs - and reusing the name for a line of text produced dark
+   red text on a dark red block, unreadable. That is the third time in this file a class
+   picked for one purpose has been applied by another: the sort control that shared
+   .sortbar with the rain switcher, and the SVG marks that got `background` from these
+   very rules. A shared vocabulary of BAND NAMES is right; a shared class between a
+   swatch and a sentence is not. */
 .t-hist,.det-hist b{font-weight:600}
-.t-hist.b-extreme-deficit,.det-hist .b-extreme-deficit{color:#a3341f}
-.t-hist.b-severe-deficit,.det-hist .b-severe-deficit{color:#b25a24}
-.t-hist.b-deficit,.det-hist .b-deficit{color:#a6791f}
-.t-hist.b-near-normal,.det-hist .b-near-normal{color:var(--ink-soft)}
-.t-hist.b-surplus,.det-hist .b-surplus{color:#2f7fb5}
-.t-hist.b-extreme-surplus,.det-hist .b-extreme-surplus{color:#2b4f9e}
-.det-hist{font-size:13px;color:var(--ink-soft);margin:10px 0 0;line-height:1.5}
+.hb-record-low{color:#9c2b16}
+.hb-very-low{color:#a8501a}
+.hb-low{color:#86620f}
+.hb-normal{color:var(--ink-soft)}
+.hb-high{color:#1f6f9e}
+.hb-very-high,.hb-record-high{color:#24468c}
+/* The two record bands are the headline, so they get a tint as well as a colour - a pale
+   wash with dark text on it, which is the readable direction round. */
+.t-hist.hb-record-low,.t-hist.hb-record-high,.det-hist b.hb-record-low,.det-hist b.hb-record-high{
+  display:inline-block;padding:3px 7px;border-radius:5px;border-left:3px solid currentColor}
+.t-hist.hb-record-low,.det-hist b.hb-record-low{background:#fbeae5}
+.t-hist.hb-record-high,.det-hist b.hb-record-high{background:#e8edf9}
+#tip .t-hist{font-size:12.5px;margin-top:5px;line-height:1.35}
+.det-hist{font-size:13px;color:var(--ink-soft);margin:10px 0 0;line-height:1.55}
 .det-hist-src{color:var(--ink-faint)}
 
 /* --- what is on its way --- */
@@ -1586,13 +1599,13 @@ function historyPhrase(h){
   const m = MONTH_ADJ[h.month-1];
   const y = h.years;
   switch(h.band){
-    case 'record-low':   return { cls:'b-extreme-deficit', text:`alacsonyabb, mint bármelyik ${m} nap az elmúlt ${y} évben` };
-    case 'very-low':     return { cls:'b-severe-deficit',  text:`${art(m)} ${m} napok legszárazabb 5%-ában` };
-    case 'low':          return { cls:'b-deficit',         text:`${art(m)} ${m} napok alsó negyedében` };
-    case 'normal':       return { cls:'b-near-normal',     text:`a szokásos ${m} sávban` };
-    case 'high':         return { cls:'b-surplus',         text:`${art(m)} ${m} napok felső negyedében` };
-    case 'very-high':    return { cls:'b-surplus',         text:`${art(m)} ${m} napok legmagasabb 5%-ában` };
-    case 'record-high':  return { cls:'b-extreme-surplus', text:`magasabb, mint bármelyik ${m} nap az elmúlt ${y} évben` };
+    case 'record-low':   return { cls:'hb-record-low',   text:`alacsonyabb, mint bármelyik ${m} nap az elmúlt ${y} évben` };
+    case 'very-low':     return { cls:'hb-very-low',     text:`${art(m)} ${m} napok legszárazabb 5%-ában` };
+    case 'low':          return { cls:'hb-low',          text:`${art(m)} ${m} napok alsó negyedében` };
+    case 'normal':       return { cls:'hb-normal',       text:`a szokásos ${m} sávban` };
+    case 'high':         return { cls:'hb-high',         text:`${art(m)} ${m} napok felső negyedében` };
+    case 'very-high':    return { cls:'hb-very-high',    text:`${art(m)} ${m} napok legmagasabb 5%-ában` };
+    case 'record-high':  return { cls:'hb-record-high',  text:`magasabb, mint bármelyik ${m} nap az elmúlt ${y} évben` };
   }
   return null;
 }
@@ -1624,7 +1637,11 @@ function renderStationTip(st, flow){
         : stage.aboveRecordLowCm!=null?` · ${fmt(stage.aboveRecordLowCm,0)} cm-rel a minimum fölött`:'')+`</div>`:'')+
     // The line the percentage cannot carry: 73% of the annual mean is an ordinary
     // August on some of these rivers and a record on others.
-    (hist?`<div class="t-sub t-hist ${hist.cls}">${hist.text}</div>`:'');
+    // `t-hist` only, NOT `t-sub`. `#tip .t-sub` is an ID selector at specificity (1,0,1)
+    // and the band colour is a bare class at (0,1,0), so wearing both meant the colour
+    // silently lost to --ink-faint on every band. Same shape as the artifact link bug:
+    // the rule that looks more specific in the file is not the one that wins.
+    (hist?`<div class="t-hist ${hist.cls}">${hist.text}</div>`:'');
 }
 function renderPlantTip(p,mw,w){
   $('tip').innerHTML =

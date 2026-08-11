@@ -15,7 +15,8 @@
     "test": "node --test \"test/*.test.js\"",
     "probe": "node src/jobs/probe.js",
     "probe:save": "bash scripts/probe-save.sh",
-    "build:geo": "node scripts/build-geo.js"
+    "build:geo": "node scripts/build-geo.js",
+    "check:deployed": "node scripts/check-deployed.js"
   },
   "dependencies": {
     "express": "^4.21.2",

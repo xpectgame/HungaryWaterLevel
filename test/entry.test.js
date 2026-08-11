@@ -269,6 +269,26 @@ test('the frontend is served from the app root', async () => {
     assert.match(html, /Tíz év, ugyanaz a hónap/, 'the ten-year method must be explained');
     assert.match(html, /Tiszasziget/, 'the gaps in the ten-year record must be named');
 
+    // A class that paints a legend swatch must never be put on a line of text. `.b-*`
+    // sets `background`, because a 10px square in a legend needs one; applied to the
+    // ten-year verdict it produced dark red text on a dark red block, unreadable. That
+    // was the third time in this file one purpose's class landed on another's element -
+    // after .sortbar on the rain switcher, and these same rules on the SVG marks.
+    const phrase = html.slice(html.indexOf('function historyPhrase'));
+    const body = phrase.slice(0, phrase.indexOf('\n}'));
+    const verdictClasses = [...body.matchAll(/cls:\s*'([a-z-]+)'/g)].map((m) => m[1]);
+    assert.strictEqual(verdictClasses.length, 7, `expected seven band classes, found ${verdictClasses.length}`);
+    for (const cls of verdictClasses) {
+      // The namespace is the guard. A bare `b-*` here is the bug: those carry a
+      // `background` for the legend squares, and a sentence wearing one is unreadable.
+      assert.ok(cls.startsWith('hb-'), `${cls} must be in the text-only hb- namespace`);
+      assert.doesNotMatch(
+        html,
+        new RegExp(`^\\.${cls}\\{[^}]*background`, 'm'),
+        `${cls} sets a background on its own; only the .t-hist/.det-hist record tints may`,
+      );
+    }
+
     // The rainfall window buttons wear .sortbar for its styling, so anything that binds
     // behaviour by that class picks them up too - which it did once, setting the bar
     // sort to undefined and throwing on every redraw.
