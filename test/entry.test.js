@@ -312,11 +312,33 @@ test('the frontend is served from the app root', async () => {
 
     // Resource loads only - <script src>, <link href>, <img src>. An anchor to the data
     // source is a link a reader follows, not something the page needs to render.
-    assert.doesNotMatch(
-      html,
-      /<(?:script|link|img|iframe)[^>]+(?:src|href)="(?:https?:)?\/\//,
+    //
+    // Exactly one host is allowed through: the analytics tag. It is listed by name rather
+    // than the rule being relaxed, so adding a second third-party host still fails here
+    // and has to be argued for on its own. The condition for the exemption is the assert
+    // below it - `async`, so a blocked or slow googletagmanager cannot hold up the page.
+    const ALLOWED_THIRD_PARTY = ['www.googletagmanager.com'];
+    const external = [...html.matchAll(/<(?:script|link|img|iframe)[^>]+(?:src|href)="((?:https?:)?\/\/[^"]+)"/g)]
+      .map((m) => m[1])
+      .filter((url) => !ALLOWED_THIRD_PARTY.some((host) => url.includes(host)));
+    assert.deepStrictEqual(
+      external,
+      [],
       'no runtime dependency on a third-party host: the page must work when a CDN does not',
     );
+
+    // The analytics tag must never block rendering. Without `async` a slow or blocked
+    // googletagmanager delays first paint on a page whose whole point is a number
+    // someone needs now - and it is blocked, by extension or by policy, for a large
+    // share of readers.
+    const gtag = html.match(/<script[^>]*googletagmanager[^>]*>/);
+    if (gtag) {
+      assert.match(gtag[0], /\basync\b/, 'the analytics tag must be async, or it delays the page');
+      // Every call goes through the inline stub, so a page that never loads the remote
+      // script still does not throw when the site calls gtag().
+      assert.match(html, /function\s+gtag\s*\(\)\s*\{\s*dataLayer\.push\(arguments\)\s*;?\s*\}/,
+        'the inline gtag stub must exist, so calls are safe when the script is blocked');
+    }
   } finally {
     server.close();
     await store.close();

@@ -14,6 +14,20 @@
      a böngésző és az olvasó hírolvasója magától megtalálja a riasztásokat. -->
 <link rel="alternate" type="application/atom+xml" title="hovafolyik.hu — riasztások" href="/feed.xml">
 
+<!-- Google Analytics. The ONE third-party request on this page, and the test in
+     entry.test.js that forbids third-party hosts now names this one host explicitly
+     rather than being relaxed - everything else must still be self-hosted.
+     `async`, and every call goes through the inline gtag stub below, so a blocked or
+     unreachable googletagmanager costs the page nothing: no render blocking, no thrown
+     error, no missing data. That is the condition for it being allowed here at all. -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-V1FJPKWEY2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-V1FJPKWEY2');
+</script>
+
 <style>
 /* ---------------------------------------------------------------------------
    Water first.
