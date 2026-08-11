@@ -253,6 +253,58 @@ async function fetchRainfall({ days = 30, now = new Date() } = {}) {
   };
 }
 
+/**
+ * Synthetic groundwater, anchored to each well's own baked record.
+ *
+ * Anchored rather than invented, because the consumer's whole job is to rank a reading
+ * against that well's history and refuse it when the two are not the same measurement.
+ * A fixture that emitted round numbers would be refused as incommensurable at every well
+ * - so the entire groundwater feature would be dead in local development and in CI, and
+ * would first be exercised in production. The values here are that well's own median for
+ * the month, walked a little, which is what a working feed looks like.
+ *
+ * The walk is deliberately biased downward. A synthetic network sitting exactly at its
+ * median would leave every "is it low" branch untested.
+ */
+async function fetchWells({ days = 40, now = new Date(), env = process.env } = {}) {
+  const { listWells } = require('../config/wells');
+  const { loadWellHistory } = require('../domain/flow-history');
+  const history = loadWellHistory() || {};
+  const month = now.getUTCMonth();
+  const wells = {};
+  const errors = [];
+
+  for (const well of listWells()) {
+    const record = history[well.id] && history[well.id].months && history[well.id].months[month];
+    if (!record) {
+      errors.push({ wellId: well.id, error: 'no groundwater samples in the requested window' });
+      continue;
+    }
+    const seed = seedFor(well.id);
+    const span = Math.max(Math.abs(record.p[6] - record.p[0]), 0.05);
+    // Between about a quarter-span above the median and a full span below it.
+    const offset = (noise(seed + Math.floor(now.getTime() / DAY_MS)) - 0.6) * span * 0.8;
+    wells[well.id] = {
+      value: round(record.p[3] + offset, 2),
+      // Spread the reading ages across the window so the staleness branch is exercised
+      // rather than every well looking like it was read this morning.
+      at: new Date(now.getTime() - Math.abs(seed % 9) * DAY_MS).toISOString(),
+      samples: 40,
+      firstAt: new Date(now.getTime() - days * DAY_MS).toISOString(),
+    };
+  }
+
+  return {
+    source: 'fixture',
+    kind: 'rétegvízszint',
+    synthetic: true,
+    fetchedAt: now.toISOString(),
+    windowDays: days,
+    wells,
+    errors,
+  };
+}
+
 /** Paks refuels one unit at a time, mostly outside the winter peak. */
 function seasonalOutage(at) {
   const month = at.getMonth();
@@ -264,4 +316,4 @@ function round(v, digits) {
   return Math.round(v * f) / f;
 }
 
-module.exports = { fetchAll, fetchGeneration, fetchRainfall, stationFlow, seasonalFactor };
+module.exports = { fetchAll, fetchGeneration, fetchRainfall, fetchWells, stationFlow, seasonalFactor };

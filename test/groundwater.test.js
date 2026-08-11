@@ -168,3 +168,63 @@ test('every registered well has the datum its reading is measured against', () =
     assert.ok(well.lon > 16 && well.lon < 23, `${well.id} is outside Hungary`);
   }
 });
+
+/* --- the HTTP surface ------------------------------------------------------ */
+
+const { createApp } = require('../src/create-app');
+const { createStore } = require('../src/store');
+const { TtlCache } = require('../src/lib/cache');
+const { loadConfig } = require('../src/config');
+
+async function withServer(fn) {
+  const config = {
+    ...loadConfig({ DATA_PROVIDER: 'fixture', DB_PATH: ':memory:' }),
+    dbPath: ':memory:', provider: 'fixture', pollOnStart: false, cacheTtlMs: 0,
+    store: 'sqlite', lazyRefresh: false,
+  };
+  const store = createStore(config);
+  const app = createApp({ config, store, cache: new TtlCache(0) });
+  const server = app.listen(0);
+  const port = server.address().port;
+  const get = async (path) => {
+    const res = await fetch(`http://127.0.0.1:${port}${path}`);
+    return { status: res.status, body: await res.json() };
+  };
+  try { await fn({ get }); } finally { server.close(); await store.close(); }
+}
+
+test('GET /groundwater ranks the network and admits what it could not rank', async () => {
+  await withServer(async ({ get }) => {
+    const { status, body } = await get('/api/v1/groundwater');
+    assert.equal(status, 200);
+    assert.equal(body.synthetic, true, 'the fixture must announce itself');
+    assert.ok(body.summary.registered > 50);
+    assert.ok(body.summary.comparable > 0, 'the fixture has to exercise the ranking, not bypass it');
+    assert.ok(body.summary.comparable <= body.summary.registered);
+    assert.ok(body.summary.statuses, 'the reasons wells dropped out have to be in the payload');
+    assert.ok(body.coverage.missingDirectorates, 'the holes in the network are part of the answer');
+
+    // The rule the whole module exists for.
+    for (const [key, value] of Object.entries(body.summary)) {
+      if (typeof value === 'number') assert.ok(!/mean|avg|level/i.test(key), `summary.${key}`);
+    }
+  });
+});
+
+test('GET /groundwater/:id carries the datum and the record it was judged against', async () => {
+  await withServer(async ({ get }) => {
+    const { body: all } = await get('/api/v1/groundwater');
+    const first = all.wells.find((w) => w.rank);
+    assert.ok(first, 'at least one well should rank under the fixture');
+
+    const { status, body } = await get(`/api/v1/groundwater/${first.id}`);
+    assert.equal(status, 200);
+    assert.equal(typeof body.well.nptM, 'number');
+    assert.match(body.well.datumNote, /Baltic/);
+    assert.ok(body.history && Array.isArray(body.history.months));
+    assert.equal(body.current.id, first.id);
+
+    const missing = await get('/api/v1/groundwater/no-such-well');
+    assert.equal(missing.status, 404);
+  });
+});
