@@ -182,23 +182,49 @@ test('every station goes into one request, indexed so the response maps back', (
   const stations = vizugy.mappedStations();
   const body = vizugy.buildRequest(stations, cfg);
 
-  // Two series per station - discharge and stage - in the same POST. Each entry carries
-  // its own AdatFajtaKod, so asking for both costs no extra request.
-  assert.strictEqual(body.length, stations.length * 2);
+  // Three series per station - discharge, stage and water temperature - in the same
+  // POST. Each entry carries its own AdatFajtaKod, so asking for all three costs no
+  // extra request.
+  assert.strictEqual(body.length, stations.length * 3);
   assert.deepStrictEqual(
     body.map((entry) => entry.ItemId),
     body.map((_, index) => index),
     'ItemId must stay dense and unique, or one series answers for another',
   );
 
-  const discharge = body.slice(0, stations.length);
-  const stage = body.slice(stations.length);
+  const n = stations.length;
+  const discharge = body.slice(0, n);
+  const stage = body.slice(n, 2 * n);
+  const temp = body.slice(2 * n, 3 * n);
   assert.ok(discharge.every((e) => e.AdatFajtaKod === 87), 'the first block is discharge');
   assert.ok(stage.every((e) => e.AdatFajtaKod === 68), 'the second block is stage');
+  assert.ok(temp.every((e) => e.AdatFajtaKod === 81), 'the third block is water temperature');
+  for (const block of [stage, temp]) {
+    assert.deepStrictEqual(
+      discharge.map((e) => e.Torzsszam),
+      block.map((e) => e.Torzsszam),
+      'every block must run in the same station order',
+    );
+  }
+});
+
+test('the lake block stays last, after every station block', () => {
+  // Its offset is computed from the number of station blocks before it. Inserting a
+  // block above it without moving that offset hands every lake a river's series -
+  // silently, because both are numbers in the same shape. Adding temperature was
+  // exactly that change, so this is the guard for the next one.
+  const cfg = vizugy.config({});
+  const stations = vizugy.mappedStations();
+  const lakes = vizugy.mappedLakes ? vizugy.mappedLakes() : [];
+  if (!lakes.length) return;
+
+  const body = vizugy.buildRequest(stations, cfg, new Date(), lakes);
+  const lakeBlock = body.slice(stations.length * 3);
+  assert.strictEqual(lakeBlock.length, lakes.length, 'the lake block must start after all station blocks');
   assert.deepStrictEqual(
-    discharge.map((e) => e.Torzsszam),
-    stage.map((e) => e.Torzsszam),
-    'the two blocks must run in the same station order',
+    lakeBlock.map((e) => e.Torzsszam),
+    lakes.map((l) => Number(l.gaugeTsz)),
+    'the lake block must carry lake törzsszáms, not a river block shifted by one',
   );
 });
 

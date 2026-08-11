@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS ${t('station_readings')} (
   quality        TEXT,
   PRIMARY KEY (station_id, ts)
 );
+-- CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so a column
+-- added later never reaches a database created before it - and the first INSERT naming
+-- that column fails, taking the whole poll with it rather than just the new field.
+-- These are idempotent and cost one catalogue lookup per cold start.
+ALTER TABLE ${t('station_readings')} ADD COLUMN IF NOT EXISTS water_temp_c DOUBLE PRECISION;
+
 CREATE INDEX IF NOT EXISTS idx_station_readings_ts ON ${t('station_readings')} (ts);
 CREATE INDEX IF NOT EXISTS idx_station_readings_station_ts ON ${t('station_readings')} (station_id, ts DESC);
 

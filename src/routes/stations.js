@@ -65,7 +65,7 @@ module.exports = function stationRoutes(ctx) {
     // every row rather than put in a header comment, because a comment is not CSV and
     // the first thing anyone does with one of these is concatenate several.
     if (String(req.query.format).toLowerCase() === 'csv') {
-      const columns = ['station_id', 'station_name', 'river', 'timestamp', 'flow_m3s', 'water_level_cm', 'quality'];
+      const columns = ['station_id', 'station_name', 'river', 'timestamp', 'flow_m3s', 'water_level_cm', 'water_temp_c', 'quality'];
       res.type('text/csv; charset=utf-8');
       res.set('Content-Disposition', `attachment; filename="${station.id}.csv"`);
       return res.send(toCsv(columns, series.map((r) => ({
@@ -75,6 +75,7 @@ module.exports = function stationRoutes(ctx) {
         timestamp: r.timestamp,
         flow_m3s: r.flowM3s,
         water_level_cm: r.waterLevelCm ?? null,
+        water_temp_c: r.waterTempC ?? null,
         quality: r.quality,
       }))));
     }
@@ -95,6 +96,7 @@ module.exports = function stationRoutes(ctx) {
             timestamp: r.timestamp,
             flowM3s: r.flowM3s,
             waterLevelCm: r.waterLevelCm ?? null,
+            waterTempC: r.waterTempC ?? null,
             quality: r.quality,
           })),
         },
@@ -140,6 +142,11 @@ function decorate(station, reading) {
           // a gauge can publish one and not the other. Null here means "not published
           // this cycle", never "zero".
           stage: describeStage(reading.waterLevelCm, station.id),
+          // Water temperature, published by OVF all along and never asked for. A climate
+          // signal on its own; the control on dissolved oxygen and fish kills; and the
+          // reason a power plant throttles in a hot summer, because its discharge
+          // temperature is capped by permit. Null where the gauge has no thermometer.
+          waterTempC: Number.isFinite(reading.waterTempC) ? reading.waterTempC : null,
           // Where this sits in ten years of the same calendar month. `ratioToMean` above
           // says 73% of normal; it cannot say whether 73% is an ordinary August here or
           // the lowest in the record, and those are different stories. Null when the

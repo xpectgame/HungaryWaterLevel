@@ -1770,7 +1770,9 @@ function renderStationTip(st, flow){
       : '')+
     (stage?`<div class="t-sub">vízállás <b>${fmt(stage.cm,0)} cm</b>`+
       (stage.grade?` · <b style="color:var(--alarm)">${stage.gradeName}</b>`
-        : stage.aboveRecordLowCm!=null?` · ${fmt(stage.aboveRecordLowCm,0)} cm-rel a minimum fölött`:'')+`</div>`:'')+
+        : stage.aboveRecordLowCm!=null?` · ${fmt(stage.aboveRecordLowCm,0)} cm-rel a minimum fölött`:'')+
+      (st.current && Number.isFinite(st.current.waterTempC)?` · <b>${fmt(st.current.waterTempC,1)} °C</b>`:'')+
+      `</div>`:'')+
     // The line the percentage cannot carry: 73% of the annual mean is an ordinary
     // August on some of these rivers and a record on others.
     // `t-hist` only, NOT `t-sub`. `#tip .t-sub` is an ID selector at specificity (1,0,1)
@@ -2977,6 +2979,11 @@ async function showStation(id){
       (stage?`<span>vízállás <b>${fmt(stage.cm,0)}</b> cm</span>`:'')+
       (stage&&stage.surfaceMasl!=null?`<span>vízszint <b>${fmt(stage.surfaceMasl,2)}</b> mBf</span>`:'')+
       (st.riverKm?`<span>folyamkilométer <b>${st.riverKm}</b></span>`:'')+
+      // Water temperature. On its own a climate signal; it also caps the power plants,
+      // whose permits limit how warm they may return the water, and it drives the
+      // dissolved oxygen that decides whether fish survive a heatwave.
+      (st.current && Number.isFinite(st.current.waterTempC)
+        ? `<span>vízhőmérséklet <b>${fmt(st.current.waterTempC,1)}</b> °C</span>` : '')+
       (st.uncertaintyPct?`<span>bizonytalanság <b>±${st.uncertaintyPct}%</b></span>`:'')+
       (live&&live.quality!=='measured'?`<span style="color:var(--ember)">becsült érték</span>`:'')+
     `</div>`+

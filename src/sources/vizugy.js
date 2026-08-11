@@ -48,6 +48,12 @@ const DEFAULTS = {
   seriesPath: '/TS/TsShort',
   hafCode: 87, // Felszíni vízhozam, m3/s
   stageCode: 68, // Felszíni vízállás, cm - the unit the record and flood levels use
+  // Vízhőmérséklet, °C. Published all along and never asked for. It costs nothing extra -
+  // one more block in a request already being made - and it is the measurement that ties
+  // three parts of this site together: a climate signal on its own, the control on
+  // dissolved oxygen and fish kills, and the reason a power plant throttles in a hot
+  // summer, since its discharge temperature is capped by permit.
+  tempCode: 81,
   atCode: 100, // operatív
   // How far back to ask. The feed is hourly, so a day is ample and still cheap;
   // it also carries the poll through an upstream gap without reporting a station
@@ -142,6 +148,7 @@ function config(env = process.env) {
     seriesPath: env.VIZUGY_SERIES_PATH || DEFAULTS.seriesPath,
     hafCode: num(env.VIZUGY_HAF_CODE, DEFAULTS.hafCode),
     stageCode: num(env.VIZUGY_STAGE_CODE, DEFAULTS.stageCode),
+    tempCode: num(env.VIZUGY_TEMP_CODE, DEFAULTS.tempCode),
     atCode: num(env.VIZUGY_AT_CODE, DEFAULTS.atCode),
     lookbackHours: num(env.VIZUGY_LOOKBACK_HOURS, DEFAULTS.lookbackHours),
     timeoutMs: num(env.VIZUGY_TIMEOUT_MS, DEFAULTS.timeoutMs),
@@ -202,16 +209,21 @@ function buildRequest(stations, cfg, now = new Date(), lakes = []) {
     EndTime: endTime.toISOString(),
   });
 
-  // Three blocks in one request: discharge, stage, then lake level. Each entry carries
-  // its own AdatFajtaKod, so asking for all three costs nothing extra - and stage is
-  // what the record lows and the flood grades are expressed in, so without it those
-  // thresholds cannot be compared to anything. The blocks are indexed one after another
-  // so a single ItemId still identifies exactly one series.
+  // Four blocks in one request: discharge, stage, water temperature, then lake level.
+  // Each entry carries its own AdatFajtaKod, so asking for all four costs nothing extra -
+  // and stage is what the record lows and the flood grades are expressed in, so without
+  // it those thresholds cannot be compared to anything. The blocks are indexed one after
+  // another so a single ItemId still identifies exactly one series.
+  //
+  // The lake block MUST stay last. Its offset is computed from the number of station
+  // blocks before it, so inserting a block above it without moving the offset would hand
+  // every lake a river's series - silently, since both are numbers in the same shape.
   const n = stations.length;
   return [
     ...stations.map((station, i) => ask(EXTERNAL_IDS[station.id], i, cfg.hafCode)),
     ...stations.map((station, i) => ask(EXTERNAL_IDS[station.id], n + i, cfg.stageCode)),
-    ...lakes.map((lake, i) => ask(lake.gaugeTsz, 2 * n + i, cfg.stageCode)),
+    ...stations.map((station, i) => ask(EXTERNAL_IDS[station.id], 2 * n + i, cfg.tempCode)),
+    ...lakes.map((lake, i) => ask(lake.gaugeTsz, 3 * n + i, cfg.stageCode)),
   ];
 }
 
@@ -330,7 +342,7 @@ async function fetchAll(env = process.env) {
     const byItemId = indexByItemId(entries);
 
     lakes.forEach((lake, index) => {
-      const sample = latestSample(byItemId.get(2 * stations.length + index));
+      const sample = latestSample(byItemId.get(3 * stations.length + index));
       if (!sample) {
         errors.push({ stationId: lake.id, error: 'no lake level in the requested window' });
         return;
@@ -350,6 +362,7 @@ async function fetchAll(env = process.env) {
     stations.forEach((station, index) => {
       const sample = latestSample(byItemId.get(index));
       const stage = latestSample(byItemId.get(stations.length + index));
+      const temp = latestSample(byItemId.get(2 * stations.length + index));
 
       if (!sample) {
         errors.push({ stationId: station.id, error: 'no discharge sample in the requested window' });
@@ -365,6 +378,11 @@ async function fetchAll(env = process.env) {
         // meant every store dropped it on write, so the value was fetched, parsed and
         // then discarded on the way to the database.
         waterLevelCm: stage ? stage.flowM3s : null,
+        // Same bonus-not-requirement rule as stage: fewer gauges publish temperature
+        // than discharge, and losing a discharge over a missing thermometer would be
+        // the wrong trade. `flowM3s` on the sample is just "the number in this series";
+        // here it is degrees.
+        waterTempC: temp ? temp.flowM3s : null,
         timestamp: sample.timestamp,
         source: 'vizugy',
         quality: 'measured',
@@ -416,6 +434,7 @@ module.exports = {
   latestSample,
   indexByItemId,
   mappedStations,
+  mappedLakes,
   resetTokenProvider,
   EXTERNAL_IDS,
   DEFAULTS,

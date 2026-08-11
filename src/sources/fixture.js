@@ -125,6 +125,14 @@ async function fetchAll(env = process.env, at = new Date()) {
       stationId: station.id,
       flowM3s: flow,
       waterLevelCm: stationStage(station, flow),
+      // A plausible seasonal water temperature, so the fixture exercises the same code
+      // path the live feed does. Without it the whole temperature branch is dead in
+      // every local run and in CI, and would first be exercised in production.
+      waterTempC: round(
+        12 + 10 * Math.sin(((at.getUTCMonth() + at.getUTCDate() / 30) / 12) * 2 * Math.PI - Math.PI / 2)
+          + Math.sin(at.getUTCHours() / 24 * 2 * Math.PI) * 1.5,
+        1,
+      ),
       timestamp: at.toISOString(),
       source: 'fixture',
       quality: 'synthetic',

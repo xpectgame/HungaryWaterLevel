@@ -32,7 +32,9 @@ const { toCsv } = require('../lib/params');
  *     database dump. The format has to be readable by someone with none of this code.
  */
 
-const SCHEMA = 1;
+// Bumped when a column is added, so a file's own header cannot be mistaken for an
+// older one that happened to be shorter.
+const SCHEMA = 2;
 
 /**
  * Build one day's record from whatever the store holds for it.
@@ -53,6 +55,7 @@ async function buildDay(store, day = Date.now()) {
     const series = await store.stationSeries(station.id, fromMs, toMs, 5000);
     const values = series.map((r) => r.flowM3s).filter(Number.isFinite);
     const levels = series.map((r) => r.waterLevelCm).filter(Number.isFinite);
+    const temps = series.map((r) => r.waterTempC).filter(Number.isFinite);
     if (!series.length) continue;
     rows.push({
       date,
@@ -70,6 +73,13 @@ async function buildDay(store, day = Date.now()) {
       level_min_cm: levels.length ? Math.min(...levels) : null,
       level_mean_cm: levels.length ? round(levels.reduce((a, b) => a + b, 0) / levels.length, 1) : null,
       level_max_cm: levels.length ? Math.max(...levels) : null,
+      // Temperature is the slowest-moving thing in this file and the one most likely to
+      // be the story in ten years, so the daily extremes matter as much as the mean:
+      // a river's summer maximum is what kills fish and caps a power plant, not its
+      // average.
+      temp_min_c: temps.length ? round(Math.min(...temps), 1) : null,
+      temp_mean_c: temps.length ? round(temps.reduce((a, b) => a + b, 0) / temps.length, 1) : null,
+      temp_max_c: temps.length ? round(Math.max(...temps), 1) : null,
     });
   }
 
@@ -90,6 +100,9 @@ async function buildDay(store, day = Date.now()) {
       level_min_cm: levels.length ? Math.min(...levels) : null,
       level_mean_cm: levels.length ? round(levels.reduce((a, b) => a + b, 0) / levels.length, 1) : null,
       level_max_cm: levels.length ? Math.max(...levels) : null,
+      temp_min_c: null,
+      temp_mean_c: null,
+      temp_max_c: null,
     });
   }
 
@@ -100,6 +113,7 @@ const COLUMNS = Object.freeze([
   'date', 'station_id', 'station_name', 'river', 'role', 'samples',
   'flow_min_m3s', 'flow_mean_m3s', 'flow_max_m3s',
   'level_min_cm', 'level_mean_cm', 'level_max_cm',
+  'temp_min_c', 'temp_mean_c', 'temp_max_c',
 ]);
 
 function dayToCsv(day) {
