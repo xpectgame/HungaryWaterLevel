@@ -1187,6 +1187,18 @@ async function probeWellScan(args = []) {
   const usableRows = rows.filter((r) => r.Lat != null && r.Lon != null);
   console.log(`${rows.length} published wells, ${usableRows.length} with coordinates`);
 
+  // Every field the catalogue carries for a well, printed once.
+  //
+  // The first scan came back with values spanning -8156.95 to -2.33, which cannot all be
+  // the same quantity in the same unit. Either some wells report depth below ground in cm
+  // and others in mm, or a few report an absolute elevation - and the difference decides
+  // whether a national number can be built at all. If the catalogue names a datum, a
+  // terrain elevation or a unit, it is in this row and guessing is unnecessary.
+  if (rows.length) {
+    console.log(`\ncatalogue fields: ${Object.keys(rows[0]).join(', ')}`);
+    console.log(`sample row: ${JSON.stringify(rows[0])}`);
+  }
+
   const now = new Date();
   const start = new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString();
   const end = new Date(now.getTime() + 3600 * 1000).toISOString();
@@ -1243,9 +1255,12 @@ async function probeWellScan(args = []) {
       `  ${tag.padEnd(8)} ${String(label).padEnd(14)} ${String(TYPE_LABEL[atk] || atk).padEnd(12)} ` +
         `answered ${String(answered).padStart(4)}  live ${String(live.length).padStart(4)}`,
     );
-    if (answered > 0) {
-      found.push({ haf, atk, label, answered, live: live.length, sample: live.slice(0, 20) });
-    }
+    // The full list, not a sample. The previous pass kept the first twenty for the emitted
+    // document, which is fine for reading a log and useless for building a registry: it
+    // would have silently capped a 160-well network at 20 and nothing downstream would
+    // have shown that anything was missing. The console print is still capped, because
+    // that is a different job.
+    if (answered > 0) found.push({ haf, atk, label, answered, live });
   }
   }
 
@@ -1256,19 +1271,27 @@ async function probeWellScan(args = []) {
   }
   for (const f of found) {
     console.log(`\n--- AdatFajtaKod ${f.haf} (${f.label}) x AdatTipusKod ${f.atk}: ` +
-      `${f.answered} wells in 60 days, ${f.live} within the last week ---`);
-    for (const row of f.sample.sort((a, b) => b.samples - a.samples).slice(0, 20)) {
+      `${f.answered} wells in 60 days, ${f.live.length} within the last week ---`);
+    for (const row of [...f.live].sort((a, b) => b.samples - a.samples).slice(0, 20)) {
       console.log(
         `  ${String(row.well.Tsz).padEnd(8)} ${String(row.well.Nev).slice(0, 26).padEnd(26)} ` +
           `vizig ${String(row.well.Vizig).padStart(2)}  ${row.well.Lat.toFixed(3)},${row.well.Lon.toFixed(3)}  ` +
           `${String(row.samples).padStart(4)} samples  last ${row.last.UTCTime.slice(0, 16)} = ${row.last.Adat}`,
       );
     }
+    // What the values look like as a population, which is the thing that decides whether
+    // they can be published as numbers at all. A median of -27 next to a minimum of -8157
+    // is not a dry well, it is two different units in one column.
+    const values = f.live.map((r) => Number(r.last.Adat)).filter(Number.isFinite).sort((a, b) => a - b);
+    if (values.length) {
+      const at = (q) => values[Math.min(values.length - 1, Math.floor(q * values.length))];
+      console.log(`  values: min ${values[0]}  p25 ${at(0.25)}  median ${at(0.5)}  p75 ${at(0.75)}  max ${values[values.length - 1]}`);
+    }
   }
   // The whole point of the scan: a machine-readable list of wells worth registering.
   emitDocument('well-scan', found.map((f) => ({
-    adatFajtaKod: f.haf, adatTipusKod: f.atk, answered: f.answered, live: f.live,
-    wells: f.sample.map((r) => ({ tsz: r.well.Tsz, name: r.well.Nev, vizig: r.well.Vizig,
+    adatFajtaKod: f.haf, adatTipusKod: f.atk, answered: f.answered, live: f.live.length,
+    wells: f.live.map((r) => ({ tsz: r.well.Tsz, name: r.well.Nev, vizig: r.well.Vizig,
       lat: r.well.Lat, lon: r.well.Lon, samples: r.samples, last: r.last.UTCTime, value: r.last.Adat })),
   })), 'src/config/wells.json (after review)');
 }
