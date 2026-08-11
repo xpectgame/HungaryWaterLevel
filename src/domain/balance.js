@@ -256,6 +256,7 @@ function sumSide(stations, { get, now, method, historyLookup }) {
       seasonalCount += 1;
     }
 
+
     detail.push({
       id: station.id,
       name: station.name,
@@ -267,6 +268,13 @@ function sumSide(stations, { get, now, method, historyLookup }) {
       // either a drought or a Tuesday, and only the ratio says which.
       longTermMeanM3s: station.meanFlow,
       ratioToMean: station.meanFlow > 0 ? round(flow / station.meanFlow, 3) : null,
+      // The same row against THIS calendar month. Carried here rather than left to the
+      // station endpoint because the bar list on the site is drawn from the balance, and
+      // it was the last place still ranking rivers by their distance from an annual mean
+      // - which in August sorts by "which river has the lowest summer", not "which river
+      // is unusually low".
+      seasonalMedianM3s: median,
+      ratioToSeasonal: median > 0 ? round(flow / median, 3) : null,
       quality,
       lagHours,
       shareOfSide: 0, // filled in below

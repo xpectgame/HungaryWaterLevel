@@ -499,6 +499,8 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .t-hist.hb-record-high,.det-hist b.hb-record-high{background:#e8edf9}
 #tip .t-hist{font-size:12.5px;margin-top:5px;line-height:1.35}
 .lake-season{font-size:12.5px;color:var(--ink-soft);margin:8px 0 2px;line-height:1.5}
+/* The annual reference, kept but visibly secondary to the seasonal one above it. */
+.meta-year{color:var(--ink-faint)}
 .det-hist{font-size:13px;color:var(--ink-soft);margin:10px 0 0;line-height:1.55}
 .det-hist-src{color:var(--ink-faint)}
 
@@ -1737,8 +1739,18 @@ function renderHeadline(b){
     if(r == null){ el.textContent = `${s.stationCount} szelvény`; return; }
     const band = dryBand(r.ratio);
     el.innerHTML =
+      // The seasonal figure leads because it is the one that answers "is this unusual".
       `<b class="${band.cls}">${r.label} ${fmt(r.ratio*100,0)}%-a</b>`+
-      `<br>${fmt(r.normal,0)} m³/s lenne a szokásos ${r.suffix} · ${s.stationCount} szelvény · ±${fmt(s.uncertaintyM3s,0)}`;
+      `<br>${fmt(r.normal,0)} m³/s lenne a szokásos ${r.suffix}`+
+      // ...and the annual stays, labelled, underneath. Both were asked for and both are
+      // worth having: the annual places the river against itself over a whole year, the
+      // seasonal says whether today is out of the ordinary. What is not acceptable is
+      // one unlabelled percentage that a reader takes for the other.
+      (r.seasonal && s.ratioToMean!=null
+        ? `<br><span class="meta-year">Az egész éves átlag ${fmt(s.longTermMeanM3s,0)} m³/s — `+
+          `annak a <b>${fmt(s.ratioToMean*100,0)}%</b>-a</span>`
+        : '')+
+      `<br>${s.stationCount} szelvény · ±${fmt(s.uncertaintyM3s,0)}`;
   };
   side('inflow','inflow-meta');
   side('outflow','outflow-meta');
@@ -2521,7 +2533,11 @@ const RATIO_SCALE = 1.5; // full track = 150% of normal, so the 100% tick sits a
  */
 const BAR_SORTS = {
   flow:  { label:'méret szerint', fn:(a,b)=> b.flowM3s - a.flowM3s },
-  ratio: { label:'ahol a legkevesebb a víz', fn:(a,b)=> (a.ratioToMean??9) - (b.ratioToMean??9) },
+  // Sorted by the seasonal ratio where there is one. Against the annual mean this sorted
+  // by "which river has the driest summer", which is the same eight rivers every August
+  // and is not what "ahol a legkevesebb a víz" promises.
+  ratio: { label:'ahol a legkevesebb a víz',
+           fn:(a,b)=> ((a.ratioToSeasonal??a.ratioToMean)??9) - ((b.ratioToSeasonal??b.ratioToMean)??9) },
   name:  { label:'név szerint', fn:(a,b)=> a.name.localeCompare(b.name,'hu') },
 };
 let barSort = 'flow';
@@ -2529,7 +2545,12 @@ let barSort = 'flow';
 function renderBars(list, el, cls){
   el.innerHTML = list.slice().sort(BAR_SORTS[barSort].fn).map(s=>{
     const est = s.quality!=='measured' ? ' <small>becsült</small>' : '';
-    const ratio = s.ratioToMean;
+    // The seasonal ratio where the archive has this month, the annual where it does not.
+    // The bar is a comparison to "normal", and on these rivers in August the annual mean
+    // is not normal - every gauge read low and the list sorted by which river has the
+    // driest summer rather than which one is unusually low today.
+    const seasonal = s.ratioToSeasonal != null;
+    const ratio = seasonal ? s.ratioToSeasonal : s.ratioToMean;
     const band = ratio!=null ? dryBand(ratio) : null;
 
     // No mean, no comparison: show the bar empty rather than implying a full one.
@@ -2537,12 +2558,19 @@ function renderBars(list, el, cls){
     const over = ratio!=null && ratio > RATIO_SCALE ? '<i class="over">▸</i>' : '';
 
     return `<div class="bar clickable ${cls} ${band?band.cls:''}" data-station="${s.id}" tabindex="0" role="button" `+
-      `title="${s.name}: ${fmt(s.flowM3s,1)} m³/s, sokéves átlag ${fmt(s.longTermMeanM3s,0)} m³/s">`+
+      `title="${s.name}: ${fmt(s.flowM3s,1)} m³/s`+
+      (seasonal?` · ${MONTH_ADJ[new Date().getMonth()]} medián ${fmt(s.seasonalMedianM3s,0)} m³/s`:'')+
+      ` · éves átlag ${fmt(s.longTermMeanM3s,0)} m³/s">`+
       `<div class="nm">${s.name}</div>`+
       `<div class="track"><div class="fill" style="width:${width.toFixed(1)}%"></div>`+
         `<i class="norm" style="left:${(100/RATIO_SCALE).toFixed(1)}%"></i>${over}</div>`+
       `<div class="n">${fmt(s.flowM3s,1)}${est}`+
-      (ratio!=null?`<small class="${band.cls}">${fmt(ratio*100,0)}% az átlagnak</small>`:'')+
+      // Which "normal" this percentage is of, said on the row. It used to read
+      // "% az átlagnak" against an annual mean while the headline above it had moved to
+      // the seasonal one - two different denominators on one screen, neither named.
+      (ratio!=null
+        ? `<small class="${band.cls}">${fmt(ratio*100,0)}% ${seasonal?'az ilyenkor szokásosnak':'az éves átlagnak'}</small>`
+        : '')+
       `</div></div>`;
   }).join('');
 

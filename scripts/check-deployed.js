@@ -151,7 +151,6 @@ function line(ok, label, detail) {
     ['/api/v1/stations', 'stations'],
     ['/api/v1/rainfall', 'gauges'],
     ['/api/v1/alerts', 'alerts'],
-    ['/api/v1/lakes', 'lakes'],
   ]) {
     try {
       const doc = await get(path);
@@ -162,6 +161,28 @@ function line(ok, label, detail) {
       line(false, path, err.message);
       problems.push(`${path}: ${err.message}`);
     }
+  }
+
+  // Lakes, counted by LEVEL rather than by row. The previous version of this check
+  // reported "4 lakes" and passed, while every one of them was an empty card on a
+  // greyed-out section - the row exists whether or not a reading does, so counting rows
+  // measured the registry, not the data.
+  try {
+    const doc = await get('/api/v1/lakes');
+    const withLevel = (doc.lakes || []).filter((l) => l.current && Number.isFinite(l.current.levelCm));
+    const expected = (doc.lakes || []).filter((l) => !l.unavailableReason);
+    line(withLevel.length >= expected.length && expected.length > 0,
+      `${withLevel.length} of ${(doc.lakes || []).length} lakes have a live level`,
+      `${expected.length} are expected to publish one`);
+    if (withLevel.length < expected.length) {
+      const missing = expected.filter((l) => !(l.current && Number.isFinite(l.current.levelCm))).map((l) => l.id);
+      problems.push(`${missing.length} lake(s) publish a level but none arrived: ${missing.join(' ')} - the section renders greyed out`);
+    }
+    const withHistory = (doc.lakes || []).filter((l) => l.current && l.current.history);
+    line(null, `${withHistory.length} lakes carry a ten-year comparison`);
+  } catch (err) {
+    line(false, '/api/v1/lakes', err.message);
+    problems.push(`/api/v1/lakes: ${err.message}`);
   }
 
   // The ten-year comparison, which only shows up once the archive is deployed.
