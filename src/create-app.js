@@ -23,6 +23,7 @@ const { withProviderFilter } = require('./store/provider-filter');
 const { TtlCache } = require('./lib/cache');
 const { createRouter } = require('./routes');
 const { feedRoute } = require('./routes/alerts');
+const shareRoutes = require('./routes/share');
 const { createCronHandler } = require('./jobs/cron-handler');
 
 /**
@@ -97,6 +98,11 @@ function createApp(ctx) {
   // the URL has to survive an API version bump - the whole point of a subscription is
   // that nobody touches it again.
   app.use(feedRoute(ctx));
+
+  // Share card and embeds, also at the root: a crawler fetching an og:image and another
+  // site framing a gauge are not API calls, and both URLs have to outlive an API
+  // version bump - an embed lives in someone else's published article.
+  app.use(shareRoutes(ctx));
 
   // The scheduled ingest lives inside the app rather than in a separate serverless
   // function, so it is reachable no matter how the host decides to run this project -

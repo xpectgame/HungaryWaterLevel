@@ -14,6 +14,18 @@
      a böngésző és az olvasó hírolvasója magától megtalálja a riasztásokat. -->
 <link rel="alternate" type="application/atom+xml" title="hovafolyik.hu — riasztások" href="/feed.xml">
 
+<!-- Ha valaki bemásolja a linket, a mai szám jelenjen meg, ne egy csupasz URL.
+     A kártya élő adatból generálódik, SVG-ben - lásd src/routes/share.js. -->
+<meta property="og:title" content="hovafolyik.hu — Magyarország vízmérlege élőben">
+<meta property="og:description" content="Mennyi víz lép be a határon, mennyi hagyja el, és hogyan áll ez az elmúlt tíz év azonos hónapjához képest.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.hovafolyik.hu/">
+<meta property="og:image" content="https://www.hovafolyik.hu/share/card.svg">
+<meta property="og:locale" content="hu_HU">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="hovafolyik.hu — Magyarország vízmérlege élőben">
+<meta name="twitter:image" content="https://www.hovafolyik.hu/share/card.svg">
+
 <!-- Google Analytics. The ONE third-party request on this page, and the test in
      entry.test.js that forbids third-party hosts now names this one host explicitly
      rather than being relaxed - everything else must still be self-hosted.
@@ -507,6 +519,9 @@ svg.map text{user-select:none;-webkit-user-select:none}
    read the CURVE against them, so the bands must sit behind it without competing. */
 .spark .band-wide{fill:var(--flow);opacity:.10}
 .spark .band-mid{fill:var(--flow);opacity:.16}
+/* The arithmetic behind each human-scale comparison. Quiet, monospaced, always present:
+   a number this shareable has to be checkable, or it is just a claim. */
+#scale .how{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-top:4px;opacity:.85}
 .band-key{display:inline-block;margin-top:4px;color:var(--ink-faint)}
 .band-key i{display:inline-block;width:16px;height:9px;border-radius:2px;vertical-align:-1px;margin:0 2px;background:var(--flow)}
 .band-key .k-mid{opacity:.30} .band-key .k-wide{opacity:.18}
@@ -987,10 +1002,21 @@ footer a{color:var(--ink-soft)}
   ami jó folyón is 5–10% hibát hordoz. Ezért van minden számnak hibasávja, és ezért nem jelentünk
   szignifikáns eltérést ott, ahol a különbség belefér.
   <br><br>
-  <strong>Riasztások:</strong> <a href="/feed.xml">Atom-hírcsatorna</a> —
-  árvízi fokozat, tartós kisvíz, és rekordalacsony vízhozam a tízéves sorhoz mérve.
-  Ugyanez JSON-ban: <a href="/api/v1/alerts">/api/v1/alerts</a>.
-  Egy tartósan fennálló állapot egy tétel marad, nem küld új értesítést minden lekérdezéskor.
+  <strong>Szerkesztőségeknek.</strong>
+  <a href="/feed.xml">Atom-hírcsatorna</a> a riasztásokhoz — árvízi fokozat, tartós kisvíz,
+  rekordalacsony vízhozam a tízéves sorhoz mérve; egy tartósan fennálló állapot egy tétel
+  marad, nem küld új értesítést minden lekérdezéskor. Ugyanez JSON-ban:
+  <a href="/api/v1/alerts">/api/v1/alerts</a>.
+  <br>
+  <strong>Adatletöltés:</strong> bármelyik idősor CSV-ben, például
+  <a href="/api/v1/stations/tisza-szeged/timeseries?days=30&amp;format=csv">egy szelvény 30 napja</a>
+  vagy <a href="/api/v1/balance/history?days=30&amp;format=csv">a mérleg 30 napja</a>.
+  <br>
+  <strong>Beágyazás:</strong> egy szelvény cikkbe tehető, forrásmegjelöléssel együtt —
+  <code>&lt;iframe src="https://www.hovafolyik.hu/embed/station/tisza-szeged"
+  width="340" height="230" style="border:1px solid #cfe3ea;border-radius:10px"&gt;&lt;/iframe&gt;</code>
+  Az azonosítót a <a href="/api/v1/stations">/api/v1/stations</a> listázza.
+  Szabadon használható a forrás megjelölésével; az adat az OVF nyílt vízrajzi adata.
 </footer>
 
 </div>
@@ -2817,15 +2843,34 @@ function renderSystems(b){
 function renderScale(b){
   const perSec = b.inflow.totalM3s;
   const perDay = b.inflow.dailyM3;
+  // Every conversion carries its own arithmetic. A comparison like this is the most
+  // shareable thing on the page and therefore the easiest to get quietly wrong - the
+  // swimming-pool line was 17x too high for months, because nobody could check it
+  // without knowing what volume a "pool" meant. Now the divisor is printed next to the
+  // number, and anyone can.
+  const POOL_M3 = 50 * 25 * 2;      // 50 m, 8 lanes, 2 m deep - the Olympic pool, 2500 m³
+  const BALATON_MM3 = 1900;         // million m³
+  const HU_POPULATION = 9.6e6;
+  const LITRES_PER_PERSON = 100;    // household use, litres per person per day
+  const huDailyM3 = HU_POPULATION * LITRES_PER_PERSON / 1000;
+
   const items = [
-    { q: fmt(perDay/1e6,0), u:'millió m³', t:'ennyi lép be egy nap alatt, ha a mostani hozam kitart' },
-    { q: fmt(1900/(perDay/1e6),1), u:'nap', t:'ennyi idő alatt folyna át a Balaton teljes térfogata (1900 millió m³)' },
-    { q: fmt(perDay*1000/100, 0), u:'ember', t:'ennyi ember napi 100 literes vízfogyasztását fedezné ez a mennyiség' },
-    { q: fmt(perSec/2.5, 0), u:'úszómedence', t:'percenként ennyi 50 méteres medencényi víz halad át a határon' },
+    { q: fmt(perDay/1e6,0), u:'millió m³', t:'ennyi lép be egy nap alatt, ha a mostani hozam kitart',
+      how:`${fmt(perSec,0)} m³/s × 86 400 másodperc` },
+    { q: fmt(BALATON_MM3/(perDay/1e6),1), u:'nap', t:'ennyi idő alatt folyna át a Balaton teljes térfogata',
+      how:`${BALATON_MM3} millió m³ ÷ ${fmt(perDay/1e6,0)} millió m³ naponta` },
+    // Reframed from "1.12 billion people", which is arithmetically right and impossible
+    // to picture. A multiple of the country's own household use is a number a reader can
+    // hold: it says the rivers carry two orders of magnitude more than the taps.
+    { q: fmt(perDay/huDailyM3, 0), u:'szorosa', t:'Magyarország teljes lakossági vízfogyasztásának',
+      how:`9,6 millió ember × 100 liter/nap = ${fmt(huDailyM3/1000,0)} ezer m³` },
+    { q: fmt(perSec*60/POOL_M3, 0), u:'úszómedence', t:'percenként ennyi 50 méteres medencényi víz halad át a határon',
+      how:`${fmt(perSec,0)} m³/s × 60 ÷ ${fmt(POOL_M3,0)} m³ (50 × 25 × 2 m)` },
   ];
   $('scale').innerHTML = items.map((i) =>
     `<div class="item"><div class="q">${i.q} <span style="font-size:13px;color:var(--ink-faint)">${i.u}</span></div>`+
-    `<div class="t">${i.t}</div></div>`).join('');
+    `<div class="t">${i.t}</div>`+
+    `<div class="how">${i.how}</div></div>`).join('');
 }
 
 /**
