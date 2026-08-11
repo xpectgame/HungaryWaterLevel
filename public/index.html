@@ -393,6 +393,9 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .sortbar button[aria-pressed="true"]{background:var(--sunk);color:var(--ink);font-weight:600;
   border-color:var(--flow-dim)}
 .sortbar button:focus-visible{outline:2px solid var(--flow);outline-offset:1px}
+.det-close{border:1px solid var(--line);background:#fff;font:inherit;font-size:11px;
+  color:var(--ink-soft);padding:3px 9px;border-radius:99px;cursor:pointer}
+.det-close:focus-visible{outline:2px solid var(--flow);outline-offset:1px}
 .barhead{display:grid;grid-template-columns:minmax(96px,1.3fr) 1fr minmax(74px,auto);gap:10px;
   font-size:11px;color:var(--ink-faint);margin-bottom:7px}
 .barhead .mid{position:relative}
@@ -768,6 +771,21 @@ footer a{color:var(--ink-soft)}
   </div>
 </section>
 
+<!-- Directly under the map on purpose.
+     This card used to sit seven sections down the page, so clicking a gauge threw the
+     reader past rainfall, the news feed, the lakes and the stage table - and then they
+     had to scroll all the way back up to click the next one. A map you can only use
+     once per trip down the page is not a map. Here the answer appears where the
+     question was asked, and picking a second gauge costs nothing. -->
+<section class="card" style="margin-bottom:18px" id="detailcard">
+  <div class="cardhead">
+    <h3>Egy szelvény közelről</h3>
+    <button type="button" id="det-close" class="det-close" hidden>bezár</button>
+  </div>
+  <div id="detail"><p style="font-size:13.5px;color:var(--ink-soft);margin:0">
+    Kattints egy pontra a térképen vagy egy sorra a listákban.</p></div>
+</section>
+
 <section class="grid g3" id="cards"></section>
 
 <section class="grid" id="s-szelvenyek" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
@@ -868,12 +886,6 @@ footer a{color:var(--ink-soft)}
     állapítják meg őket. Pakson például a III. fok 9 centivel a valaha mért legmagasabb
     vízállás fölött van — 2013-ban ennyi hiányzott hozzá.
   </p>
-</section>
-
-<section class="card" style="margin-bottom:18px" id="detailcard">
-  <h3>Egy szelvény közelről</h3>
-  <div id="detail"><p style="font-size:13.5px;color:var(--ink-soft);margin:0">
-    Kattints egy pontra a térképen vagy egy sorra a listákban.</p></div>
 </section>
 
 <section class="card" style="margin-bottom:18px">
@@ -1901,6 +1913,25 @@ function scrollToSection(el){
   scrollTo({ top, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 }
 
+/**
+ * Scroll to something only if it is not already where the reader can see it.
+ *
+ * Selecting a gauge used to scroll the page every time, including when the answer was
+ * already on screen - so picking a second gauge from the map yanked the view away and
+ * had to be scrolled back. A jump the reader did not need is worse than no jump: it
+ * costs them their place.
+ *
+ * "Visible enough" is the top of the element being under the sticky header and at least
+ * a third of the viewport of it showing. Below that the answer is off the fold and a
+ * scroll is genuinely doing the reader a favour.
+ */
+function revealSection(el){
+  const box = el.getBoundingClientRect();
+  const roomy = box.top >= 62 && box.top <= innerHeight - Math.min(240, innerHeight / 3);
+  if (roomy) return;
+  scrollToSection(el);
+}
+
 /* --- "what if it were a normal year" -------------------------------------
 
    The page can say "the inflow is 77% of its long-term mean" and a reader still
@@ -2387,7 +2418,15 @@ function renderLakeTip(l){
 
 function showLake(id){
   const card = document.querySelectorAll('#lakes .lake')[lakes.findIndex(l=>l.id===id)];
-  (card || $('lakes')).scrollIntoView({ behavior:'smooth', block:'center' });
+  const target = card || $('lakes');
+  // Same rule as the gauge detail: do not move the page when the card is already
+  // readable where it is.
+  const box = target.getBoundingClientRect();
+  if (box.top >= 62 && box.bottom <= innerHeight) return;
+  target.scrollIntoView({
+    behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    block: 'center',
+  });
 }
 
 /* --- stage --- */
@@ -3005,7 +3044,8 @@ async function showStation(id){
     `<svg class="spark" id="det-spark" viewBox="0 0 800 120" preserveAspectRatio="none" style="margin-top:12px"></svg>`+
     `<p id="det-note" style="font-size:12.5px;color:var(--ink-faint);margin:6px 0 0">előzmény betöltése…</p>`;
 
-  scrollToSection($('detailcard'));
+  revealSection($('detailcard'));
+  $('det-close').hidden = false;
   // Shareable: the hash names the gauge, so a link lands on the same section someone
   // was looking at rather than at the top of a long page.
   history.replaceState(null, '', '#szelveny=' + encodeURIComponent(id));
@@ -3277,6 +3317,17 @@ function tick(){
   $('mode-now').addEventListener('click', () => setMode('now'));
   $('mode-normal').addEventListener('click', () => setMode('normal'));
   $('whatif-back').addEventListener('click', () => setMode('now'));
+
+  // Closing puts focus back on the map. Without that, dismissing the card with the
+  // keyboard drops the focus ring at the top of the document and the reader has to
+  // Tab back down through the whole page to reach the gauge they were looking at.
+  $('det-close').addEventListener('click', () => {
+    $('detail').innerHTML = '<p style="font-size:13.5px;color:var(--ink-soft);margin:0">' +
+      'Kattints egy pontra a térképen vagy egy sorra a listákban.</p>';
+    $('det-close').hidden = true;
+    history.replaceState(null, '', location.pathname + location.search);
+    $('map').focus();
+  });
 
   // Rainfall window. The map legend says "30 napban", so it is rewritten with the
   // choice rather than left contradicting the dots it describes.
