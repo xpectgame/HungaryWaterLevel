@@ -644,7 +644,12 @@ async function probeSite(baseUrl) {
       const gauges = Object.keys(d.gauges || {}).length;
       return { ok: gauges > 0, note: `${gauges} gauges` };
     }],
-    ['archive', '/api/v1/archive', (d) => ({
+    // /archive, not /api/v1/archive: it is mounted outside the API version on purpose,
+    // because a dated URL published today has to still resolve in ten years and /api/v1
+    // is a promise about a response shape rather than about permanence. Probing the
+    // versioned path reported a 404 against a perfectly healthy endpoint - a check that
+    // cries wolf is worse than no check, because the next real failure gets ignored.
+    ['archive', '/archive', (d) => ({
       ok: Array.isArray(d.days) ? d.days.length > 0 : Boolean(d),
       note: Array.isArray(d.days) ? `${d.days.length} days` : 'responded',
     })],
