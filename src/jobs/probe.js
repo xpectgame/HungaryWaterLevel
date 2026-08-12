@@ -2412,13 +2412,16 @@ async function probeDroughtIndex(args = []) {
   // against someone else's service is worse than one that guesses five times and stops.
   console.log('\n--- which parameter does it read? ---');
   const tries = [
-    ['GET', `?settlement=${encodeURIComponent(station.name)}`],
-    ['GET', `?drought_station=${station.guid}`],
-    ['GET', `?searchsettlement=${encodeURIComponent(station.name)}`],
-    ['GET', `?settlement=${encodeURIComponent(station.name)}&drought_station=${station.guid}`],
-    ['GET', `?station=${station.guid}`],
+    `?settlement=${encodeURIComponent(station.name)}`,
+    `?drought_station=${station.guid}`,
+    `?searchsettlement=${encodeURIComponent(station.name)}`,
+    `?settlement=${encodeURIComponent(station.name)}&drought_station=${station.guid}`,
+    `?station=${station.guid}`,
+    `?settlement=${encodeURIComponent(station.name)}&interval=daily`,
   ];
-  for (const [method, query] of tries) {
+
+  const attempts = [];
+  for (const query of tries) {
     try {
       const res = await fetchText(`${BASE}${query}`, {
         timeoutMs: 25000,
@@ -2426,19 +2429,39 @@ async function probeDroughtIndex(args = []) {
       });
       const same = res.body.length === home.length;
       const dataAt = res.body.indexOf('DROUGHT_DATA');
+      attempts.push({
+        query,
+        bytes: res.body.length,
+        identicalToFrontPage: same,
+        droughtDataAt: dataAt,
+        // A generous slice around the assignment: the shape of that object is the whole
+        // parsing problem, and guessing at it from a 60-character log line is how a
+        // scraper ends up matching the wrong number.
+        sample: dataAt >= 0 ? res.body.slice(dataAt, dataAt + 1800) : null,
+      });
       console.log(
-        `  ${method} ${query.slice(0, 70).padEnd(70)} ${String(res.body.length).padStart(7)} bytes` +
-          `${same ? '  (identical to front page)' : '  <-- DIFFERENT'}` +
-          `${dataAt >= 0 ? `  DROUGHT_DATA @${dataAt}` : ''}`,
+        `  ${query.slice(0, 66).padEnd(66)} ${String(res.body.length).padStart(7)} bytes` +
+          `${same ? '  (same as front page)' : '  <-- DIFFERENT'}${dataAt >= 0 ? `  DROUGHT_DATA @${dataAt}` : ''}`,
       );
-      if (!same && dataAt >= 0) {
-        console.log(`      ${res.body.slice(dataAt, dataAt + 400).replace(/\s+/g, ' ')}`);
-      }
     } catch (err) {
-      console.log(`  ${method} ${query.slice(0, 70)}  FAILED ${err.message.split('\n')[0].slice(0, 50)}`);
+      attempts.push({ query, error: err.message.split('\n')[0] });
+      console.log(`  ${query.slice(0, 66)}  FAILED ${err.message.split('\n')[0].slice(0, 50)}`);
     }
   }
 
+  // Emitted rather than only logged.
+  //
+  // Reading this out of a job log has failed repeatedly - the interesting lines sit above
+  // whatever window the log API returns - and the answer here is a 1800-character sample
+  // that a log line would truncate anyway. The document goes to the branch and can be
+  // read at leisure.
+  emitDocument('drought-index-scan', {
+    stations: stations.length,
+    stationSample: stations.slice(0, 3),
+    frontPageBytes: home.length,
+    hiddenInputs: hidden.length,
+    attempts,
+  }, 'src/config/aszaly-stations.json (after review)');
 }
 
 /**
