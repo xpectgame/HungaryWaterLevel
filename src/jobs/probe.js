@@ -1220,12 +1220,24 @@ async function probeRainScan() {
  * aquifer below it. Labelling one as the other would be the single most misleading thing
  * this project could publish.
  */
+const KIND_LABEL = { 68: 'vízállás', 69: 'talajvízállás', 70: 'rétegvízszint', 71: 'csapadék', 81: 'vízhőmérséklet' };
+
 async function probeWellScan(args = []) {
   console.log('\n########## well scan ##########');
 
-  const { rows } = await fetchCatalogue(13, { internetOnly: true });
+  // Which network, and which quantities. Defaults are the confined-aquifer wells; the
+  // shallow water table lives on a different network entirely (vmoType 12), which is why
+  // asking code 69 of vmoType 13 answered nowhere and was recorded as "talajvíz is not
+  // published". The code was right and the network was wrong.
+  const vmoArg = Number((args.find((a) => a.startsWith('--vmo=')) || '').slice(6)) || 13;
+  const kindArg = (args.find((a) => a.startsWith('--kinds=')) || '').slice(8);
+  const KINDS = kindArg
+    ? kindArg.split(',').map(Number).filter(Number.isFinite).map((k) => [k, KIND_LABEL[k] || String(k)])
+    : [[69, 'talajvízállás'], [70, 'rétegvízszint']];
+
+  const { rows } = await fetchCatalogue(vmoArg, { internetOnly: true });
   const usableRows = rows.filter((r) => r.Lat != null && r.Lon != null);
-  console.log(`${rows.length} published wells, ${usableRows.length} with coordinates`);
+  console.log(`vmoType ${vmoArg}: ${rows.length} published stations, ${usableRows.length} with coordinates`);
 
   // Every field the catalogue carries for a well, printed once.
   //
@@ -1257,7 +1269,7 @@ async function probeWellScan(args = []) {
 
   const found = [];
 
-  for (const [haf, label] of [[69, 'talajvízállás'], [70, 'rétegvízszint']]) {
+  for (const [haf, label] of KINDS) {
   for (const atk of TYPES) {
     const live = [];
     let answered = 0;
@@ -1369,7 +1381,7 @@ async function probeWellScan(args = []) {
   // without it the number in the registry is a quantity with no origin - and the one
   // check that can catch a broken well (does datum plus depth land somewhere plausible
   // under the terrain) becomes impossible after the fact.
-  emitDocument('well-scan', found.map((f) => ({
+  emitDocument(`well-scan-${vmoArg}`, found.map((f) => ({
     adatFajtaKod: f.haf, adatTipusKod: f.atk, answered: f.answered,
     wells: f.live.map((r) => ({ tsz: r.well.Tsz, name: r.well.Nev, vizig: r.well.Vizig,
       lat: r.well.Lat, lon: r.well.Lon, npt: r.well.Npt, telepules: r.well.Telepules,
