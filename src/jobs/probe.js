@@ -2038,6 +2038,151 @@ function round2(v) {
  * One POST per pair rather than one big one: an unsupported combination fails the whole
  * request, and a single 500 across 56 combinations tells you nothing about which.
  */
+/**
+ * Is there a real drought measurement to be had, or only a rainfall ratio?
+ *
+ * The site currently says, in its own words, "not an official drought index - a real one
+ * looks at soil moisture and the rainfall deficit". That sentence is honest and it is
+ * also an admission: the page grades a drought on rain alone, which is the one input
+ * that says how much water ARRIVED and nothing about how much is left in the ground.
+ * Two Augusts with the same rainfall are different droughts if one followed a wet spring.
+ *
+ * Hungary has an official answer - the Aszálymonitoring service run by OVF and NAK,
+ * which publishes a Hungarian Drought Index built from soil moisture, temperature and
+ * precipitation. The question this probe asks is whether any of that is reachable as
+ * data rather than as a picture of a map.
+ *
+ * Three places it could be, asked in order of how usable the answer would be:
+ *
+ *   1. The same vraquery API everything else here comes from, under a station network
+ *      (vmoType) or a quantity code (AdatFajtaKod) nobody has asked for yet.
+ *   2. aszalymonitoring.vizugy.hu, as an endpoint behind its own front end.
+ *   3. Nowhere, in which case the honest thing is to keep saying so.
+ */
+async function probeDrought(args = []) {
+  console.log('\n########## drought: soil moisture and the official index ##########');
+
+  // --- 1. Which station networks exist at all -------------------------------------
+  //
+  // Only 11 (surface), 13 (wells) and 14 (meteorological) have ever been asked for. The
+  // numbering is a small integer with no published list, so the cheapest way to find a
+  // soil-moisture network is to walk it and look at what comes back.
+  console.log('\n--- station networks (vmoType) ---');
+  const networks = [];
+  for (let vmoType = 1; vmoType <= 24; vmoType += 1) {
+    try {
+      const { rows } = await fetchCatalogue(vmoType, { internetOnly: true });
+      if (!Array.isArray(rows) || !rows.length) {
+        console.log(`  ${String(vmoType).padStart(2)}  empty`);
+        continue;
+      }
+      const sample = rows[0];
+      console.log(
+        `  ${String(vmoType).padStart(2)}  ${String(rows.length).padStart(4)} stations` +
+          `  e.g. ${String(sample.Nev || sample.Telepules || '?').slice(0, 30).padEnd(30)}` +
+          `  fields: ${Object.keys(sample).join(',')}`,
+      );
+      networks.push({ vmoType, rows });
+    } catch (err) {
+      console.log(`  ${String(vmoType).padStart(2)}  FAILED ${err.message.split('\n')[0].slice(0, 60)}`);
+    }
+  }
+
+  // --- 2. Which quantity codes answer on the met network ---------------------------
+  //
+  // 71 (rainfall) is the only code ever asked of vmoType 14, and a met station that
+  // measures rain usually measures more. A soil moisture series would be the whole
+  // feature; air temperature would at least let a deficit be weighted by evaporation
+  // demand, which is what turns "little rain" into "drought".
+  const met = networks.find((n) => n.vmoType === 14);
+  if (met) {
+    console.log(`\n--- quantity codes on vmoType 14, ${Math.min(met.rows.length, 12)} stations, 30 days ---`);
+    const stations = met.rows.filter((r) => r.Tsz).slice(0, 12);
+    const now = new Date();
+    const start = new Date(now.getTime() - 30 * 86400000).toISOString();
+    const end = new Date(now.getTime() + 3600000).toISOString();
+
+    // A wide sweep rather than a guess. The catalogue numbers quantities in the high
+    // 60s to low 80s (69 talajvíz, 70 rétegvíz, 71 csapadék, 81 vízhőmérséklet), so the
+    // neighbourhood is where a soil-moisture or air-temperature code would live.
+    const codeArg = (args.find((a) => a.startsWith('--codes=')) || '').slice(8);
+    const CODES = codeArg
+      ? codeArg.split(',').map(Number).filter(Number.isFinite)
+      : [62, 63, 64, 65, 66, 67, 68, 72, 73, 74, 75, 76, 77, 78, 79, 80, 82, 83, 84, 85, 86, 88, 89, 90];
+
+    for (const code of CODES) {
+      for (const atCode of [100, 2]) {
+        try {
+          const out = await askSeries(
+            stations.map((s, i) => ({
+              ItemId: i,
+              Torzsszam: Number(s.Tsz),
+              AdatFajtaKod: code,
+              AdatTipusKod: atCode,
+              StartTime: start,
+              EndTime: end,
+            })),
+            { timeoutMs: 45000 },
+          );
+          const byItemId = require('../sources/vizugy').indexByItemId(Array.isArray(out) ? out : []);
+          let answered = 0;
+          let sample = null;
+          stations.forEach((s, i) => {
+            const items = usable(byItemId.get(i));
+            if (!items.length) return;
+            answered += 1;
+            if (!sample) sample = { name: s.Nev, last: items[items.length - 1], n: items.length };
+          });
+          if (answered) {
+            console.log(
+              `  code ${String(code).padStart(3)} / type ${String(atCode).padStart(3)}: ` +
+                `${answered}/${stations.length} answered  e.g. ${String(sample.name).slice(0, 22).padEnd(22)} ` +
+                `${String(sample.n).padStart(4)} samples  last ${sample.last.UTCTime.slice(0, 16)} = ${sample.last.Adat}`,
+            );
+          }
+        } catch {
+          // A code the service does not know fails the whole request; that is a negative
+          // result, not an error worth a line each.
+        }
+      }
+    }
+    console.log('  (codes with no line answered nowhere)');
+  }
+
+  // --- 3. The official drought service ---------------------------------------------
+  //
+  // Its front end is a map, so the useful question is what the map fetches. Same method
+  // as the original vizugy discovery: read the bundle for the URLs it calls.
+  console.log('\n--- aszalymonitoring.vizugy.hu ---');
+  for (const url of [
+    'https://aszalymonitoring.vizugy.hu/',
+    'https://aszalymonitoring.vizugy.hu/index.php',
+    'https://aszalymonitoring.vizugy.hu/api/',
+  ]) {
+    try {
+      const res = await fetchText(url, { timeoutMs: 20000 });
+      const body = typeof res === 'string' ? res : res.body;
+      const type = typeof res === 'string' ? '?' : res.contentType;
+      console.log(`  OK   ${url}  ${type}  ${body.length} bytes`);
+      // Endpoint-shaped strings in whatever it served.
+      const hits = new Set();
+      for (const m of body.matchAll(/["'`]([^"'`\s]*\/(?:api|ajax|json|data|service|wms|wfs)[^"'`\s]*)["'`]/gi)) {
+        hits.add(m[1]);
+      }
+      for (const m of body.matchAll(/["'`]([^"'`\s]+\.(?:json|php|ashx))(?:\?[^"'`\s]*)?["'`]/gi)) hits.add(m[1]);
+      const list = [...hits].slice(0, 25);
+      if (list.length) {
+        console.log(`       ${list.length} candidate endpoint(s):`);
+        for (const hit of list) console.log(`         ${hit}`);
+      } else {
+        console.log('       no endpoint-shaped strings in the response');
+      }
+    } catch (err) {
+      console.log(`  FAIL ${url}  ${err.message.split('\n')[0].slice(0, 70)}`);
+    }
+  }
+}
+
 async function probeMatrix() {
   console.log('\n########## kind x type matrix ##########');
 
@@ -2228,6 +2373,11 @@ async function main() {
     return;
   }
 
+  if (args.includes('--drought')) {
+    await probeDrought(args);
+    return;
+  }
+
   if (args.includes('--matrix')) {
     await probeMatrix();
     return;
@@ -2325,7 +2475,8 @@ async function main() {
     console.error(
       '\nActions: --live --vizugy --mavir --discover --portal --thresholds --lakes --datatypes\n' +
       '         --forecast --groundwater --rain --matrix --rain-scan --well-scan --rain-normals\n' +
-      '         --flow-history --lake-history --well-history --operations --mavir-charts\n' +
+      '         --flow-history --lake-history --well-history --drought --operations\n' +
+      '         --mavir-charts\n' +
       '         --mavir-sheet --entsoe --find=NAME --url=URL --page=URL --site=BASEURL\n' +
       '\nRefusing to fall back to the full sweep: it is dozens of requests against two\n' +
       'public services, and a typo is not a reason to spend them.',
