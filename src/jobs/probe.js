@@ -2372,6 +2372,23 @@ async function probeDroughtIndex(args = []) {
       // it does not find a path built by concatenation at the point of the request, and
       // that is exactly how these are written. Printing the code around each ajax call
       // shows the URL being assembled, parameters and all.
+      // The one function that fetches, printed at length.
+      //
+      // The call-site scan found `var url = "index.php"` inside showDroughtData and
+      // stopped there, which says where the request goes and not what it carries. The
+      // parameter names are the whole remaining question - a POST with the wrong ones
+      // returns the front page byte for byte, which is exactly what happened.
+      const FETCHER = /function\s+showDroughtData[\s\S]{0,2600}/;
+      const fetcher = FETCHER.exec(js);
+      if (fetcher) {
+        console.log('      ----- showDroughtData -----');
+        for (const line of fetcher[0].split(/\n/).slice(0, 60)) {
+          const t = line.trim();
+          if (t) console.log(`      | ${t.slice(0, 170)}`);
+        }
+        console.log('      ----- end -----');
+      }
+
       const CALLS = /(\$\.(?:ajax|get|post|getJSON)\s*\(|\.load\s*\(\s*["'`]|url\s*:\s*)/g;
       const seen = new Set();
       let call;
