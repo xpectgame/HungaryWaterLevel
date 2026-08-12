@@ -2331,6 +2331,44 @@ async function probeDroughtIndex(args = []) {
     const text = t[0].replace(/<[^>]*>/g, ' | ').replace(/\s+/g, ' ').trim();
     console.log(`  table ${i}: ${text.slice(0, 600)}`);
   }
+
+  // The page's own scripts, which is where the endpoint lives when the page does not
+  // carry the data itself.
+  //
+  // This is the method that cracked data.vizugy.hu: a single-page front end's HTML is
+  // empty, but the bundle it loads contains the URLs it calls as plain string literals.
+  // Here the page announces that its measurements are "also available through the DWMS
+  // Vízhiány application" - and an app has to fetch from somewhere, so somewhere is
+  // named in something this page or that app loads.
+  const scripts = [...home.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => m[1]);
+  const styles = [...home.matchAll(/<link[^>]+href=["']([^"']+\.js[^"']*)["']/gi)].map((m) => m[1]);
+  const assets = [...new Set([...scripts, ...styles])];
+  console.log(`\n${assets.length} script(s) referenced:`);
+
+  const ORIGIN = 'https://aszalymonitoring.vizugy.hu/';
+  const INTERESTING = /(aszaly|drought|vizhiany|vízhiány|dwms|station|allomas|getdata|service|rest|api|json|ajax)/i;
+  for (const src of assets) {
+    if (/^https?:\/\//i.test(src) && !src.includes('vizugy.hu')) {
+      console.log(`  (third party, skipped) ${src}`);
+      continue;
+    }
+    const url = new URL(src, ORIGIN).toString();
+    try {
+      const { body: js } = await fetchText(url, { timeoutMs: 20000 });
+      const hits = new Set();
+      for (const m of js.matchAll(/["'`]([^"'`\s]{4,160})["'`]/g)) {
+        const v = m[1];
+        if (!INTERESTING.test(v)) continue;
+        if (/\.(png|jpg|jpeg|gif|svg|css|woff2?|ttf)$/i.test(v)) continue;
+        if (/^[#.]/.test(v)) continue;   // selectors, not URLs
+        hits.add(v);
+      }
+      console.log(`  ${url}  ${js.length} bytes, ${hits.size} candidate(s)`);
+      for (const h of [...hits].slice(0, 18)) console.log(`      ${h}`);
+    } catch (err) {
+      console.log(`  ${url}  FAILED ${err.message.split('\n')[0].slice(0, 60)}`);
+    }
+  }
 }
 
 /**
