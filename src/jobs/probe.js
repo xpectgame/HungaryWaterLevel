@@ -2239,6 +2239,101 @@ async function probeUnitHistory(args = []) {
 }
 
 /**
+ * The official drought index itself, not a substitute for it.
+ *
+ * The page currently says "not an official drought index", and the honest way to delete
+ * that sentence is to publish the official one rather than to build something adjacent
+ * and call it official. Hungary has exactly one: the Aszálymonitoring service run by OVF
+ * and the chamber of agriculture, which publishes a Hungarian Drought Index per station.
+ *
+ * It has no JSON API. It is a server-rendered PHP page whose form carries three fields -
+ * `drought_station` (a station GUID), `searchsettlement` and `drought_forecast_model` -
+ * so the numbers are reachable only by asking the form the question a visitor would ask
+ * and reading the page it returns.
+ *
+ * This probe establishes whether that is viable and what the answer looks like. It is
+ * deliberately one station: if the shape is wrong, thirty requests would learn the same
+ * thing thirty times over at someone else's expense.
+ */
+async function probeDroughtIndex(args = []) {
+  console.log('\n########## official drought index (aszalymonitoring) ##########');
+  const BASE = 'https://aszalymonitoring.vizugy.hu/index.php';
+
+  const { body: home } = await fetchText(BASE, { timeoutMs: 25000 });
+  console.log(`front page: ${home.length} bytes`);
+
+  // Every station the form offers, not the first twelve.
+  const stations = [...home.matchAll(/<option[^>]*value=["']([0-9A-F-]{36})["'][^>]*>([^<]*)</gi)]
+    .map((m) => ({ guid: m[1], name: m[2].trim() }));
+  console.log(`stations in the form: ${stations.length}`);
+  if (!stations.length) {
+    console.log('  no GUID options - the form has changed shape, nothing further is safe to guess');
+    return;
+  }
+  console.log(`  first: ${stations[0].name} ${stations[0].guid}`);
+  console.log(`  last:  ${stations[stations.length-1].name} ${stations[stations.length-1].guid}`);
+
+  // Anything else the form needs. A hidden token or a CSRF field would make this
+  // unworkable, so it is worth knowing before building anything.
+  const hidden = [...home.matchAll(/<input[^>]*type=["']hidden["'][^>]*>/gi)].map((m) => m[0]);
+  console.log(`hidden inputs: ${hidden.length}${hidden.length ? ` -> ${hidden.slice(0,4).join(' ')}` : ''}`);
+
+  const pick = args.find((a) => a.startsWith('--station='));
+  const station = pick
+    ? stations.find((s) => s.name.toLowerCase().includes(pick.slice(10).toLowerCase())) || stations[0]
+    : stations[0];
+  console.log(`\nasking for: ${station.name}`);
+
+  const form = new URLSearchParams({ drought_station: station.guid, searchsettlement: station.name });
+  const { body, contentType } = await fetchText(BASE, {
+    method: 'POST',
+    body: form.toString(),
+    timeoutMs: 30000,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...browserHeaders('https://aszalymonitoring.vizugy.hu') },
+  });
+  console.log(`response: ${contentType} ${body.length} bytes (front page was ${home.length})`);
+  if (body.length === home.length) {
+    console.log('  identical length to the front page: the POST probably did not select anything');
+  }
+
+  // What arrived that was not there before. A diff is the fastest way to find the numbers
+  // in 26 KB of page furniture.
+  const numbers = [...body.matchAll(/(-?\d+[.,]\d+)/g)].map((m) => m[1]);
+  const homeNumbers = new Set([...home.matchAll(/(-?\d+[.,]\d+)/g)].map((m) => m[1]));
+  const fresh = numbers.filter((n) => !homeNumbers.has(n));
+  console.log(`decimals: ${numbers.length} in the response, ${fresh.length} of them new`);
+  if (fresh.length) console.log(`  new: ${fresh.slice(0, 24).join(' ')}`);
+
+  // The index by name, in whatever the service calls it.
+  for (const term of ['HDI', 'aszályindex', 'Aszályindex', 'aszályossági', 'talajnedvesség', 'indexérték']) {
+    let at = body.indexOf(term);
+    let shown = 0;
+    while (at >= 0 && shown < 2) {
+      console.log(`  "${term}" @${at}: ${body.slice(Math.max(0, at-90), at+160).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}`);
+      at = body.indexOf(term, at + 1); shown += 1;
+    }
+  }
+
+  // Charts are usually the data in disguise: a JS array literal, or an <img> built from
+  // a query string that names the station and the date range.
+  const arrays = [...body.matchAll(/\[\s*(?:\[|\{|-?\d+[.,]?\d*\s*,)[\s\S]{0,220}?\]/g)].slice(0, 4);
+  if (arrays.length) {
+    console.log(`\n${arrays.length} array-shaped literal(s):`);
+    for (const a of arrays) console.log(`  ${a[0].replace(/\s+/g, ' ').slice(0, 200)}`);
+  }
+  const imgs = [...body.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)].map((m) => m[1])
+    .filter((u) => /\?|chart|graph|diagram|png|svg/i.test(u)).slice(0, 8);
+  if (imgs.length) { console.log('\nimage sources:'); for (const u of imgs) console.log(`  ${u}`); }
+
+  const tables = [...body.matchAll(/<table[\s\S]*?<\/table>/gi)];
+  console.log(`\n${tables.length} table(s)`);
+  for (const [i, t] of tables.slice(0, 2).entries()) {
+    const text = t[0].replace(/<[^>]*>/g, ' | ').replace(/\s+/g, ' ').trim();
+    console.log(`  table ${i}: ${text.slice(0, 600)}`);
+  }
+}
+
+/**
  * Is there a real drought measurement to be had, or only a rainfall ratio?
  *
  * The site currently says, in its own words, "not an official drought index - a real one
@@ -2662,6 +2757,11 @@ async function main() {
     return;
   }
 
+  if (args.includes('--drought-index')) {
+    await probeDroughtIndex(args);
+    return;
+  }
+
   if (args.includes('--drought')) {
     await probeDrought(args);
     return;
@@ -2764,7 +2864,8 @@ async function main() {
     console.error(
       '\nActions: --live --vizugy --mavir --discover --portal --thresholds --lakes --datatypes\n' +
       '         --forecast --groundwater --rain --matrix --rain-scan --well-scan --rain-normals\n' +
-      '         --flow-history --lake-history --well-history --drought --unit-history\n' +
+      '         --flow-history --lake-history --well-history --drought --drought-index\n' +
+      '         --unit-history\n' +
       '         --operations\n' +
       '         --mavir-charts\n' +
       '         --mavir-sheet --entsoe --find=NAME --url=URL --page=URL --site=BASEURL\n' +
