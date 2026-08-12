@@ -2365,6 +2365,23 @@ async function probeDroughtIndex(args = []) {
       }
       console.log(`  ${url}  ${js.length} bytes, ${hits.size} candidate(s)`);
       for (const h of [...hits].slice(0, 18)) console.log(`      ${h}`);
+
+      // The call sites themselves, which is where the URL actually is.
+      //
+      // Listing interesting-looking string literals finds DOM ids and translation keys;
+      // it does not find a path built by concatenation at the point of the request, and
+      // that is exactly how these are written. Printing the code around each ajax call
+      // shows the URL being assembled, parameters and all.
+      const CALLS = /(\$\.(?:ajax|get|post|getJSON)\s*\(|\.load\s*\(\s*["'`]|url\s*:\s*)/g;
+      const seen = new Set();
+      let call;
+      while ((call = CALLS.exec(js)) !== null) {
+        const snippet = js.slice(call.index, call.index + 230).replace(/\s+/g, ' ');
+        if (seen.has(snippet.slice(0, 60))) continue;
+        seen.add(snippet.slice(0, 60));
+        if (seen.size > 8) break;
+        console.log(`      CALL  ${snippet}`);
+      }
     } catch (err) {
       console.log(`  ${url}  FAILED ${err.message.split('\n')[0].slice(0, 60)}`);
     }
