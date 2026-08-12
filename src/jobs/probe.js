@@ -2504,8 +2504,49 @@ async function probeDroughtIndex(args = []) {
   console.log(`\n--- ArcGIS references (${arc.size}) ---`);
   for (const a of [...arc].slice(0, 30)) console.log(`  ${a}`);
 
+  // Ask the GIS service, which is the interface built to be asked.
+  //
+  // https://geoportal.vizugy.hu/arcgis/rest/services/Aszalymon/ carries the station layer
+  // and the drought-index raster as a standard ArcGIS REST service: ?f=json for metadata,
+  // /query for features, /identify for a value at a point. This is a published machine
+  // interface with a documented protocol, and querying it is what it exists for - unlike
+  // the settlement form on the front end, which the site guards with a hidden field its
+  // own source calls a bot trap. Where an operator has expressed a preference that
+  // clearly, the answer is to use the door they left open, not to get better at the one
+  // they locked.
+  const GIS = 'https://geoportal.vizugy.hu/arcgis/rest/services/Aszalymon';
+  const gis = {};
+  const askGis = async (label, url) => {
+    try {
+      const body = await fetchJson(url, { timeoutMs: 30000 });
+      gis[label] = body;
+      const keys = body && typeof body === 'object' ? Object.keys(body) : [];
+      console.log(`  ${label.padEnd(22)} OK    keys: ${keys.slice(0, 12).join(', ')}`);
+      if (body && body.error) console.log(`      error: ${JSON.stringify(body.error).slice(0, 200)}`);
+      return body;
+    } catch (err) {
+      gis[label] = { fetchError: err.message.split('\n')[0] };
+      console.log(`  ${label.padEnd(22)} FAIL  ${err.message.split('\n')[0].slice(0, 70)}`);
+      return null;
+    }
+  };
+
+  console.log('\n--- the GIS service ---');
+  await askGis('service-root', `${GIS}?f=json`);
+  await askGis('hdi-imageserver', `${GIS}/mosaic_hdis/ImageServer?f=json`);
+  const layer = await askGis('station-layer', `${GIS}/Aszaly_monitoring_allomasok/MapServer/0?f=json`);
+  if (layer && Array.isArray(layer.fields)) {
+    console.log(`      fields: ${layer.fields.map((f) => `${f.name}:${f.type.replace('esriFieldType','')}`).join(' ')}`);
+  }
+  // Everything the station layer holds. 139 stations is one small response, and the
+  // attributes decide whether the index is already on the features or has to come from
+  // the raster.
+  await askGis('stations', `${GIS}/Aszaly_monitoring_allomasok/MapServer/0/query` +
+    `?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=json`);
+
   emitDocument('drought-index-scan', {
     arcgis: [...arc],
+    gis,
     stations: stations.length,
     stationSample: stations.slice(0, 3),
     frontPageBytes: home.length,
