@@ -297,6 +297,33 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .key{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .keyshape{display:inline-block;width:13px;height:13px;margin-right:5px;vertical-align:-2px}
 
+/* --- power plant cards ---
+   A three-column grid per figure: what it is, the number with its unit, and what to
+   read it against. The third column is the reason this exists - the old version showed
+   the middle one alone. */
+#plantlist{display:grid;gap:10px}
+.plantcard{border:1px solid var(--line);border-radius:12px;padding:11px 13px;background:#fff;cursor:pointer}
+.plantcard:hover{border-color:var(--ember-dim)}
+.plantcard.on{border-color:var(--ember);background:#fffaf7}
+.plantcard:focus-visible{outline:2px solid var(--ember);outline-offset:1px}
+.pl-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.pl-nm{font-weight:600;font-size:14.5px}
+.pl-meta{font-size:11.5px;color:var(--ink-faint);display:flex;gap:7px;align-items:baseline}
+.pl-tag{border:1px solid var(--line);border-radius:99px;padding:1px 7px;white-space:nowrap}
+.pl-track{height:5px;border-radius:3px;background:var(--sunk);margin:8px 0 9px;overflow:hidden}
+.pl-fill{height:100%;background:linear-gradient(90deg,var(--ember-dim),var(--ember))}
+.pl-grid{display:grid;grid-template-columns:auto auto 1fr;gap:3px 12px;align-items:baseline;font-size:12.5px}
+.pl-k{color:var(--ink-soft)}
+.pl-v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);white-space:nowrap;text-align:right}
+.pl-u{font-family:var(--sans);font-weight:400;font-size:11px;color:var(--ink-faint)}
+.pl-a{color:var(--ink-faint);line-height:1.35}
+.pl-a b{color:var(--ink-soft);font-weight:600}
+.pl-src{border:1px solid var(--line);border-radius:99px;padding:0 6px;font-size:10.5px;margin-left:4px;white-space:nowrap}
+@media(max-width:520px){
+  .pl-grid{grid-template-columns:auto auto;gap:2px 10px}
+  .pl-a{grid-column:1/-1;margin-bottom:4px}
+}
+
 /* --- tooltip --- */
 #tip{position:fixed;z-index:50;pointer-events:none;opacity:0;transition:opacity .15s;
   background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;
@@ -3276,6 +3303,56 @@ function renderMix(power){
  * and while generation itself is unavailable the whole column is an estimate from
  * nameplate. Showing the number without that is how a model becomes a measurement.
  */
+/* --- power plants ---------------------------------------------------------
+
+   This section used to be six bars and a bare number: "105.0", no unit, nothing
+   to judge it against. Everything needed to make it mean something was already
+   in the payload and simply never shown - installed capacity, load factor, the
+   river's own discharge, the plant's share of it, the temperature rise through
+   the condenser and across the whole river.
+
+   So every figure here now carries its unit and, next to it, the thing it should
+   be read against. The strongest of those is the river: Paks takes 77 m3/s from
+   a Danube carrying 1823, and "4% of the river goes through the reactor" is a
+   sentence a reader can do something with in a way that "77.0" is not.
+-------------------------------------------------------------------------- */
+
+/**
+ * "a Dunából", "a Tiszából (Kiskörei-tározó, távvezetéken)".
+ *
+ * Concatenating a suffix onto a registry string produced "a Tisza (Kiskörei-tározó,
+ * távvezetéken)ból", which is not a word. Three rules and it reads properly: the
+ * parenthetical is set aside and re-attached at the end, a final -a or -e lengthens
+ * before the suffix (Duna → Dunából), and the suffix harmonises with the last vowel of
+ * the stem.
+ */
+function fromWater(name){
+  const m = /^([^(]+?)\s*(\(.*\))?$/.exec(String(name || '').trim());
+  if(!m) return String(name || '');
+  let stem = m[1].replace(/a$/,'á').replace(/e$/,'é');
+  const vowels = stem.match(/[aáeéiíoóöőuúüű]/gi) || ['a'];
+  const last = vowels[vowels.length-1].toLowerCase();
+  const suffix = 'aáoóuú'.includes(last) ? 'ból' : 'ből';
+  const article = /^[aáeéiíoóöőuúüű]/i.test(stem) ? 'az' : 'a';
+  return `${article} ${stem}${suffix}${m[2] ? ' '+m[2] : ''}`;
+}
+
+/** "a Duna", "az Ipoly" - the article a reader hears immediately if it is wrong. */
+function theWater(name){
+  const stem = String(name || '').replace(/\s*\(.*\)$/, '').trim();
+  return `${/^[aáeéiíoóöőuúüű]/i.test(stem) ? 'az' : 'a'} ${stem}`;
+}
+
+const PLANT_TYPE_HU = {
+  nuclear: 'atomerőmű',
+  lignite: 'lignit',
+  coal: 'szén',
+  natural_gas_ccgt: 'gáz, kombinált ciklusú',
+  natural_gas_steam: 'gáz, hagyományos',
+  biomass: 'biomassza',
+  pumped_storage: 'szivattyús tározó',
+};
+
 function renderPlants(){
   const rows = plants.map((p) => {
     const w = p.water && p.water.withdrawalM3s;
@@ -3286,26 +3363,83 @@ function renderPlants(){
 
   const max = Math.max(...rows.map((r) => r.w), 1);
   $('plantlist').innerHTML = rows.map(({p,w,mw,conf}) => {
-    const label = conf==='measured' ? '' : conf==='unavailable'
-      ? ' <small style="color:var(--ink-faint)">nincs élő adat</small>'
-      : ' <small style="color:var(--ink-faint)">becsült</small>';
+    const label = conf==='measured' ? 'mért' : conf==='unavailable' ? 'nincs élő adat' : 'becsült';
     // A blokkszám a hűtővíz-mennyiség fele: ha kettő áll a négyből, a folyóból feleannyit
     // vesznek ki. Ott van a szám mellett, hogy honnan tudjuk - a mérés és a következtetés
     // ugyanúgy néz ki, amíg valaki ki nem mondja, melyik.
     const u = p.units;
     const units = u
-      ? ` <small style="color:var(--ink-faint)" title="${u.basis==='generation'
+      ? `<span class="pl-tag" title="${u.basis==='generation'
           ? 'blokkonkénti mért teljesítményből (ENTSO-E A73)'
           : u.basis==='outage-notices'
             ? 'üzemszünet-bejelentésekből (ENTSO-E A80)'
             : 'a termelésből következtetve — alsó becslés'}">`+
-        `${u.online}/${u.total} blokk${u.basis==='generation'?' ✓':''}</small>`
+        `${u.online}/${u.total} blokk${u.basis==='generation'?' ✓':''}</span>`
       : '';
-    return `<div class="bar clickable" data-plant="${p.id}" tabindex="0" role="button">`+
-      `<div class="nm" title="${p.name}">${p.name}${units}</div>`+
-      `<div class="track"><div class="fill" style="width:${Math.max(0.6,(w/max)*100).toFixed(1)}%;`+
-      `background:linear-gradient(90deg,var(--ember-dim),var(--ember))"></div></div>`+
-      `<div class="n">${fmt(w,1)}${label}</div></div>`;
+
+    const t = p.thermalLoad;
+    const water = p.water;
+    // One row of the detail grid: a label, a number with its unit, and what to read it
+    // against. The third column is the whole point of the rewrite.
+    const line = (name, value, unit, against) =>
+      `<div class="pl-k">${name}</div>`+
+      `<div class="pl-v">${value}<span class="pl-u">${unit}</span></div>`+
+      `<div class="pl-a">${against || ''}</div>`;
+
+    const detail = [];
+    if(Number.isFinite(mw)){
+      const lf = p.generation && p.generation.loadFactor;
+      detail.push(line('Termelés', fmt(mw,0), ' MW',
+        `a beépített ${fmt(p.capacityMw,0)} MW <b>${lf!=null?fmt(lf*100,0):'–'}%</b>-a` +
+        ` <span class="pl-src">${label}</span>`));
+    } else {
+      detail.push(line('Termelés', '–', '',
+        `${fmt(p.capacityMw,0)} MW beépített <span class="pl-src">${label}</span>`));
+    }
+
+    if(Number.isFinite(w) && w > 0){
+      detail.push(line('Hűtővíz-kivétel', fmt(w,1), ' m³/s',
+        t && t.riverFlowM3s
+          ? `${theWater(p.receivingWater)} mai vízhozamának <b>${fmt(t.abstractionShareOfRiver*100,1)}%</b>-a `+
+            `(${fmt(t.riverFlowM3s,0)} m³/s)`
+          : fromWater(p.receivingWater)));
+      const cons = water && water.consumptionM3s;
+      if(Number.isFinite(cons)){
+        detail.push(line('Ebből elpárolog', fmt(cons,2), ' m³/s',
+          `a többi ${fmt(w-cons,1)} m³/s visszafolyik`+
+          (t && t.condenserRiseK ? `, ${fmt(t.condenserRiseK,1)} °C-kal melegebben` : '')));
+      }
+      if(t && t.mixedRiverRiseK){
+        detail.push(line('Folyó felmelegedése', fmt(t.mixedRiverRiseK,2), ' °C',
+          'a teljes vízhozamra elkeveredve'));
+      }
+      if(water && water.dailyM3){
+        // A day and a year at today's rate. The year is explicitly "at this rate" rather
+        // than a forecast: a plant does not run at one output for twelve months, and a
+        // number that looks like an annual total would be read as one.
+        // Below a tenth of a million this reads "0,0 millió m3", which is a way of
+        // printing a number that says nothing. Small plants get thousands instead.
+        const big = water.dailyM3 >= 1e5;
+        detail.push(line('Egy nap alatt',
+          big ? fmt(water.dailyM3/1e6,1) : fmt(water.dailyM3/1e3,0),
+          big ? ' millió m³' : ' ezer m³',
+          water.annualM3
+            ? `ilyen ütemben ${water.annualM3 >= 1e8 ? `${fmt(water.annualM3/1e9,2)} milliárd` : `${fmt(water.annualM3/1e6,0)} millió`} m³ egy év alatt`
+            : ''));
+      }
+    } else {
+      detail.push(line('Hűtővíz-kivétel', '–', '',
+        p.status==='planned' ? 'még nem üzemel' : 'nincs számottevő kivétel'));
+    }
+
+    return `<div class="plantcard clickable" data-plant="${p.id}" tabindex="0" role="button">`+
+      `<div class="pl-head">`+
+        `<div class="pl-nm">${p.name}</div>`+
+        `<div class="pl-meta">${PLANT_TYPE_HU[p.type]||p.type||''}${units}</div>`+
+      `</div>`+
+      `<div class="pl-track"><div class="pl-fill" style="width:${Math.max(0.6,(w/max)*100).toFixed(1)}%"></div></div>`+
+      `<div class="pl-grid">${detail.join('')}</div>`+
+    `</div>`;
   }).join('');
 
   for(const row of $('plantlist').querySelectorAll('[data-plant]')){
