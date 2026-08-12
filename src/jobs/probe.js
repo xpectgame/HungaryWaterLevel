@@ -1816,15 +1816,29 @@ async function probeLakeHistory(args = []) {
  * every fifteen minutes, so a whole year for forty wells fits in one request.
  */
 async function probeWellHistory(args = []) {
-  console.log('\n########## groundwater history ##########');
-  const { listWells, WELL_KIND } = require('../config/wells');
   const arg = (name) => {
     const hit = args.find((a) => a.startsWith(`--${name}=`));
     return hit ? hit.slice(name.length + 3) : null;
   };
 
+  // Two networks, one bake. The shallow water table (vmoType 12, code 69) and the
+  // confined aquifer (vmoType 13, code 70) need identical arithmetic and must never share
+  // an output file: they are different water, in different units, pointing in opposite
+  // directions, and a single document keyed by station id would silently let one be
+  // ranked against the other's record.
+  const network = arg('network') === 'shallow' ? 'shallow' : 'deep';
+  const isShallow = network === 'shallow';
+  const registry = isShallow ? require('../config/shallow-wells.json') : require('../config/wells').listWells();
+  const WELL_KIND = isShallow
+    ? { adatFajtaKod: 69, adatTipusKod: 100, label: 'talajvízállás' }
+    : require('../config/wells').WELL_KIND;
+  const OUTPUT = isShallow ? 'shallow-history' : 'well-history';
+
+  console.log(`\n########## ${isShallow ? 'shallow water table' : 'groundwater'} history ` +
+    `(kind ${WELL_KIND.adatFajtaKod} / type ${WELL_KIND.adatTipusKod}) ##########`);
+
   const only = (arg('only') || '').split(',').filter(Boolean);
-  const wells = listWells().filter((w) => !only.length || only.includes(w.id));
+  const wells = registry.filter((w) => !only.length || only.includes(w.id));
   const YEARS = Number(arg('years')) || 10;
   const CHUNK = 40;
   const now = new Date();
@@ -1999,14 +2013,61 @@ async function probeWellHistory(args = []) {
         `${rankable ? '     ' : ' SKIP'}  ` +
         `median [${months.map((m) => (m ? m.p[3].toFixed(0) : '-')).join(' ')}]`,
     );
-    writeDocument('well-history', out);
+    writeDocument(OUTPUT, out);
   }
 
   const rankable = Object.values(out).filter((e) => e.rankable).length;
   console.log(`\n${Object.keys(out).length}/${wells.length} wells have a usable record, ${rankable} of them rankable`);
+
+  // WHICH WAY IS DRY?
+  //
+  // Everything else on this site reads "bigger number, more water". A depth below a datum
+  // reads the other way, and nothing in the numbers announces which one this is. Getting
+  // it backwards would not fail - it would publish "unusually wet" through a drought,
+  // which is the single worst thing this page could do.
+  //
+  // The seasons settle it, because they are the one thing about groundwater that is not
+  // in doubt: the table is highest after the spring melt and lowest at the end of summer.
+  // So if the late-summer median sits ABOVE the spring median, the number is a depth and
+  // bigger means drier. This is a measurement, not an assumption, and it is printed so
+  // the next person can check it rather than trust it.
+  const seasonal = { spring: [], lateSummer: [] };
+  for (const entry of Object.values(out)) {
+    const at = (m) => (entry.months[m] ? entry.months[m].p[3] : null);
+    const spring = [at(2), at(3)].filter(Number.isFinite);   // March, April
+    const late = [at(7), at(8)].filter(Number.isFinite);     // August, September
+    if (spring.length && late.length) {
+      seasonal.spring.push(spring.reduce((a, b) => a + b, 0) / spring.length);
+      seasonal.lateSummer.push(late.reduce((a, b) => a + b, 0) / late.length);
+    }
+  }
+  if (seasonal.spring.length) {
+    const springMedian = median(seasonal.spring);
+    const lateMedian = median(seasonal.lateSummer);
+    const deeperInSummer = lateMedian > springMedian;
+    console.log(
+      `\nseasonal check over ${seasonal.spring.length} stations: ` +
+        `spring median ${springMedian.toFixed(1)}, late-summer median ${lateMedian.toFixed(1)}`,
+    );
+    console.log(
+      deeperInSummer
+        ? '  late summer reads HIGHER -> the number is a DEPTH: bigger means deeper means drier'
+        : '  late summer reads LOWER -> the number is a LEVEL: bigger means more water',
+    );
+    out.__orientation = {
+      biggerMeans: deeperInSummer ? 'drier' : 'wetter',
+      springMedian: round2(springMedian),
+      lateSummerMedian: round2(lateMedian),
+      stations: seasonal.spring.length,
+      note:
+        'Decided from the seasonal shape rather than assumed: the water table is highest ' +
+        'after the spring melt and lowest at the end of summer, so whichever way that ' +
+        'ordering runs tells you what the number is.',
+    };
+  }
   console.log('percentiles are [5 10 25 50 75 90 95] of daily mean depth against each well\'s own datum,');
   console.log('in whatever unit that well reports - which is why nothing here may be averaged across wells');
-  emitDocument('well-history', out, 'src/config/well-history.json');
+  emitDocument(OUTPUT, out, `src/config/${OUTPUT}.json`);
 }
 
 /**
