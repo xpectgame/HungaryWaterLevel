@@ -158,6 +158,7 @@ function assessDrought(readings, opts = {}) {
         }
         : null,
     },
+    health: networkHealth(stations, statuses, ranked.length, at),
     coverage: shallowCoverage(),
     note:
       'Official measurements from OVF\'s own networks, combined here. This is NOT the ' +
@@ -166,4 +167,80 @@ function assessDrought(readings, opts = {}) {
   };
 }
 
-module.exports = { assessDrought, DRY_PERCENTILE, VERY_DRY_PERCENTILE };
+/**
+ * Has the network gone quiet?
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS EXISTS AND WHY IT IS NOT A LOG LINE
+ * ---------------------------------------------------------------------------
+ * Everything on this page depends on somebody else's service continuing to publish. When
+ * one stops, the failure is almost never an error: the request succeeds, the JSON parses,
+ * and the page renders a number that is simply older than it looks. This project has been
+ * caught by that shape twice already - a deployment check that read a field which did not
+ * exist and reported "0 upstream errors" as good news, and a groundwater feed that
+ * changed units without changing status code.
+ *
+ * A drought section is the worst possible place for it. Groundwater moves slowly, so a
+ * frozen feed looks exactly like a stable water table for weeks, and the number it freezes
+ * at is the one a reader will quote.
+ *
+ * So silence is computed, reported in the payload, and shown on the page. Three ways for
+ * it to be wrong, each with its own reason string, because they need different responses:
+ *
+ *   - NOTHING ARRIVED. The upstream is down or the shape changed.
+ *   - EVERYTHING IS OLD. The feed answers but has stopped advancing, which is the
+ *     failure a status code cannot show.
+ *   - THE DENOMINATOR COLLAPSED. Stations are still reporting but far fewer than the
+ *     registry holds, so a count over them is no longer a count over the country. A
+ *     drought signal computed from a shrinking sample is a sampling artefact.
+ */
+const HEALTH = Object.freeze({
+  /** Newest reading older than this and the network is not telling us about today. */
+  quietDays: 3,
+  /** Below this share of the registry comparable, the national count stops being national. */
+  minComparableShare: 0.5,
+});
+
+function networkHealth(stations, statuses, comparable, at) {
+  const times = stations.map((s) => (s.at ? Date.parse(s.at) : NaN)).filter(Number.isFinite);
+  const freshest = times.length ? Math.max(...times) : null;
+  const quietDays = freshest === null ? null : Math.round(((at - freshest) / 86400000) * 10) / 10;
+  const comparableShare = stations.length ? comparable / stations.length : 0;
+
+  const reasons = [];
+  if (freshest === null) {
+    reasons.push({ code: 'no-readings', detail: 'no station returned a reading at all' });
+  } else if (quietDays > HEALTH.quietDays) {
+    reasons.push({
+      code: 'stale',
+      detail: `the newest reading in the whole network is ${quietDays} days old`,
+      quietDays,
+    });
+  }
+  if (comparableShare < HEALTH.minComparableShare) {
+    reasons.push({
+      code: 'thin',
+      detail: `only ${comparable} of ${stations.length} stations are comparable ` +
+        `(${Math.round(comparableShare * 100)}%), so this is no longer a national count`,
+      comparableShare: Math.round(comparableShare * 1000) / 1000,
+    });
+  }
+
+  return {
+    ok: reasons.length === 0,
+    freshestAt: freshest === null ? null : new Date(freshest).toISOString(),
+    quietDays,
+    comparable,
+    registered: stations.length,
+    comparableShare: Math.round(comparableShare * 1000) / 1000,
+    thresholds: HEALTH,
+    reasons,
+    // Said in the payload rather than inferred by each consumer: a section that cannot
+    // vouch for its own numbers should not be drawn as though it can.
+    note: reasons.length
+      ? 'This section is not currently trustworthy and says so; the figures may be frozen or unrepresentative.'
+      : 'The network is reporting and the sample is national.',
+  };
+}
+
+module.exports = { assessDrought, networkHealth, HEALTH, DRY_PERCENTILE, VERY_DRY_PERCENTILE };

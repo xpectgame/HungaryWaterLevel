@@ -640,6 +640,20 @@ async function probeSite(baseUrl) {
       if (!s.comparable) return { ok: false, note: `${s.registered} wells, none comparable - the bake or the feed is missing` };
       return { ok: true, note: `${s.comparable}/${s.registered} comparable, ${s.low} low, ${s.recordLow} at a ten-year low` };
     }],
+    // The drought section carries its own verdict on whether it can be trusted, so the
+    // deployment check reads that rather than re-deriving it. A section that has gone
+    // quiet still answers 200 with a full payload - that is the entire failure mode.
+    ['drought', '/api/v1/drought', (d) => {
+      const s = d.summary || {};
+      const h = d.health || {};
+      if (!s.registered) return { ok: false, note: 'no stations registered' };
+      if (!h.ok) {
+        return { ok: false, note: `SILENT: ${(h.reasons || []).map((r) => r.code).join(', ')}` +
+          `${h.quietDays != null ? ` (newest reading ${h.quietDays}d old)` : ''}` };
+      }
+      return { ok: true, note: `${s.comparable}/${s.registered} comparable, ${s.dry} dry, ` +
+        `${s.deepestOnRecord} at a ten-year low, freshest ${String(h.freshestAt).slice(0, 16)}` };
+    }],
     ['rainfall', '/api/v1/rainfall?days=30', (d) => {
       const gauges = Object.keys(d.gauges || {}).length;
       return { ok: gauges > 0, note: `${gauges} gauges` };

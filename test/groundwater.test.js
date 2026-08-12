@@ -338,3 +338,89 @@ test('GET /drought ranks the network', async () => {
     assert.ok(body.coverage.stations > 500);
   });
 });
+
+/* --- the watchdog ---------------------------------------------------------- */
+
+const { networkHealth, HEALTH } = require('../src/domain/drought');
+
+/**
+ * The failure this exists for is not an error. The request succeeds, the JSON parses,
+ * and the page renders numbers that are simply older than they look - which on a
+ * quantity that moves centimetres a month is indistinguishable from a stable water
+ * table for weeks, and the frozen number is the one a reader quotes.
+ */
+/** The whole registry reporting at once, so freshness is the only variable. */
+function wholeNetwork(when, value = 340) {
+  const document = {};
+  const readings = {};
+  for (const w of listShallowWells()) {
+    Object.assign(document, depthDoc(w.id));
+    readings[w.id] = { value, at: when };
+  }
+  return { document, readings };
+}
+
+test('a frozen feed is reported as silent, not as stable', () => {
+  const at = new Date(Date.UTC(2026, 7, 12));
+
+  const live = wholeNetwork('2026-08-11T06:00:00Z');
+  const healthy = assessDrought(live.readings, { at, document: live.document });
+  assert.equal(healthy.health.ok, true, JSON.stringify(healthy.health.reasons));
+
+  // Every station still answering, none of them advancing - the failure a status code
+  // cannot show, and the one that looks like a stable water table.
+  const old = wholeNetwork('2026-06-20T06:00:00Z');
+  const frozen = assessDrought(old.readings, { at, document: old.document });
+  assert.equal(frozen.health.ok, false, 'a month-old newest reading is not healthy');
+  assert.ok(frozen.health.reasons.some((r) => r.code === 'stale'));
+  assert.ok(frozen.health.quietDays > HEALTH.quietDays);
+  // And the numbers underneath it must have been withdrawn, not merely annotated: a
+  // reading too old to be "now" never entered the count in the first place.
+  assert.equal(frozen.summary.comparable, 0);
+});
+
+test('an empty response is silence, not a dry country', () => {
+  const at = new Date(Date.UTC(2026, 7, 12));
+  const out = assessDrought({}, { at });
+  assert.equal(out.health.ok, false);
+  assert.ok(out.health.reasons.some((r) => r.code === 'no-readings'));
+  // And crucially it must not look like good news: nothing dry, because nothing measured.
+  assert.equal(out.summary.comparable, 0);
+  assert.equal(out.summary.dry, 0);
+});
+
+test('a collapsed denominator is flagged, because a shrinking sample is not a trend', () => {
+  // One station out of hundreds still reporting: the count would be "1 of 1 dry", which
+  // is 100% and means nothing.
+  const [a] = listShallowWells();
+  const at = new Date(Date.UTC(2026, 7, 12));
+  const out = assessDrought({ [a.id]: { value: 372, at: '2026-08-11T06:00:00Z' } },
+    { at, document: depthDoc(a.id) });
+  assert.equal(out.health.ok, false);
+  const thin = out.health.reasons.find((r) => r.code === 'thin');
+  assert.ok(thin, 'one comparable station out of hundreds must be flagged as thin');
+  assert.ok(thin.comparableShare < HEALTH.minComparableShare);
+});
+
+test('health is computable on its own, and says what it checked', () => {
+  const at = new Date(Date.UTC(2026, 7, 12));
+  const stations = Array.from({ length: 100 }, (_, i) => ({ at: '2026-08-11T06:00:00Z', id: `s${i}` }));
+  const h = networkHealth(stations, { ok: 100 }, 100, at);
+  assert.equal(h.ok, true);
+  assert.equal(h.registered, 100);
+  assert.equal(h.comparable, 100);
+  assert.ok(h.freshestAt.startsWith('2026-08-11'));
+  assert.ok(h.thresholds.quietDays > 0, 'the payload states the bar it was judged against');
+});
+
+test('GET /drought carries its own verdict on whether it can be trusted', async () => {
+  await withServer(async ({ get }) => {
+    const { body } = await get('/api/v1/drought');
+    assert.ok(body.health, 'the payload must carry health');
+    assert.equal(typeof body.health.ok, 'boolean');
+    assert.ok(Array.isArray(body.health.reasons));
+    // The fixture is fresh, so it should be healthy - if this ever fails, the fixture
+    // has drifted and the watchdog is about to cry wolf in production too.
+    assert.equal(body.health.ok, true, JSON.stringify(body.health.reasons));
+  });
+});

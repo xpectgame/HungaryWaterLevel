@@ -464,6 +464,8 @@ svg.map text{user-select:none;-webkit-user-select:none}
 /* Per-directorate drought share: a name, a bar, the percentage, and the counts behind
    it. The counts matter as much as the share - 100% of three stations is not the same
    statement as 60% of a hundred and forty. */
+.dr-health{border:1px solid #e6bcae;background:#fdf6f4;color:#9c2b16;border-radius:10px;
+  padding:9px 12px;font-size:13px;line-height:1.45;margin:0 0 14px}
 .dr-regions{display:grid;gap:6px;margin-top:4px}
 .dr-row{display:grid;grid-template-columns:minmax(84px,auto) minmax(60px,1fr) auto minmax(0,1.1fr);
   gap:10px;align-items:center;font-size:12.5px}
@@ -1015,6 +1017,7 @@ footer a{color:var(--ink-soft)}
     a mélység állomásonként mást jelent, a rangsor nem.
   </p>
 
+  <p id="dr-health" class="dr-health" hidden></p>
   <div id="dr-head" class="gw-head"></div>
   <div id="dr-regions" class="dr-regions"></div>
   <p class="fineprint" id="dr-coverage" style="margin-top:14px"></p>
@@ -2766,6 +2769,26 @@ function renderDrought(data){
     `</div>`;
   }).join('');
 
+  // The watchdog, in front of the numbers rather than in a log.
+  //
+  // A groundwater feed that freezes looks exactly like a stable water table for weeks,
+  // and the number it freezes at is the one a reader will quote. So when the network
+  // cannot vouch for itself the section says so above its own figures, instead of
+  // rendering them as though nothing happened.
+  const h = data.health;
+  const warn = $('dr-health');
+  if(h && !h.ok){
+    warn.hidden = false;
+    warn.innerHTML = `<b>Ezek a számok most nem megbízhatóak.</b> `+
+      (h.reasons||[]).map(r =>
+        r.code==='stale' ? `A hálózat legfrissebb mérése is ${fmt(r.quietDays,1)} napos — úgy tűnik, megállt az adatközlés.`
+        : r.code==='no-readings' ? 'Egyetlen állomásról sem érkezett mérés.'
+        : r.code==='thin' ? `${h.comparable} állomás hasonlítható össze a ${h.registered}-ból (${fmt(h.comparableShare*100,0)}%) — ez már nem országos kép.`
+        : r.detail).join(' ');
+  } else {
+    warn.hidden = true;
+  }
+
   const cov = data.coverage || {};
   $('dr-coverage').textContent =
     `${cov.stations||0} észlelőállomás, mind a ${(cov.directorates||[]).length} vízügyi igazgatóság területén. `+
@@ -2787,7 +2810,12 @@ async function loadDrought(){
     const data = await fetch('/api/v1/drought',{cache:'no-store'}).then(r=>r.json());
     renderDrought(data);
   }catch(err){
-    $('dr-head').innerHTML = '<p class="lead" style="margin:0">A talajvízadat most nem érhető el.</p>';
+    $('dr-head').innerHTML = '';
+    $('dr-regions').innerHTML = '';
+    const warn = $('dr-health');
+    warn.hidden = false;
+    warn.innerHTML = '<b>A talajvízadat most nem érhető el.</b> '+
+      'Nem a talajvíz állása ismeretlen — az adatforrás nem válaszol.';
   }
 }
 
