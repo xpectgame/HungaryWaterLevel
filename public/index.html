@@ -461,6 +461,22 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .gw-stat .lbl{font-size:12px;color:var(--ink-soft);margin-top:5px;line-height:1.35}
 .gw-stat.alarm .n{color:#9c2b16}
 .gw-list{display:grid;gap:7px}
+/* Per-directorate drought share: a name, a bar, the percentage, and the counts behind
+   it. The counts matter as much as the share - 100% of three stations is not the same
+   statement as 60% of a hundred and forty. */
+.dr-regions{display:grid;gap:6px;margin-top:4px}
+.dr-row{display:grid;grid-template-columns:minmax(84px,auto) minmax(60px,1fr) auto minmax(0,1.1fr);
+  gap:10px;align-items:center;font-size:12.5px}
+.dr-nm{font-weight:600;color:var(--ink)}
+.dr-track{height:9px;border-radius:5px;background:var(--sunk);overflow:hidden}
+.dr-fill{height:100%;background:linear-gradient(90deg,#e0b48f,#9c2b16)}
+.dr-n{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;color:#9c2b16;white-space:nowrap}
+.dr-n span{font-size:10.5px;color:var(--ink-faint);font-weight:400;margin-left:1px}
+.dr-a{color:var(--ink-faint);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:560px){
+  .dr-row{grid-template-columns:minmax(72px,auto) 1fr auto}
+  .dr-a{grid-column:1/-1;margin-bottom:3px}
+}
 .gw-row{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr) auto;gap:10px;
   align-items:baseline;border:1px solid var(--line);border-radius:9px;padding:7px 11px;background:#fff}
 .gw-row .nm{font-weight:600;font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -755,6 +771,7 @@ footer a{color:var(--ink-soft)}
     <a href="#s-hirek">Mi történik</a>
     <a href="#s-tavak">Tavak</a>
     <a href="#s-retegviz">Rétegvíz</a>
+    <a href="#s-aszaly">Aszály</a>
     <a href="#s-vizallas">Vízállás</a>
     <a href="#s-eromuvek">Erőművek</a>
     <a href="#s-elozmeny">48 óra</a>
@@ -984,6 +1001,26 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
+<section class="card" id="s-aszaly" style="margin-bottom:18px">
+  <h3>Mennyire száraz a föld?</h3>
+  <p class="lead" style="margin-bottom:6px">
+    A csapadék azt mondja meg, mennyi víz <b>érkezett</b> — azt nem, hogy mennyi maradt.
+    Két egyforma csapadékú augusztus két különböző aszály, ha az egyiket csapadékos tavasz
+    előzte meg. A talajvízszint viszont hónapok esőjét integrálja: ez az a víz, amit a
+    gyökér elér és a kerti kút ad.
+  </p>
+  <p class="fineprint" style="margin:0 0 14px">
+    Az OVF országos talajvíz-észlelőhálózatának mérései, mind a 12 vízügyi igazgatóság
+    területéről. Minden állomás a <b>saját</b> tízéves, azonos havi eloszlásához mérve —
+    a mélység állomásonként mást jelent, a rangsor nem.
+  </p>
+
+  <div id="dr-head" class="gw-head"></div>
+  <div id="dr-regions" class="dr-regions"></div>
+  <p class="fineprint" id="dr-coverage" style="margin-top:14px"></p>
+  <p class="fineprint" id="dr-not" style="margin-top:8px"></p>
+</section>
+
 <section class="card" id="s-vizallas" style="margin-bottom:18px">
   <h3>Vízállás — hol tart a folyó a saját történetéhez képest</h3>
   <div id="levels" class="levels"></div>
@@ -1063,10 +1100,13 @@ footer a{color:var(--ink-soft)}
       Ezért mérjük mindegyiket a sajátjához, nem egymáshoz.</p>
       <p>A szavak, amiket használunk — átlag felett, átlagos, átlag alatt, kisvíz, súlyos kisvíz —
       a mi egyszerű skálánk erre az egy arányra: 130%, 85%, 60% és 40% a határok.
-      <strong>Ez nem hivatalos aszályindex.</strong> Egy valódi aszálymutató a talajnedvességet,
-      a csapadékhiányt és az évszakot is nézi, és ezek egyike sincs ebben az adatban. Azt tudjuk
-      megmondani, hogy a folyók mennyi vizet hoznak a szokásoshoz képest — azt nem, hogy ez
-      hivatalosan aszálynak minősül-e.</p>
+      <strong>Ez a skála a folyókról szól, nem aszályindex.</strong> Egy aszálymutató a
+      talajnedvességet, a csapadékhiányt és az évszakot is nézi. A csapadékhiány és a
+      talajvízszint azóta itt is méréssel szerepel — lásd a <a href="#s-csapadek">csapadék</a>
+      és az <a href="#s-aszaly">aszály</a> szekciót, mindkettő az OVF hálózatából —, az évszakot
+      pedig a tízéves, azonos havi összehasonlítás kezeli. Amit továbbra sem állítunk: hogy ez
+      a NAK/OVF hivatalos aszályindexe (HDI) lenne. Az más módszerrel készül, és nincs
+      adatvégpontja, amit be tudnánk olvasni.</p>
       <p>A sokéves átlag egész évre vonatkozik, nem augusztusra, és a magyar folyók nyár végén
       amúgy is az évi átlaguk alatt járnak — a 100% alatti érték a nyári hónapokban önmagában
       tehát még nem rendkívüli. Épp ezért nem csak ehhez mérünk.</p>
@@ -2674,6 +2714,83 @@ function drawGroundwaterList(){
     : `mind a ${gwWells.length} kút`;
 }
 
+/* --- drought ---------------------------------------------------------------
+
+   The section that lets the rainfall caveat be deleted. It used to say "this is
+   not an official drought index - a real one looks at soil moisture and the
+   rainfall deficit as well", which was honest and was also a description of a
+   hole. The hole is now filled with official measurements: OVF's own shallow
+   water-table network, 770 stations, all twelve directorates.
+
+   It is still not the HDI, and says so in its own last line rather than letting
+   the reader assume. The measurements are theirs; the arithmetic is ours.
+-------------------------------------------------------------------------- */
+
+const VIZIG_HU = {
+  1:'Győr', 2:'Budapest', 3:'Baja', 4:'Székesfehérvár', 5:'Pécs', 6:'Szombathely',
+  7:'Szolnok', 8:'Miskolc', 9:'Debrecen', 10:'Gyula', 11:'Szeged', 12:'Nyíregyháza',
+};
+
+function renderDrought(data){
+  const head = $('dr-head');
+  const s = data && data.summary;
+  if(!s || !s.comparable){
+    head.innerHTML = '<p class="lead" style="margin:0">A talajvízadat most nem érhető el.</p>';
+    $('dr-regions').innerHTML=''; return;
+  }
+
+  const month = MONTH_ADJ[(data.month||1)-1];
+  const stat = (n, of, label, alarm) =>
+    `<div class="gw-stat${alarm?' alarm':''}">`+
+      `<div class="n">${n}${of!=null?`<small> / ${of}</small>`:''}</div>`+
+      `<div class="lbl">${label}</div>`+
+    `</div>`;
+
+  head.innerHTML =
+    stat(s.deepestOnRecord, s.comparable,
+      `állomáson mélyebben áll a talajvíz, mint bármelyik ${month} napon az elmúlt tíz évben`,
+      s.deepestOnRecord > s.comparable/4)+
+    stat(s.dry, s.comparable, `állomás a saját ${month} alsó negyedében áll`)+
+    stat(s.comparable, s.registered, 'állomás hasonlítható össze a saját múltjával');
+
+  // Where, not just how much. A national count hides the map, and "where" is the first
+  // thing anyone asks about a drought.
+  const regions = (data.regions||[]).filter(r=>r.ranked>=3);
+  $('dr-regions').innerHTML = regions.map(r=>{
+    const pct = Math.round((r.dryShare||0)*100);
+    return `<div class="dr-row">`+
+      `<div class="dr-nm">${VIZIG_HU[r.vizig]||('#'+r.vizig)}</div>`+
+      `<div class="dr-track"><div class="dr-fill" style="width:${Math.max(1,pct)}%"></div></div>`+
+      `<div class="dr-n">${pct}<span>%</span></div>`+
+      `<div class="dr-a">${r.dry}/${r.ranked} állomás${r.deepest?` · ${r.deepest} rekordmély`:''}</div>`+
+    `</div>`;
+  }).join('');
+
+  const cov = data.coverage || {};
+  $('dr-coverage').textContent =
+    `${cov.stations||0} észlelőállomás, mind a ${(cov.directorates||[]).length} vízügyi igazgatóság területén. `+
+    `A mért érték a talajvíz mélysége az állomás nullpontja alatt, centiméterben — a nagyobb szám mélyebb vizet jelent. `+
+    `Hogy melyik irány a száraz, nem feltevés: a bake mérte meg 684 állomás tíz évéből, abból, hogy a talajvíz `+
+    `tavasszal áll a legmagasabban és nyár végén a legmélyebben.`;
+
+  // The precise claim, in its own line, because the whole point is not to overstate it.
+  $('dr-not').innerHTML =
+    `<b>Ez hivatalos mérés, de nem a hivatalos aszályindex.</b> A számok az OVF saját `+
+    `észlelőhálózatából valók; az összesítés a miénk. A NAK és az OVF `+
+    `<a href="https://aszalymonitoring.vizugy.hu/" rel="noopener">Aszálymonitoring</a> `+
+    `szolgálata más módszerrel számol saját aszályindexet (HDI), és azt nem tudjuk beolvasni: `+
+    `a szolgáltatás állomásonként, szerveroldalon rajzolja ki a számait, adatvégpont nélkül.`;
+}
+
+async function loadDrought(){
+  try{
+    const data = await fetch('/api/v1/drought',{cache:'no-store'}).then(r=>r.json());
+    renderDrought(data);
+  }catch(err){
+    $('dr-head').innerHTML = '<p class="lead" style="margin:0">A talajvízadat most nem érhető el.</p>';
+  }
+}
+
 async function loadGroundwater(){
   try{
     const data = await fetch('/api/v1/groundwater',{cache:'no-store'}).then(r=>r.json());
@@ -3086,7 +3203,13 @@ function renderDroughtBanner(b){
       ? `Ez az elmúlt tíz év ${MONTH_ADJ[new Date().getMonth()]} mediánjához mért arány, nem az éves átlaghoz — `+
         `a folyók nyár végén amúgy is az évi átlaguk alatt járnak, ahhoz mérve minden augusztus drámaibbnak látszana. `
       : `Ez az éves sokéves átlaghoz mért arány; erre a hónapra még nincs elég év a tízéves sorban. `)+
-    `Nem hivatalos aszályindex — az a talajnedvességet és a csapadékhiányt is nézi.</span>`;
+    // Was: "not an official drought index - a real one looks at soil moisture and the
+    // rainfall deficit as well". That sentence described a hole that is now filled with
+    // official measurements, so it points at them instead of apologising for their
+    // absence. It still does not claim to BE the HDI; the drought section says exactly
+    // what the relationship is.
+    `Ez a folyókról szól. Hogy a <a href="#s-aszaly">föld</a> mennyire száraz, azt a `+
+    `talajvízszint mutatja meg — az OVF országos észlelőhálózatából.</span>`;
 }
 
 /** Border sections currently below anything in their ten-year record for this month. */
@@ -3965,6 +4088,7 @@ function tick(){
   refreshHistory();
   loadRain();
   loadGroundwater();
+  loadDrought();
   // Upstream publishes quarter-hourly; polling faster only burns the function budget.
   setInterval(refresh, 60000);
   setInterval(refreshHistory, 300000);
@@ -3974,6 +4098,7 @@ function tick(){
   // Groundwater is cached for an hour upstream and moves centimetres a month. Half an
   // hour is already far more often than the number can change.
   setInterval(loadGroundwater, 1800000);
+  setInterval(loadDrought, 1800000);
   // A tab left open for hours should be current the moment it is looked at again.
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refresh(); });
   openFromHash();

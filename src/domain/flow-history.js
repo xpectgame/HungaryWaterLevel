@@ -51,10 +51,12 @@ const BANDS = Object.freeze([
 const DOCUMENT_PATH = path.join(__dirname, '..', 'config', 'flow-history.json');
 const LAKE_DOCUMENT_PATH = path.join(__dirname, '..', 'config', 'lake-history.json');
 const WELL_DOCUMENT_PATH = path.join(__dirname, '..', 'config', 'well-history.json');
+const SHALLOW_DOCUMENT_PATH = path.join(__dirname, '..', 'config', 'shallow-history.json');
 
 let cached;
 let cachedLakes;
 let cachedWells;
+let cachedShallow;
 
 /**
  * The baked document, or null when it has not been baked yet.
@@ -92,12 +94,29 @@ function loadLakeHistory({ reload = false } = {}) {
 }
 
 /**
- * The same shape again for groundwater, in no declared unit at all.
+ * The shallow water-table document.
  *
- * A third file rather than a `unit` field, for the reason given above and then some: the
- * wells do not even agree with each other. Each entry carries `rankable`, decided at bake
- * time from that well's own decade, because a few wells report depth with the opposite
- * sign and must never be ranked on the same scale as the rest.
+ * Carries a `__orientation` entry alongside the stations - what the bake measured about
+ * which direction means dry - so anything iterating this document has to skip keys
+ * beginning with a double underscore rather than treat metadata as a station.
+ */
+function loadShallowHistory({ reload = false } = {}) {
+  if (cachedShallow !== undefined && !reload) return cachedShallow;
+  try {
+    cachedShallow = JSON.parse(fs.readFileSync(SHALLOW_DOCUMENT_PATH, 'utf8'));
+  } catch {
+    cachedShallow = null;
+  }
+  return cachedShallow;
+}
+
+/**
+ * The same shape again for the confined aquifer, in no declared unit at all.
+ *
+ * A separate file for the reason given above and then some: those wells do not even agree
+ * with each other. Each entry carries `rankable`, decided at bake time from that well's
+ * own decade, because a few report depth with the opposite sign and must never be ranked
+ * on the same scale as the rest.
  */
 function loadWellHistory({ reload = false } = {}) {
   if (cachedWells !== undefined && !reload) return cachedWells;
@@ -193,6 +212,71 @@ function rankWell(wellId, value, opts = {}) {
   // say "18% lower than normal" about a number where that phrase has no referent.
   const { medianM3s, ratioToMedian, unit, ...rest } = ranked;
   return { ...rest, medianRaw: medianM3s, unit: 'raw' };
+}
+
+/**
+ * Where the shallow water table sits in ten years of the same calendar month.
+ *
+ * THE INVERSION, WHICH IS THE WHOLE FUNCTION.
+ *
+ * Everything else ranked here is a quantity where more is wetter: discharge, lake level,
+ * the confined-aquifer head. This one is a DEPTH below a datum, so a bigger number is a
+ * water table further down - drier. Ranked naively, the driest station in the country
+ * comes out at the 95th percentile and gets the band `very-high`, and the page prints
+ * "unusually wet" during a drought while every number underneath it is correct.
+ *
+ * Rather than teach every consumer to read this one band backwards, the record is
+ * mirrored here: negate the value, and negate-and-reverse the stored quantiles and
+ * extremes. What gets ranked is then "wetness", the percentile means what it means
+ * everywhere else on the site, and `low` is dry in every section without exception.
+ *
+ * The direction is not assumed - see DEPTH_MEANS_DRIER in config/shallow-wells.js, which
+ * was measured from the seasonal shape across 684 stations.
+ */
+function rankShallow(stationId, depthCm, opts = {}) {
+  const document = opts.document !== undefined ? opts.document : loadShallowHistory();
+  const entry = document && document[stationId];
+  if (!entry || !Array.isArray(entry.months) || !Number.isFinite(depthCm)) return null;
+
+  const at = opts.at ? new Date(opts.at) : new Date();
+  const record = entry.months[at.getUTCMonth()];
+  if (!record || !Array.isArray(record.p)) return null;
+  if (!commensurable(depthCm, record)) return null;
+
+  const flipped = {
+    // Reversed as well as negated: -p95 is the SMALLEST of the negated values, so it has
+    // to become the new p5 or the array stops being ascending and every interpolation
+    // between two points reads off the wrong segment.
+    p: record.p.map((v) => (Number.isFinite(v) ? -v : v)).reverse(),
+    min: record.max ? { ...record.max, value: -record.max.value } : null,
+    max: record.min ? { ...record.min, value: -record.min.value } : null,
+    days: record.days,
+    years: record.years,
+  };
+
+  const percentile = percentileWithin(-depthCm, flipped);
+  const belowRecord = flipped.min ? -depthCm < flipped.min.value : false;
+  const aboveRecord = flipped.max ? -depthCm > flipped.max.value : false;
+
+  return {
+    month: at.getUTCMonth() + 1,
+    percentile,
+    band: belowRecord ? 'record-low' : aboveRecord ? 'record-high' : bandFor(percentile),
+    belowRecord,
+    aboveRecord,
+    // Reported as the depths they are, not as the negated values used for ranking. A
+    // consumer showing "deepest in ten years" wants 512 cm, not -512.
+    depthCm,
+    medianDepthCm: record.p[3],
+    deepestOnRecord: record.max || null,
+    shallowestOnRecord: record.min || null,
+    // Positive when the table is deeper than its own median for this month, which is the
+    // direction a reader cares about.
+    deeperThanMedianCm: Number.isFinite(record.p[3]) ? round(depthCm - record.p[3], 1) : null,
+    unit: 'cm',
+    years: record.years,
+    days: record.days,
+  };
 }
 
 /**
@@ -445,7 +529,7 @@ function round(v, digits) {
 }
 
 module.exports = {
-  rankFlow, rankLake, rankWell, wellStatus, loadHistory, loadLakeHistory, loadWellHistory, loadYearly,
+  rankFlow, rankLake, rankWell, rankShallow, wellStatus, loadHistory, loadShallowHistory, loadLakeHistory, loadWellHistory, loadYearly,
   findAnalogues, historyCoverage, percentileWithin, monthlyMedian,
-  BANDS, QUANTILES, DOCUMENT_PATH, LAKE_DOCUMENT_PATH, WELL_DOCUMENT_PATH,
+  BANDS, QUANTILES, DOCUMENT_PATH, LAKE_DOCUMENT_PATH, WELL_DOCUMENT_PATH, SHALLOW_DOCUMENT_PATH,
 };

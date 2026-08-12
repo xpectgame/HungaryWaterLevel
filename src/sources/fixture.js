@@ -305,6 +305,42 @@ async function fetchWells({ days = 40, now = new Date(), env = process.env } = {
   };
 }
 
+/**
+ * Synthetic shallow water table, anchored to each station's own baked record.
+ *
+ * Same reasoning as the well fixture: a reading that is not commensurable with the
+ * station's own decade is refused, so round invented numbers would leave the entire
+ * drought feature dead in CI and first exercised in production. Biased toward the dry
+ * end, because a synthetic network sitting at its median would never exercise the branch
+ * the section exists for.
+ */
+async function fetchShallowWells({ days = 10, now = new Date(), env = process.env } = {}) {
+  const { listShallowWells } = require('../config/shallow-wells');
+  const { loadShallowHistory } = require('../domain/flow-history');
+  const history = loadShallowHistory() || {};
+  const month = now.getUTCMonth();
+  const wells = {};
+  const errors = [];
+
+  for (const well of listShallowWells()) {
+    const record = history[well.id] && history[well.id].months && history[well.id].months[month];
+    if (!record) { errors.push({ wellId: well.id, error: 'no samples in the requested window' }); continue; }
+    const seed = seedFor(well.id);
+    const span = Math.max(Math.abs(record.p[6] - record.p[0]), 1);
+    // Positive offset is DEEPER here, so the bias runs the other way from the wells.
+    const offset = (noise(seed + Math.floor(now.getTime() / DAY_MS)) + 0.55) * span * 0.7;
+    wells[well.id] = {
+      value: round(record.p[3] + offset, 1),
+      at: new Date(now.getTime() - Math.abs(seed % 4) * DAY_MS).toISOString(),
+      samples: 40,
+      firstAt: new Date(now.getTime() - days * DAY_MS).toISOString(),
+    };
+  }
+
+  return { source: 'fixture', kind: 'talajvízállás', synthetic: true,
+    fetchedAt: now.toISOString(), windowDays: days, wells, errors };
+}
+
 /** Paks refuels one unit at a time, mostly outside the winter peak. */
 function seasonalOutage(at) {
   const month = at.getMonth();
@@ -316,4 +352,4 @@ function round(v, digits) {
   return Math.round(v * f) / f;
 }
 
-module.exports = { fetchAll, fetchGeneration, fetchRainfall, fetchWells, stationFlow, seasonalFactor };
+module.exports = { fetchAll, fetchGeneration, fetchRainfall, fetchWells, fetchShallowWells, stationFlow, seasonalFactor };

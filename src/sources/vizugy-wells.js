@@ -1,6 +1,7 @@
 'use strict';
 
 const { listWells, WELL_KIND } = require('../config/wells');
+const { listShallowWells, SHALLOW_KIND } = require('../config/shallow-wells');
 const { fetchJson, browserHeaders } = require('../lib/http');
 const { createTokenProvider } = require('./vizugy-auth');
 const { config: vizugyConfig, seriesUrl, indexByItemId } = require('./vizugy');
@@ -44,7 +45,7 @@ const DEFAULT_DAYS = 40;
  *
  * 106 series in a request, against the 524-series batches the scan ran without complaint.
  */
-function buildWellRequest(wells, cfg, { days = DEFAULT_DAYS, now = new Date() } = {}) {
+function buildWellRequest(wells, cfg, { days = DEFAULT_DAYS, now = new Date(), kind = WELL_KIND } = {}) {
   const endTime = new Date(now.getTime() + 60 * 60 * 1000);
   const startTime = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
@@ -55,8 +56,8 @@ function buildWellRequest(wells, cfg, { days = DEFAULT_DAYS, now = new Date() } 
     // groundwater is not served under it - asking 100 here returns an empty series at
     // almost every well, which is exactly the false negative that had this project
     // recording "groundwater is not published" for weeks.
-    AdatFajtaKod: WELL_KIND.adatFajtaKod,
-    AdatTipusKod: WELL_KIND.adatTipusKod,
+    AdatFajtaKod: kind.adatFajtaKod,
+    AdatTipusKod: kind.adatTipusKod,
     StartTime: startTime.toISOString(),
     EndTime: endTime.toISOString(),
   }));
@@ -81,19 +82,34 @@ function latestSample(entry) {
 }
 
 /**
- * Fetch the current level for every registered well.
+ * The shallow water table, from the other network.
  *
- * A well that returns nothing is recorded as an error against that well rather than
- * dropped, for the same reason the rain gauges are: a network that quietly shrinks looks
- * identical to a network whose readings all moved, and only one of those is news.
+ * Same request shape, different (network, kind, type) triple - and a much shorter window,
+ * because these stations report several times a day rather than on a fortnightly round.
+ * Asking 40 days of a telemetered network would return forty times more than is needed to
+ * answer "where is it now".
  */
+async function fetchShallowWells({ days = 10, now = new Date(), env = process.env } = {}) {
+  return fetchNetwork(listShallowWells(), SHALLOW_KIND, { days, now, env });
+}
+
 async function fetchWells({ days = DEFAULT_DAYS, now = new Date(), env = process.env } = {}) {
+  return fetchNetwork(listWells(), WELL_KIND, { days, now, env });
+}
+
+/**
+ * Fetch the current level for every station in a network.
+ *
+ * A station that returns nothing is recorded as an error against it rather than dropped,
+ * for the same reason the rain gauges are: a network that quietly shrinks looks identical
+ * to a network whose readings all moved, and only one of those is news.
+ */
+async function fetchNetwork(wells, kind, { days, now, env }) {
   const cfg = vizugyConfig(env);
-  const wells = listWells();
   const byWell = {};
   const errors = [];
 
-  const body = buildWellRequest(wells, cfg, { days, now });
+  const body = buildWellRequest(wells, cfg, { days, now, kind });
   const bearer = cfg.apiKey || (await createTokenProvider({ authBaseUrl: cfg.authBaseUrl }).getToken());
 
   const response = await fetchJson(seriesUrl(cfg), {
@@ -120,7 +136,7 @@ async function fetchWells({ days = DEFAULT_DAYS, now = new Date(), env = process
 
   return {
     source: 'vizugy',
-    kind: WELL_KIND.label,
+    kind: kind.label,
     fetchedAt: new Date().toISOString(),
     windowDays: days,
     wells: byWell,
@@ -128,4 +144,4 @@ async function fetchWells({ days = DEFAULT_DAYS, now = new Date(), env = process
   };
 }
 
-module.exports = { fetchWells, buildWellRequest, latestSample, DEFAULT_DAYS };
+module.exports = { fetchWells, fetchShallowWells, buildWellRequest, latestSample, DEFAULT_DAYS };

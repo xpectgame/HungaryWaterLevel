@@ -16,12 +16,16 @@
  *
  *     AdatFajtaKod 70 x AdatTipusKod 2   ->  160 wells answered
  *     AdatFajtaKod 70 x AdatTipusKod 100 ->  134 answered, 10 recent
- *     AdatFajtaKod 69 x anything         ->  nothing, anywhere, ever
+ *     AdatFajtaKod 69 x anything         ->  nothing, on THIS network
  *
- * So 69 stays a genuine negative: the shallow water table - the one a garden well reaches
- * and a maize root system drinks - is not served by this API under any pair tried. What
- * IS served is 70, rétegvíz: the confined aquifer below it. They are different water and
- * this file must never let one be labelled the other.
+ * That last line was read as "talajvíz is not published" and recorded as a settled
+ * finding. It was wrong, and the correction is in config/shallow-wells.js: code 69 is
+ * right, this network is simply the wrong place to ask it. These are confined-aquifer
+ * wells and they do not measure the shallow table, so they correctly returned nothing.
+ * vmoType 12 - 2030 stations, never requested here - answers 69 immediately.
+ *
+ * What this file covers is 70, rétegvíz: the confined aquifer BELOW the shallow table.
+ * They are different water and this file must never let one be labelled the other.
  *
  * ---------------------------------------------------------------------------
  * WHY THERE IS NO NATIONAL GROUNDWATER NUMBER ON THIS SITE

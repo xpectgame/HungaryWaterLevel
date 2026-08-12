@@ -155,8 +155,9 @@ test('the coverage block names the directorates that are missing', () => {
 test('the registry never lets rétegvíz be labelled talajvíz', () => {
   assert.equal(WELL_KIND.adatFajtaKod, 70);
   assert.match(WELL_KIND.note, /NOT talajv[ií]z/i);
-  // 69 is the shallow table and returns nothing anywhere; if a future change starts
-  // asking for it, the label has to change with it.
+  // 69 is the shallow table, and it is served - on vmoType 12, not here. If this
+  // registry ever starts asking for it, the label has to change with it or the page
+  // will call the confined aquifer by the shallow table's name.
   assert.notEqual(WELL_KIND.adatFajtaKod, 69);
 });
 
@@ -226,5 +227,114 @@ test('GET /groundwater/:id carries the datum and the record it was judged agains
 
     const missing = await get('/api/v1/groundwater/no-such-well');
     assert.equal(missing.status, 404);
+  });
+});
+
+/* --- the shallow water table, where bigger means drier --------------------- */
+
+const { rankShallow } = require('../src/domain/flow-history');
+const { assessDrought } = require('../src/domain/drought');
+const { listShallowWells, shallowCoverage, SHALLOW_KIND, DEPTH_MEANS_DRIER } = require('../src/config/shallow-wells');
+
+/** A real station's August: depths in cm, 219 shallow to 358 deep. */
+const AUG_DEPTH = {
+  p: [218.6, 263.92, 284.75, 303.4, 330.5, 351.53, 358.1],
+  min: { value: 117, year: 2021, day: '2021-08-04' },     // shallowest = wettest
+  max: { value: 366.33, year: 2022, day: '2022-08-28' },  // deepest = driest
+  days: 310,
+  years: 10,
+};
+
+function depthDoc(id){
+  const months = Array.from({ length: 12 }, () => null);
+  months[7] = AUG_DEPTH;
+  return { [id]: { months, unit: 'cm' } };
+}
+
+test('the shallow ranking is inverted: deeper reads as drier', () => {
+  const [w] = listShallowWells();
+  const o = { at: Date.UTC(2026, 7, 12), document: depthDoc(w.id) };
+
+  const deepest = rankShallow(w.id, 366.33, o);
+  const median = rankShallow(w.id, 303.4, o);
+  const shallowest = rankShallow(w.id, 117, o);
+
+  // This is the assertion the whole feature turns on. Ranked naively, the deepest water
+  // table in the record would come out at the top of the scale and the page would print
+  // "unusually wet" during a drought.
+  assert.equal(deepest.percentile, 0, 'the deepest day on record must be the driest');
+  assert.equal(deepest.band, 'very-low');
+  assert.equal(shallowest.percentile, 100, 'the shallowest day on record must be the wettest');
+  assert.equal(shallowest.band, 'very-high');
+  assert.ok(Math.abs(median.percentile - 50) < 1);
+  assert.equal(median.band, 'normal');
+});
+
+test('a table deeper than anything in the record is a record, in the dry direction', () => {
+  const [w] = listShallowWells();
+  const o = { at: Date.UTC(2026, 7, 12), document: depthDoc(w.id) };
+  const r = rankShallow(w.id, 372, o);
+  assert.equal(r.belowRecord, true, 'deeper than the deepest is a dry record');
+  assert.equal(r.aboveRecord, false);
+  assert.equal(r.band, 'record-low');
+  assert.ok(r.deeperThanMedianCm > 0, 'and it is reported as deeper than its median');
+});
+
+test('depths are reported as depths, not as the negated values used for ranking', () => {
+  const [w] = listShallowWells();
+  const r = rankShallow(w.id, 340, { at: Date.UTC(2026, 7, 12), document: depthDoc(w.id) });
+  assert.equal(r.depthCm, 340);
+  assert.equal(r.medianDepthCm, 303.4);
+  assert.equal(r.unit, 'cm');
+  assert.equal(r.deeperThanMedianCm, 36.6);
+});
+
+test('the drought summary counts dry stations and names both measured inputs', () => {
+  const [a, b] = listShallowWells();
+  const document = { ...depthDoc(a.id), ...depthDoc(b.id) };
+  const at = new Date(Date.UTC(2026, 7, 12));
+  const out = assessDrought({
+    [a.id]: { value: 372, at: '2026-08-11T06:00:00Z' },     // record deep
+    [b.id]: { value: 303.4, at: '2026-08-11T06:00:00Z' },   // dead normal
+  }, { at, document });
+
+  assert.equal(out.summary.comparable, 2);
+  assert.equal(out.summary.dry, 1);
+  assert.equal(out.summary.deepestOnRecord, 1);
+  assert.equal(out.summary.dryShare, 0.5);
+  assert.ok(out.inputs.shallowWaterTable.stations > 100);
+  // The claim has to stay precise: measurements are theirs, the arithmetic is ours.
+  assert.match(out.note, /NOT the/i);
+  assert.match(out.note, /HDI|Drought Index/i);
+});
+
+test('a stale reading does not join the drought count', () => {
+  const [a] = listShallowWells();
+  const at = new Date(Date.UTC(2026, 7, 12));
+  const fresh = assessDrought({ [a.id]: { value: 372, at: '2026-08-11T06:00:00Z' } }, { at, document: depthDoc(a.id) });
+  const old = assessDrought({ [a.id]: { value: 372, at: '2026-06-01T06:00:00Z' } }, { at, document: depthDoc(a.id) });
+  assert.equal(fresh.summary.comparable, 1);
+  assert.equal(old.summary.comparable, 0);
+  assert.equal(old.summary.statuses.stale, 1);
+});
+
+test('the shallow network is talajviz and says so, and covers every directorate', () => {
+  assert.equal(SHALLOW_KIND.adatFajtaKod, 69);
+  assert.equal(SHALLOW_KIND.vmoType, 12);
+  assert.equal(DEPTH_MEANS_DRIER, true);
+  const c = shallowCoverage();
+  assert.ok(c.stations > 500, `expected a national network, got ${c.stations}`);
+  assert.equal(c.missingDirectorates.length, 0, 'all twelve directorates should be present');
+});
+
+test('GET /drought ranks the network', async () => {
+  await withServer(async ({ get }) => {
+    const { status, body } = await get('/api/v1/drought');
+    assert.equal(status, 200);
+    assert.equal(body.synthetic, true);
+    assert.ok(body.summary.registered > 500);
+    assert.ok(body.summary.comparable > 0, 'the fixture must exercise the ranking');
+    assert.ok(Array.isArray(body.regions) && body.regions.length > 5);
+    assert.ok(body.coverage.stations > 500);
   });
 });
