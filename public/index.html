@@ -160,6 +160,20 @@ body.what-if .whatif-bar{display:block}
 .maphead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
 .maphead h2{font-size:15px;font-weight:600;letter-spacing:.02em}
 .maphead .hint{font-size:12px;color:var(--ink-faint)}
+/* Zoom controls, over the map's top-right corner. Buttons as well as wheel and drag,
+   because a wheel is not the only way people use a map and a touch device has no wheel
+   at all. */
+.mapctl{position:absolute;top:calc(clamp(10px,2vw,18px) + 34px);right:clamp(10px,2vw,18px);
+  display:flex;flex-direction:column;gap:4px;align-items:flex-end;z-index:2}
+.mapctl button{font:inherit;font-size:15px;line-height:1;width:29px;height:29px;cursor:pointer;
+  border:1px solid var(--line);background:rgba(255,255,255,.92);color:var(--ink-soft);
+  border-radius:8px;box-shadow:0 1px 2px rgba(10,44,55,.08)}
+.mapctl button#map-reset{width:auto;height:auto;font-size:11px;padding:4px 8px}
+.mapctl button:hover:not(:disabled){color:var(--ink);border-color:var(--flow-dim)}
+.mapctl button:disabled{opacity:.4;cursor:default}
+.mapctl button:focus-visible{outline:2px solid var(--flow);outline-offset:1px}
+#map.grabbing{cursor:grabbing}
+#map.zoomed{cursor:grab}
 /* A tap on the map must open a gauge, never start a text selection. Long-press on a
    label used to raise the copy/callout menu, which is why reading a value on a phone
    meant holding still and fighting the browser. */
@@ -184,8 +198,8 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .river{fill:none;stroke-linecap:round;stroke-linejoin:round}
 /* Context watercourses: present so the country reads as a river network, quiet enough
    that the three the balance actually turns on stay the subject. */
-.river-minor{stroke:rgba(14,143,158,.30);stroke-width:.7}
-.river-mid{stroke:rgba(14,143,158,.45);stroke-width:1.3}
+.river-minor{stroke:rgba(14,143,158,.30);stroke-width:calc(.7px * var(--mk,1))}
+.river-mid{stroke:rgba(14,143,158,.45);stroke-width:calc(1.3px * var(--mk,1))}
 
 /* A gauged river is four strokes, because one was not water.
    The old version drew a nearly invisible channel with short round dashes sliding
@@ -215,8 +229,9 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .lakenode rect{fill:var(--deep);stroke:#fff;stroke-width:1.1;rx:2}
 .lakenode.unmeasured rect{fill:none;stroke:var(--deep);stroke-dasharray:2 1.6}
 .lakenode text{font-size:7px;font-weight:600;fill:var(--deep);pointer-events:none}
+.node text,.plant text{font-size:6.5px}
 
-.place circle{fill:#fff;stroke:var(--ink-faint);stroke-width:.9}
+.place circle{fill:#fff;stroke:var(--ink-faint);stroke-width:calc(.9px * var(--mk,1))}
 .place text{font-size:7px;fill:var(--ink-soft);pointer-events:none}
 .place.capital circle{fill:var(--ink);stroke:#fff;stroke-width:1}
 .place.capital text{font-size:8.5px;font-weight:600;fill:var(--ink)}
@@ -260,9 +275,16 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .node circle{transition:r .5s cubic-bezier(.2,.8,.2,1), opacity .4s}
 .node .halo{fill:var(--flow);opacity:.14}
 .node .core{fill:var(--flow);stroke:#fff;stroke-width:1.2}
+/* The arrow carries the same fill as the dot it replaces, so the legend's colours still
+   hold; only the shape changed. A slightly thinner outline because a chevron has more
+   perimeter than a circle of the same area and a 1.2 stroke closes its notch. */
+.node .core.arrow{stroke-width:.85;stroke-linejoin:round}
 .node.outflow .core{fill:var(--silt)} .node.outflow .halo{fill:var(--silt)}
 .node.interior .core{fill:var(--ink-faint)} .node.interior .halo{opacity:.06}
 .node text{font-family:var(--sans);font-size:6.5px;fill:var(--ink-soft);pointer-events:none}
+/* The thread back to a plant's true position when its marker had to be nudged clear. */
+.plant .leader,#layer-plants .leader{stroke:var(--ember);opacity:.5}
+#layer-plants .anchor{fill:var(--ember);opacity:.65}
 .plant{cursor:pointer}
 /* Classed rather than `circle:not(.heat)`: that selector also caught the invisible
    touch target added underneath, and painted a 15-unit solid ember disc over the map. */
@@ -273,6 +295,7 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .plant text{font-family:var(--sans);font-size:6.5px;fill:var(--ember);pointer-events:none}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);margin-top:8px}
 .key{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.keyshape{display:inline-block;width:13px;height:13px;margin-right:5px;vertical-align:-2px}
 
 /* --- tooltip --- */
 #tip{position:fixed;z-index:50;pointer-events:none;opacity:0;transition:opacity .15s;
@@ -782,6 +805,11 @@ footer a{color:var(--ink-soft)}
     <g id="layer-plants"></g>
     <g id="layer-nodes"></g>
   </svg>
+  <div class="mapctl" role="group" aria-label="Térkép nagyítása">
+    <button type="button" id="map-zoom-in" aria-label="Nagyítás">+</button>
+    <button type="button" id="map-zoom-out" aria-label="Kicsinyítés">−</button>
+    <button type="button" id="map-reset" hidden>egész ország</button>
+  </div>
   <div class="legend">
     <label class="toggle"><input type="checkbox" id="rain-layer" checked><i class="tri"></i> csapadék az elmúlt 30 napban</label>
     <span class="ramp" title="a sokéves átlaghoz mérve">
@@ -789,8 +817,11 @@ footer a{color:var(--ink-soft)}
         class="key b-near-normal"></i><i class="key b-surplus"></i><i class="key b-extreme-surplus"></i>
       sokkal kevesebb → sokkal több eső a szokásosnál
     </span>
-    <span><i class="key" style="background:var(--shallow)"></i>belépő szelvény</span>
-    <span><i class="key" style="background:var(--silt)"></i>kilépő szelvény</span>
+    <!-- The keys are the shapes now, not colours standing in for them. An arrow in the
+         legend and an arrow on the map are the same statement; a round swatch labelled
+         "belépő szelvény" made the reader memorise a colour instead. -->
+    <span><svg class="keyshape" viewBox="-6 -6 12 12" aria-hidden="true"><path d="M -3.7,-3.1 L 6,0 L -3.7,3.1 L -1.2,0 Z" style="fill:var(--shallow)"/></svg>belépő szelvény (a nyíl a víz irányába mutat)</span>
+    <span><svg class="keyshape" viewBox="-6 -6 12 12" aria-hidden="true"><path d="M -3.7,-3.1 L 6,0 L -3.7,3.1 L -1.2,0 Z" style="fill:var(--silt)"/></svg>kilépő szelvény</span>
     <span><i class="key" style="background:var(--ink-faint)"></i>belső mérce (nem összegezzük)</span>
     <span><i class="key" style="background:var(--ember)"></i>erőmű, hűtővíz-kivétellel</span>
     <span><i class="key" style="background:var(--deep);border-radius:2px"></i>tó, vízszinttel</span>
@@ -1119,16 +1150,89 @@ let geo = null, VIEW = { west:15.7, east:23.3, south:45.55, north:48.85 }, H = 5
 
 const mercY = lat => Math.log(Math.tan(Math.PI/4 + (lat*Math.PI/180)/2));
 
+/**
+ * Establish the projection. Does NOT touch the viewBox.
+ *
+ * It used to, and that made zooming silently impossible: drawBase() calls this on every
+ * redraw, so every zoom recomputed the markers at the new scale and then reset the window
+ * back to the whole country. The labels changed and the picture did not, which looks
+ * exactly like a zoom that does nothing. The window belongs to applyView() alone.
+ */
 function fitProjection(view){
   VIEW = view;
   SCALE = W / ((view.east - view.west) * Math.PI/180);
   H = Math.round((mercY(view.north) - mercY(view.south)) * SCALE);
-  $('map').setAttribute('viewBox', `0 0 ${W} ${H}`);
+  if(!panX && !panY){ panX = W/2; panY = H/2; }
 }
 
 function px(lon,lat){
   return [ (lon - VIEW.west) * Math.PI/180 * SCALE, (mercY(VIEW.north) - mercY(lat)) * SCALE ];
 }
+
+/* --- zoom and pan ---------------------------------------------------------
+
+   The map is drawn at one scale for the whole country, and at that scale Paks's
+   gauge and Paks's reactor are four pixels apart. No amount of nudging markers
+   fixes that in general: two things a kilometre apart cannot both be labelled on
+   a map of Hungary that fits on a phone. The answer is to let the reader get
+   closer.
+
+   Zooming here is not a viewport trick over a fixed drawing. Every marker is
+   redrawn at the new scale with its size divided by the zoom, so a gauge stays
+   the same size on screen while the country grows underneath it - and the label
+   placer, which gives up when a name would collide, suddenly has room and starts
+   printing the names it was swallowing. Zooming in therefore reveals labels
+   rather than magnifying blur, which is the entire point.
+-------------------------------------------------------------------------- */
+const ZOOM_MIN = 1, ZOOM_MAX = 8;
+let zoom = 1, panX = 0, panY = 0;   // panX/panY: centre of the view, in viewBox units
+
+function clampPan(){
+  const halfW = W / (2 * zoom), halfH = H / (2 * zoom);
+  panX = Math.max(halfW, Math.min(W - halfW, panX));
+  panY = Math.max(halfH, Math.min(H - halfH, panY));
+}
+
+function applyView({ redraw = true } = {}){
+  if(redraw && geo){ drawBase(); drawNodes(); drawRainNodes(); }
+  clampPan();
+  const w = W / zoom, h = H / zoom;
+  // After the redraw, not before: drawBase re-establishes the projection and can change
+  // H, and a window computed from the old height would be off by a few units every time
+  // the geometry loaded.
+  $('map').setAttribute('viewBox', `${(panX - w/2).toFixed(2)} ${(panY - h/2).toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}`);
+  $('map-zoom-out').disabled = zoom <= ZOOM_MIN + 0.001;
+  $('map-zoom-in').disabled = zoom >= ZOOM_MAX - 0.001;
+  $('map-reset').hidden = zoom <= ZOOM_MIN + 0.001;
+  $('map').classList.toggle('zoomed', zoom > ZOOM_MIN + 0.001);
+  // Carried into CSS so stroke widths authored for the national view keep their weight
+  // on screen. Without it the Tisza's channel is drawn four times too wide at zoom 4 and
+  // swallows the county the reader zoomed in to look at.
+  $('map').style.setProperty('--mk', (1 / zoom).toFixed(4));
+}
+
+/** Zoom about a fixed point, so the thing under the cursor stays under the cursor. */
+function zoomAt(factor, atX, atY){
+  const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
+  if(Math.abs(next - zoom) < 0.0001) return;
+  // The viewBox point under the anchor must not move: solve for the new centre.
+  panX = atX - (atX - panX) * (zoom / next);
+  panY = atY - (atY - panY) * (zoom / next);
+  zoom = next;
+  applyView();
+}
+
+/** Client coordinates to viewBox coordinates. */
+function toViewBox(clientX, clientY){
+  const svg = $('map'), box = svg.getBoundingClientRect();
+  const w = W / zoom, h = H / zoom;
+  return [
+    (panX - w/2) + ((clientX - box.left) / box.width) * w,
+    (panY - h/2) + ((clientY - box.top) / box.height) * h,
+  ];
+}
+
+function resetView(){ zoom = 1; panX = W/2; panY = H/2; applyView(); }
 const path = pts => pts.map((p,i)=> (i?'L':'M') + px(p[0],p[1]).map(v=>v.toFixed(1)).join(' ')).join(' ');
 
 /** The three rivers whose live discharge drives the animation, by geo.json name. */
@@ -1254,25 +1358,29 @@ function drawPlaces(){
   layer.textContent = '';
   if(!geo) return;
 
+  const k = 1 / zoom;
   for(const p of geo.places){
     const [x,y] = px(p.lon, p.lat);
     const capital = p.name==='Budapest';
-    const size = capital ? 8.5 : 7;
-    const gap = capital ? 4.5 : 3.2;
+    const size = (capital ? 8.5 : 7) * k;
+    const gap = (capital ? 4.5 : 3.2) * k;
 
     const g = svgEl('g',{ class:'place'+(capital?' capital':'')+(p.abroad?' foreign':'') });
-    g.appendChild(svgEl('circle',{ cx:x.toFixed(1), cy:y.toFixed(1), r: capital?2.6:1.7 }));
+    g.appendChild(svgEl('circle',{ cx:x.toFixed(1), cy:y.toFixed(1), r: ((capital?2.6:1.7)*k).toFixed(2) }));
 
-    // Right of the dot by default; flipped left when that would run off the frame or
-    // land on something already drawn. A town whose name fits nowhere keeps its dot.
+    // Towns claim their name before the gauges and plants do, and they claim it FIRST at
+    // every zoom. A reader navigates by the places they know - the complaint that started
+    // this was not being able to find Paks - so when a town name and a gauge name want
+    // the same few pixels, the town wins and the gauge waits for the next zoom level.
     let tx = x + gap, anchor = 'start';
-    if(!claimLabel(tx, y+2.4, p.name, size)){
+    if(!claimLabel(tx, y+2.4*k, p.name, size)){
       const width = p.name.length * size * 0.54;
       tx = x - gap - width;
-      if(claimLabel(tx, y+2.4, p.name, size)) anchor = 'start';
+      if(claimLabel(tx, y+2.4*k, p.name, size)) anchor = 'start';
       else { layer.appendChild(g); continue; }
     }
-    const t = svgEl('text',{ x:tx.toFixed(1), y:(y+(capital?3:2.4)).toFixed(1), 'text-anchor':anchor });
+    const t = svgEl('text',{ x:tx.toFixed(1), y:(y+(capital?3:2.4)*k).toFixed(1),
+      'text-anchor':anchor, style:`font-size:${size.toFixed(2)}px` });
     t.textContent = p.name;
     g.appendChild(t);
     layer.appendChild(g);
@@ -1312,10 +1420,17 @@ function styleRivers(byId){
     for(const el of document.querySelectorAll(`[data-river="${name}"]`)){
       const spec = layer[el.getAttribute('class').replace('river ','')];
       if(!spec) continue;
-      el.setAttribute('stroke-width', spec.width.toFixed(2));
+      // Divided by the zoom for the same reason the markers are: a channel whose width
+      // encodes discharge should still encode discharge when magnified, not become a
+      // teal flood covering the county.
+      el.setAttribute('stroke-width', (spec.width / zoom).toFixed(2));
       if(!spec.dash) continue;
       // Each layer's period matches its own keyframe offset, so every one loops
       // seamlessly at its own pace.
+      // NOT divided by the zoom, unlike the width. The @keyframes offsets are the
+      // periods written as literals, so a scaled dasharray would stop looping seamlessly
+      // and the current would visibly jump once per cycle. A longer highlight when
+      // magnified is a motion effect looking slightly different; a stuttering one is a bug.
       el.setAttribute('stroke-dasharray', `${spec.dash} ${spec.period - spec.dash}`);
       el.style.animationDuration = (parseFloat(duration) / spec.speed).toFixed(2) + 's';
       el.style.opacity = flow==null ? .22 : '';
@@ -1390,6 +1505,12 @@ function drawNodes(){
      meaning "more water" and starts meaning "covers Komárom". Interior gauges are drawn
      three-quarter size, because they carry water that was already counted upstream and
      should not out-shout the sections that are actually in the balance. */
+  // Everything a marker occupies is divided by the zoom, so a gauge keeps its size on
+  // screen while the country grows under it. Without this, zooming in would magnify the
+  // dots along with the map and the collision that made zooming necessary would still
+  // be there at every scale.
+  const k = 1 / zoom;
+
   const radiusOf = (flow, role) => {
     const base = flow == null ? 2.4 : Math.max(2.2, Math.min(9.5, 2.2 + Math.sqrt(flow)/4.2));
     return role === 'interior' ? base * 0.72 : base;
@@ -1417,21 +1538,48 @@ function drawNodes(){
     const pos = countryLabelAt(c);
     if(pos) blockArea(pos[0], pos[1], 26);
   }
+  const stationPoints = [];
   for(const st of ordered){
     const [x,y] = px(st.location.lon, st.location.lat);
-    blockArea(x, y, radiusOf(flowOf(st), st.role));
+    blockArea(x, y, radiusOf(flowOf(st), st.role) * k);
     markerPoints.push([x,y]);
+    stationPoints.push([x, y, radiusOf(flowOf(st), st.role) * k]);
   }
+
+  /* Paks's reactor and Paks's gauge.
+
+     They are about a kilometre apart on the ground, which at national scale is four
+     pixels: the trefoil sits on top of the dot and neither can be clicked reliably or
+     labelled at all. Nudging is the wrong fix on its own - it lies about where the plant
+     is - so the marker moves and a hairline stays behind pointing at the true position.
+     The offset shrinks as you zoom in and disappears once there is genuinely room, which
+     is the honest behaviour: the displacement exists because the scale demands it, not
+     because the geography does. */
+  const plantOffsets = new Map();
   for(const p of plants){
     if(!p.location) continue;
     const [x,y] = px(p.location.lon, p.location.lat);
-    blockArea(x, y, plantSizeOf(p.water && p.water.withdrawalM3s));
-    markerPoints.push([x,y]);
+    const size = plantSizeOf(p.water && p.water.withdrawalM3s) * k;
+
+    let dx = 0, dy = 0;
+    for(const [sx, sy, sr] of stationPoints){
+      const gap = Math.hypot(x - sx, y - sy);
+      const needed = size + sr + 1.5 * k;
+      if(gap >= needed) continue;
+      // Push away from the gauge; straight up when they are exactly on top of each other.
+      const ux = gap > 0.01 ? (x - sx) / gap : 0;
+      const uy = gap > 0.01 ? (y - sy) / gap : -1;
+      const push = needed - gap;
+      dx += ux * push; dy += uy * push;
+    }
+    plantOffsets.set(p.id, [dx, dy]);
+    blockArea(x + dx, y + dy, size);
+    markerPoints.push([x + dx, y + dy]);
   }
 
   for(const l of lakes){
     const [x,y] = px(l.location.lon, l.location.lat);
-    blockArea(x, y, Math.max(3.2, Math.min(7, Math.sqrt(l.surface.areaKm2)/3.6)));
+    blockArea(x, y, Math.max(3.2, Math.min(7, Math.sqrt(l.surface.areaKm2)/3.6)) * k);
     markerPoints.push([x,y]);
   }
 
@@ -1447,14 +1595,35 @@ function drawNodes(){
     const r = radiusOf(flow, st.role);
 
     const g = svgEl('g',{ class:'node '+st.role, 'data-station':st.id,
-      transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
+      transform:`translate(${x.toFixed(1)},${y.toFixed(1)}) scale(${k.toFixed(3)})` });
     g.appendChild(svgEl('circle',{ class:'halo', r:(r*1.9).toFixed(1) }));
-    g.appendChild(svgEl('circle',{ class:'core', r:r.toFixed(1) }));
-    g.appendChild(svgEl('circle',{ class:'hit', r: hitFor(x, y, r*1.9, hitR).toFixed(1) }));
+
+    /* An entry section is not a place, it is a direction.
+
+       Every gauge used to be the same dot, so the map showed twenty-three identical
+       circles around the border and left the reader to learn from the legend which
+       colour meant water coming in. An arrow does not need a legend: it points the way
+       the water goes, into the country at Rajka and out of it at Mohács, and the two
+       roles stop being a colour convention and become the thing they describe.
+
+       Interior gauges stay circles on purpose. They are not in the balance - they measure
+       water already counted at the border - and a shape that says "flow across the
+       frontier" would be claiming something about them that is not true. */
+    if(st.role === 'inflow' || st.role === 'outflow'){
+      g.appendChild(svgEl('path',{ class:'core arrow', d: arrowPath(r),
+        transform:`rotate(${flowHeading(x, y, st.role).toFixed(1)})` }));
+    } else {
+      g.appendChild(svgEl('circle',{ class:'core', r:r.toFixed(1) }));
+    }
+    g.appendChild(svgEl('circle',{ class:'hit', r: (hitFor(x, y, r*1.9, hitR) / k).toFixed(1) }));
 
     // "Duna – Komárom" is labelled "Komárom": the river is already drawn under it.
     const label = st.name.split('–').pop().trim();
-    if(flow!=null && flow>60 && claimLabel(x+r+4, y+2.5, label, 6.5)){
+    // Zoomed in there is room for every name, so the discharge threshold that keeps the
+    // national view readable is lifted rather than hiding labels the reader zoomed in
+    // precisely to read.
+    const labelFloor = zoom >= 2 ? 0 : 60;
+    if(flow!=null && flow>labelFloor && claimLabel(x+(r+4)*k, y+2.5*k, label, 6.5*k)){
       const t = svgEl('text',{ x:(r+4).toFixed(1), y:'2.5' });
       t.textContent = label;
       g.appendChild(t);
@@ -1473,15 +1642,28 @@ function drawNodes(){
   for(const p of plants){
     if(!p.location) continue;
     const [x,y] = px(p.location.lon, p.location.lat);
+    const [dx, dy] = plantOffsets.get(p.id) || [0, 0];
     const mw = p.generation && p.generation.powerMw;
     const w = p.water && p.water.withdrawalM3s;
-    const g = svgEl('g',{ class:'plant '+(p.type||''), 'data-plant':p.id, transform:`translate(${x.toFixed(1)},${y.toFixed(1)})` });
     const size = plantSizeOf(w);
+
+    // The hairline back to where the plant really is, drawn only when the marker had to
+    // move. Without it the displacement would be an unmarked lie about a location.
+    if(Math.hypot(dx, dy) > 0.4){
+      plantLayer.appendChild(svgEl('line',{ class:'leader',
+        x1:x.toFixed(1), y1:y.toFixed(1), x2:(x+dx).toFixed(1), y2:(y+dy).toFixed(1),
+        'stroke-width':(0.7*k).toFixed(2) }));
+      plantLayer.appendChild(svgEl('circle',{ class:'anchor', cx:x.toFixed(1), cy:y.toFixed(1), r:(0.9*k).toFixed(2) }));
+    }
+
+    const g = svgEl('g',{ class:'plant '+(p.type||''), 'data-plant':p.id,
+      transform:`translate(${(x+dx).toFixed(1)},${(y+dy).toFixed(1)}) scale(${k.toFixed(3)})` });
     g.appendChild(svgEl('circle',{ class:'heat', r:(size*1.8).toFixed(1) }));
     g.appendChild(plantGlyph(p.type, size));
-    g.appendChild(svgEl('circle',{ class:'hit', r: hitFor(x, y, size*1.8, hitR).toFixed(1) }));
+    g.appendChild(svgEl('circle',{ class:'hit', r: (hitFor(x+dx, y+dy, size*1.8, hitR) / k).toFixed(1) }));
     const name = p.name.split(/[ (]/)[0];
-    if(w!=null && w>5 && claimLabel(x+size+4, y-3, name, 6.5)){
+    const plantFloor = zoom >= 2 ? -1 : 5;
+    if(w!=null && w>plantFloor && claimLabel(x+dx+(size+4)*k, y+dy-3*k, name, 6.5*k)){
       const t = svgEl('text',{ x:(size+4).toFixed(1), y:'-3' });
       t.textContent = name;
       g.appendChild(t);
@@ -1492,6 +1674,34 @@ function drawNodes(){
   }
 
   styleRivers(byId);
+}
+
+/**
+ * A chevron pointing along +x, sized like the circle it replaces.
+ *
+ * Concave at the tail so it reads as an arrow rather than a triangle at eight pixels,
+ * and slightly longer than it is wide so the direction survives the size going down to
+ * the minimum on a small creek.
+ */
+function arrowPath(r){
+  const L = r * 1.5, B = r * 1.05;
+  return `M ${(-L*0.62).toFixed(2)},${(-B).toFixed(2)} L ${L.toFixed(2)},0 ` +
+         `L ${(-L*0.62).toFixed(2)},${B.toFixed(2)} L ${(-L*0.2).toFixed(2)},0 Z`;
+}
+
+/**
+ * Which way the water is going, in degrees, for a marker on the frontier.
+ *
+ * Taken from the country's centre rather than from the river's own geometry: the gauge
+ * sits on the border, so the line between it and the middle of Hungary is the direction
+ * the water crosses that border to within a few degrees - and it needs no channel
+ * topology, which this page does not have. Entry sections point inward, exit sections
+ * point out.
+ */
+function flowHeading(x, y, role){
+  const cx = W / 2, cy = H / 2;
+  const angle = Math.atan2(cy - y, cx - x) * 180 / Math.PI;
+  return role === 'outflow' ? angle + 180 : angle;
 }
 
 /**
@@ -1630,6 +1840,103 @@ function focusMarker(step){
   else next = marks[(here + step + marks.length) % marks.length];
   next.focus();
   return true;
+}
+
+/**
+ * Wheel, drag, pinch and buttons.
+ *
+ * Deliberately NOT bound to the arrow keys: those already walk the gauges from west to
+ * east, which is the only way a keyboard reader can reach a marker at all. Zoom gets
+ * `+`/`-`/`0` instead, so neither navigation loses to the other.
+ *
+ * The wheel handler is passive:false because it has to preventDefault - otherwise the
+ * page scrolls away underneath the gesture and the map zooms at the same time, which
+ * feels broken in a way that is hard to describe and easy to notice.
+ */
+function initMapZoom(){
+  const map = $('map');
+  if(!map) return;
+
+  $('map-zoom-in').addEventListener('click', () => zoomAt(1.6, panX, panY));
+  $('map-zoom-out').addEventListener('click', () => zoomAt(1/1.6, panX, panY));
+  $('map-reset').addEventListener('click', resetView);
+
+  map.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const [vx, vy] = toViewBox(e.clientX, e.clientY);
+    // deltaMode 1 is lines rather than pixels; a raw deltaY of 3 lines would otherwise
+    // barely move while the same scroll in pixels flies across the whole zoom range.
+    const step = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    zoomAt(Math.exp(-step * 0.0015), vx, vy);
+  }, { passive: false });
+
+  // Drag to pan, but only once zoomed: at full extent there is nowhere to go, and a
+  // grab cursor over a map that cannot move is a promise the map does not keep.
+  let dragging = null;
+  map.addEventListener('pointerdown', (e) => {
+    if(zoom <= 1.001 || e.button !== 0) return;
+    dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, panX, panY, moved: 0 };
+    map.setPointerCapture(e.pointerId);
+    map.classList.add('grabbing');
+  });
+  map.addEventListener('pointermove', (e) => {
+    if(!dragging || e.pointerId !== dragging.id) return;
+    const box = map.getBoundingClientRect();
+    const dx = (e.clientX - dragging.x) / box.width * (W / zoom);
+    const dy = (e.clientY - dragging.y) / box.height * (H / zoom);
+    dragging.moved = Math.max(dragging.moved, Math.hypot(e.clientX - dragging.x, e.clientY - dragging.y));
+    panX = dragging.panX - dx; panY = dragging.panY - dy;
+    // No redraw mid-drag: the viewBox alone is enough to move the picture, and redrawing
+    // thirty markers per pointermove makes the drag stutter on a phone.
+    applyView({ redraw: false });
+  });
+  const endDrag = (e) => {
+    if(!dragging || (e && e.pointerId !== dragging.id)) return;
+    const moved = dragging.moved;
+    dragging = null;
+    map.classList.remove('grabbing');
+    // Labels are laid out for the old window, so they are only recomputed once the drag
+    // settles. A drag that never really moved is a click, and must not redraw at all or
+    // it would tear the marker out from under the finger that was tapping it.
+    if(moved > 3) applyView();
+  };
+  map.addEventListener('pointerup', endDrag);
+  map.addEventListener('pointercancel', endDrag);
+
+  // Pinch. Two pointers, tracked by hand: there is no gesture event that works
+  // everywhere, and this is twenty lines.
+  const touches = new Map();
+  let pinch = null;
+  map.addEventListener('pointerdown', (e) => {
+    if(e.pointerType !== 'touch') return;
+    touches.set(e.pointerId, e);
+    if(touches.size === 2){
+      const [a, b] = [...touches.values()];
+      pinch = { dist: Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY), zoom };
+      dragging = null;
+      map.classList.remove('grabbing');
+    }
+  });
+  map.addEventListener('pointermove', (e) => {
+    if(e.pointerType !== 'touch' || !touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, e);
+    if(touches.size !== 2 || !pinch) return;
+    const [a, b] = [...touches.values()];
+    const dist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+    if(dist < 8) return;
+    const [vx, vy] = toViewBox((a.clientX+b.clientX)/2, (a.clientY+b.clientY)/2);
+    zoomAt((dist / pinch.dist) * (pinch.zoom / zoom), vx, vy);
+    pinch.dist = dist; pinch.zoom = zoom;
+  });
+  const dropTouch = (e) => { touches.delete(e.pointerId); if(touches.size < 2) pinch = null; };
+  map.addEventListener('pointerup', dropTouch);
+  map.addEventListener('pointercancel', dropTouch);
+
+  map.addEventListener('keydown', (e) => {
+    if(e.key === '+' || e.key === '='){ e.preventDefault(); zoomAt(1.6, panX, panY); }
+    else if(e.key === '-'){ e.preventDefault(); zoomAt(1/1.6, panX, panY); }
+    else if(e.key === '0'){ e.preventDefault(); resetView(); }
+  });
 }
 
 function initMapKeys(){
@@ -2465,17 +2772,22 @@ function drawLakeNodes(){
     const has = l.current && Number.isFinite(l.current.levelCm);
     // Area, square-rooted: the Balaton is 25x the Velencei-tó by surface, which as a
     // side length is 5x - still a clear difference, still both legible.
-    const size = Math.max(3.2, Math.min(7, Math.sqrt(l.surface.areaKm2)/3.6));
+    // Counter-scaled like every other marker. The Balaton's square is the largest mark
+    // on the map at national scale, so it was also the most obviously wrong one when
+    // magnified: at zoom 3 it covered the lake it stands for.
+    const k = 1 / zoom;
+    const size = Math.max(3.2, Math.min(7, Math.sqrt(l.surface.areaKm2)/3.6)) * k;
 
     const g = svgEl('g',{ class:'lakenode'+(has?'':' unmeasured') });
     g.appendChild(svgEl('rect',{
-      x:(x-size).toFixed(1), y:(y-size).toFixed(1),
-      width:(size*2).toFixed(1), height:(size*2).toFixed(1), rx:'2',
+      x:(x-size).toFixed(2), y:(y-size).toFixed(2),
+      width:(size*2).toFixed(2), height:(size*2).toFixed(2), rx:(2*k).toFixed(2),
     }));
     g.appendChild(svgEl('circle',{ class:'hit', cx:x.toFixed(1), cy:y.toFixed(1),
       r: hitFor(x, y, size, hitRadius()).toFixed(1) }));
-    if(claimLabel(x+size+3, y+2.5, l.name, 7)){
-      const t = svgEl('text',{ x:(x+size+3).toFixed(1), y:(y+2.5).toFixed(1) });
+    if(claimLabel(x+size+3*k, y+2.5*k, l.name, 7*k)){
+      const t = svgEl('text',{ x:(x+size+3*k).toFixed(2), y:(y+2.5*k).toFixed(2),
+        style:`font-size:${(9*k).toFixed(2)}px` });
       t.textContent = l.name;
       g.appendChild(t);
     }
@@ -2513,12 +2825,15 @@ function drawRainNodes(){
     // flame and square marks, and a fourth kind of dot on the same map is read as a
     // fifth kind of gauge rather than as weather. A triangle pointing down is the one
     // shape nothing else here uses, and it points the way rain goes.
-    const s = 4;
+    // Divided by the zoom like every other marker. Without it these were the one layer
+    // that magnified: at zoom 5 a rain gauge covered a county and the map underneath it
+    // was invisible, which is the opposite of what zooming in is for.
+    const s = 4 / zoom;
     const node = svgEl('g',{ class:'rainnode'+(g.stale?' stale':'') });
     node.appendChild(svgEl('polygon',{
-      points: `${(x-s).toFixed(1)},${(y-s*0.7).toFixed(1)} `
-            + `${(x+s).toFixed(1)},${(y-s*0.7).toFixed(1)} `
-            + `${x.toFixed(1)},${(y+s*1.05).toFixed(1)}`,
+      points: `${(x-s).toFixed(2)},${(y-s*0.7).toFixed(2)} `
+            + `${(x+s).toFixed(2)},${(y-s*0.7).toFixed(2)} `
+            + `${x.toFixed(2)},${(y+s*1.05).toFixed(2)}`,
       class: 'mark ' + (g.band ? 'b-'+g.band : 'nobase'),
     }));
     node.appendChild(svgEl('circle',{ class:'hit', cx:x.toFixed(1), cy:y.toFixed(1),
@@ -3453,6 +3768,7 @@ function tick(){
   tick(); setInterval(tick,1000);
   initNav();
   initMapKeys();
+  initMapZoom();
   // Selected by data-sort, not by the .sortbar class: the class is a visual style and
   // the rainfall window switcher wears it too. Binding on the class made a rain button
   // set barSort to undefined - BAR_SORTS[undefined].fn threw and took the whole redraw
