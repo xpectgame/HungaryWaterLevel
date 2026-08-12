@@ -2557,6 +2557,118 @@ async function probeDroughtIndex(args = []) {
 }
 
 /**
+ * Soil moisture, asked of the drought network's own stations.
+ *
+ * This is the last thing the old caveat named that the site still could not measure. Two
+ * routes to the official index are closed and closed cleanly:
+ *
+ *   - The HDI raster is an ArcGIS ImageServer that answers "Token Required" (error 499).
+ *     It is not a public service, so it is not ours to read.
+ *   - The settlement form on the front end returns the same numbers, and the site guards
+ *     it with a hidden field its own source calls a bot trap. An operator does not build
+ *     one of those by accident, and getting past it is not something to be clever about.
+ *
+ * The third route is open by construction. The drought service publishes its 127 stations
+ * as a public GIS layer, and every one of them carries `HidrometTorzsszam` - the same
+ * station identifier the vraquery API uses for everything else on this site. So the
+ * question becomes one this project already knows how to ask: does that API serve a soil
+ * moisture quantity at those particular stations?
+ *
+ * The earlier sweep found nothing between codes 62 and 90, but it asked the WRONG
+ * STATIONS - the meteorological network, not these. That is the same mistake that had
+ * talajvíz recorded as unpublished for weeks, so this time the stations come first.
+ *
+ * Many codes per request rather than many stations: one RequestTS entry carries its own
+ * AdatFajtaKod, so a single POST can ask twelve stations about eight codes at once. An
+ * unsupported code fails the whole request, so a failed chunk is retried code by code
+ * rather than written off.
+ */
+async function probeDroughtSoil(args = []) {
+  console.log('\n########## soil moisture at the drought network stations ##########');
+
+  const GIS = 'https://geoportal.vizugy.hu/arcgis/rest/services/Aszalymon';
+  const layer = await fetchJson(
+    `${GIS}/Aszaly_monitoring_allomasok/MapServer/0/query?where=1%3D1&outFields=AllomasNev,HidrometTorzsszam&returnGeometry=false&f=json`,
+    { timeoutMs: 30000 },
+  );
+  const stations = (layer.features || [])
+    .map((f) => ({ name: f.attributes.AllomasNev, tsz: f.attributes.HidrometTorzsszam }))
+    .filter((s) => Number.isFinite(s.tsz));
+  console.log(`${stations.length} drought-monitoring stations with a Torzsszam`);
+  if (!stations.length) return;
+
+  const sample = stations.slice(0, 12);
+  console.log(`asking ${sample.length} of them: ${sample.map((s) => `${s.name}(${s.tsz})`).slice(0, 5).join(' ')} ...`);
+
+  const now = new Date();
+  const start = new Date(now.getTime() - 30 * 86400000).toISOString();
+  const end = new Date(now.getTime() + 3600000).toISOString();
+
+  const range = (args.find((a) => a.startsWith('--codes=')) || '').slice(8);
+  const CODES = range
+    ? range.split(',').map(Number).filter(Number.isFinite)
+    : Array.from({ length: 140 }, (_, i) => i + 1);
+
+  const answered = [];
+  const ask = async (codes, atCode) => {
+    const body = [];
+    for (const [ci, code] of codes.entries()) {
+      for (const [si, st] of sample.entries()) {
+        body.push({
+          ItemId: ci * sample.length + si,
+          Torzsszam: Number(st.tsz),
+          AdatFajtaKod: code,
+          AdatTipusKod: atCode,
+          StartTime: start,
+          EndTime: end,
+        });
+      }
+    }
+    const out = await askSeries(body, { timeoutMs: 60000 });
+    const byItemId = require('../sources/vizugy').indexByItemId(Array.isArray(out) ? out : []);
+    for (const [ci, code] of codes.entries()) {
+      const hits = [];
+      for (const [si, st] of sample.entries()) {
+        const items = usable(byItemId.get(ci * sample.length + si));
+        if (items.length) hits.push({ st, items });
+      }
+      if (!hits.length) continue;
+      const last = hits[0].items[hits[0].items.length - 1];
+      const values = hits.map((h) => Number(h.items[h.items.length - 1].Adat)).filter(Number.isFinite).sort((a, b) => a - b);
+      answered.push({ code, atCode, stations: hits.length, sampleStation: hits[0].st.name,
+        samples: hits[0].items.length, last: last.UTCTime, min: values[0], max: values[values.length - 1],
+        median: values[Math.floor(values.length / 2)] });
+      console.log(
+        `  code ${String(code).padStart(3)} / type ${String(atCode).padStart(3)}: ` +
+          `${String(hits.length).padStart(2)}/${sample.length} stations  ` +
+          `${String(hits[0].items.length).padStart(4)} samples  last ${last.UTCTime.slice(0, 16)}  ` +
+          `values ${values[0]} .. ${values[values.length - 1]} (median ${values[Math.floor(values.length / 2)]})`,
+      );
+    }
+  };
+
+  for (const atCode of [100, 2]) {
+    console.log(`\n--- AdatTipusKod ${atCode} ---`);
+    for (let i = 0; i < CODES.length; i += 8) {
+      const chunk = CODES.slice(i, i + 8);
+      try {
+        await ask(chunk, atCode);
+      } catch {
+        // One unsupported code fails the batch, so the batch is worth retrying singly
+        // rather than discarding seven codes that might have answered.
+        for (const code of chunk) {
+          try { await ask([code], atCode); } catch { /* genuinely unsupported */ }
+        }
+      }
+    }
+  }
+
+  console.log(`\n${answered.length} (code, type) pair(s) answered at these stations`);
+  emitDocument('drought-soil', { stations: stations.length, asked: sample, answered },
+    'src/config/aszaly-soil.json (after review)');
+}
+
+/**
  * Is there a real drought measurement to be had, or only a rainfall ratio?
  *
  * The site currently says, in its own words, "not an official drought index - a real one
@@ -2980,6 +3092,11 @@ async function main() {
     return;
   }
 
+  if (args.includes('--drought-soil')) {
+    await probeDroughtSoil(args);
+    return;
+  }
+
   if (args.includes('--drought-index')) {
     await probeDroughtIndex(args);
     return;
@@ -3088,6 +3205,7 @@ async function main() {
       '\nActions: --live --vizugy --mavir --discover --portal --thresholds --lakes --datatypes\n' +
       '         --forecast --groundwater --rain --matrix --rain-scan --well-scan --rain-normals\n' +
       '         --flow-history --lake-history --well-history --drought --drought-index\n' +
+      '         --drought-soil\n' +
       '         --unit-history\n' +
       '         --operations\n' +
       '         --mavir-charts\n' +
