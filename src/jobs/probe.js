@@ -2480,7 +2480,32 @@ async function probeDroughtIndex(args = []) {
     }
   }
 
+  // Where the rasters live.
+  //
+  // The page's own config names three ArcGIS ImageServers - mosaic_hdis for the drought
+  // index itself, mosaic_pr for precipitation, mosaic_tm for temperature - as RELATIVE
+  // paths, so the base is a constant elsewhere in their code. That route matters: an
+  // ImageServer is a documented, machine-readable GIS service, which is a different kind
+  // of thing from a form the same site guards with a hidden honeypot field.
+  const arc = new Set();
+  for (const src of assets) {
+    if (/^https?:\/\//i.test(src) && !src.includes('vizugy.hu')) continue;
+    try {
+      const { body: js } = await fetchText(new URL(src, ORIGIN).toString(), { timeoutMs: 20000 });
+      for (const m of js.matchAll(/["'`]([^"'`\s]*(?:arcgis|rest\/services|ImageServer|MapServer)[^"'`\s]*)["'`]/gi)) {
+        arc.add(m[1]);
+      }
+      // A base assembled from a variable rather than written whole.
+      for (const m of js.matchAll(/[A-Za-z_$][\w$]*\s*=\s*["'`](https?:\/\/[^"'`\s]+)["'`]/g)) {
+        if (/arcgis|gis|map|server/i.test(m[1])) arc.add(m[1]);
+      }
+    } catch { /* already reported above */ }
+  }
+  console.log(`\n--- ArcGIS references (${arc.size}) ---`);
+  for (const a of [...arc].slice(0, 30)) console.log(`  ${a}`);
+
   emitDocument('drought-index-scan', {
+    arcgis: [...arc],
     stations: stations.length,
     stationSample: stations.slice(0, 3),
     frontPageBytes: home.length,
