@@ -360,14 +360,33 @@ test('GET /api/v1/powerplants/:id returns a single plant', async () => {
 });
 
 test('the units model reports how many units it assumed', async () => {
+  // The fixture now supplies per-unit availability, so this exercises the MEASURED path.
+  // It used to assert `known: false` because fixture mode returned no availability at
+  // all - which meant the branch that runs in production was the one never tested.
   await withServer(async ({ get }) => {
     const { body } = await get('/api/v1/powerplants/paks-1?model=units');
     assert.strictEqual(body.water.model, 'units');
     assert.ok(body.units, 'unit accounting must be exposed');
     assert.strictEqual(body.units.total, 4);
-    assert.strictEqual(body.units.known, false, 'inferred, not measured');
-    assert.ok(body.water.notes.some((n) => /lower bound/.test(n)));
+    assert.strictEqual(body.units.known, true, 'the fixture measures units, so this is not an inference');
   });
+});
+
+test('with no availability feed the units model infers, and labels it a lower bound', () => {
+  // The path a deployment without an ENTSO-E token takes. Exercised directly rather than
+  // over HTTP, because the fixture deliberately provides availability now and the point
+  // of this test is the case where nothing does.
+  const { computePlantWater } = require('../src/domain/cooling');
+  const { getPlant } = require('../src/config/powerplants');
+  const plant = getPlant('paks-1');
+
+  const inferred = computePlantWater(plant, 1000, { model: 'units' });
+  assert.equal(inferred.unitsKnown, false, 'without availability the count is inferred');
+  assert.ok(inferred.notes.some((n) => /lower bound/.test(n)),
+    `expected a lower-bound caveat, got ${JSON.stringify(inferred.notes)}`);
+
+  const measured = computePlantWater(plant, 1000, { model: 'units', unitsOnline: 2 });
+  assert.equal(measured.unitsKnown, true);
 });
 
 test('at part load the units model reports more water than the linear one', async () => {
@@ -378,4 +397,36 @@ test('at part load the units model reports more water than the linear one', asyn
     const units = await get('/api/v1/powerplants/paks-1?model=units');
     assert.ok(units.body.water.withdrawalM3s >= linear.body.water.withdrawalM3s);
   });
+});
+
+test('a plant reports its machines against their own recent behaviour', async () => {
+  await withServer(async ({ get }) => {
+    const { body } = await get('/api/v1/powerplants');
+    const paks = body.plants.find((p) => p.id === 'paks-1');
+    assert.ok(paks.unitDetail, 'Paks publishes per-unit data and the payload must carry it');
+    assert.equal(paks.unitDetail.units.length, 8, 'eight generators, not four blocks');
+
+    const unit = paks.unitDetail.units.find((u) => u.powerMw > 0);
+    assert.ok(Number.isFinite(unit.hourMeanMw), 'each unit needs its own hour-of-day baseline');
+    assert.ok(Number.isFinite(unit.ratioToHour));
+    assert.ok(unit.baselineDays >= 30, 'the baseline has to be long enough to mean something');
+
+    // The plant total must be the sum of its parts, or the card contradicts itself.
+    const summed = paks.unitDetail.units.reduce((s, u) => s + (u.powerMw || 0), 0);
+    assert.ok(Math.abs(summed - paks.unitDetail.totalMw) < 0.5,
+      `${summed} summed vs ${paks.unitDetail.totalMw} reported`);
+
+    // A plant that publishes nothing per unit says so rather than being omitted.
+    const tisza = body.plants.find((p) => p.id === 'tisza-2');
+    assert.equal(tisza.unitDetail, null, 'Tisza II publishes no per-unit data to ENTSO-E');
+  });
+});
+
+test('the baseline is the observed maximum, never called nameplate', () => {
+  const { rankUnit } = require('../src/domain/unit-baseline');
+  const r = rankUnit('PA_gép1', 200, { at: new Date(Date.UTC(2026, 7, 12, 11)) });
+  assert.ok(r, 'PA_gép1 is in the baked history');
+  assert.ok(Number.isFinite(r.recentMaxMw));
+  assert.equal(r.nominalMw, undefined, 'A73 reports nominalP as 0, so it must not be published');
+  assert.ok(r.recentMaxMw > 100 && r.recentMaxMw < 600, `implausible ceiling ${r.recentMaxMw}`);
 });

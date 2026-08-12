@@ -495,6 +495,21 @@ function unitsRunningFrom(plant, units) {
  * Tisza II publishes no units at all, and reporting it at zero megawatts would take it
  * off the map entirely.
  */
+/** A plant's own units, newest reading each, largest first. */
+function matchedUnits(plant, units) {
+  if (!plant.entsoeUnitPattern || !Array.isArray(units)) return [];
+  const matcher = new RegExp(plant.entsoeUnitPattern, 'i');
+  const newest = new Map();
+  for (const unit of units) {
+    if (!matcher.test(unit.unitName || '')) continue;
+    const seen = newest.get(unit.unitName);
+    if (!seen || (unit.timestamp || '') > (seen.timestamp || '')) newest.set(unit.unitName, unit);
+  }
+  return [...newest.values()]
+    .map((u) => ({ unitName: u.unitName, powerMw: u.powerMw, sourceType: u.sourceType, at: u.timestamp }))
+    .sort((a, b) => (b.powerMw || 0) - (a.powerMw || 0));
+}
+
 function sumUnitsFor(plant, units) {
   if (!plant.entsoeUnitPattern || !Array.isArray(units)) return null;
 
@@ -608,6 +623,11 @@ async function fetchAvailability(plants, env = process.env, now = new Date()) {
       // gas fleet stop being a capacity-weighted guess at merit-order dispatch - the
       // single largest caveat this project carried.
       measuredMw: unitGeneration ? sumUnitsFor(plant, unitGeneration.units) : null,
+      // The machines themselves, not just their sum. The same A73 response already
+      // carries them, and without them the page can say what a plant is producing but
+      // not which of its units is doing it - which for Paks is the difference between
+      // "1467 MW" and "seven of eight generators running, one down since Tuesday".
+      units: unitGeneration ? matchedUnits(plant, unitGeneration.units) : [],
       // Both, when both exist. A gap between them is worth seeing rather than
       // resolving silently - it is either an unfiled outage or a unit on house load,
       // and those are different stories about the same plant.
@@ -773,6 +793,7 @@ module.exports = {
   parseOutages,
   parseGeneration,
   parseUnitGeneration,
+  matchedUnits,
   lastPoint,
   allPoints,
   activeAt,

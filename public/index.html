@@ -319,6 +319,25 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .pl-a{color:var(--ink-faint);line-height:1.35}
 .pl-a b{color:var(--ink-soft);font-weight:600}
 .pl-src{border:1px solid var(--line);border-radius:99px;padding:0 6px;font-size:10.5px;margin-left:4px;white-space:nowrap}
+/* The machines, under the plant. Deliberately quieter than the plant's own figures:
+   a reader who wants the summary should not have to read past eight generators. */
+/* .pl-unit, NOT .pl-u: that name was already the unit-suffix span inside .pl-v, and
+   giving it display:grid pushed "MW" onto its own line under every number on the card.
+   Sixth class collision in this file - a new block gets a name checked against the
+   stylesheet first, not one that merely reads well. */
+.pl-units{margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+.pl-uhead{font-size:12px;color:var(--ink-soft);margin-bottom:5px}
+.pl-unit{display:grid;grid-template-columns:minmax(78px,auto) minmax(56px,auto) auto minmax(0,1fr);
+  gap:9px;align-items:baseline;font-size:11.5px;padding:1.5px 0}
+.pl-unit .un{font-family:var(--mono);color:var(--ink-soft)}
+.pl-unit .uw{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;color:var(--ink)}
+.pl-unit .ur{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;color:var(--ink-faint)}
+.pl-unit .ur.up{color:#1f6f9e} .pl-unit .ur.dn{color:#a8501a}
+.pl-unit .ub{color:var(--ink-faint)}
+.pl-unit.off .un,.pl-unit.off .uw{color:var(--ink-faint)}
+.pl-unit.off .uw{font-style:italic}
+.pl-ufoot{font-size:11px;color:var(--ink-faint);margin-top:6px;line-height:1.4}
+@media(max-width:520px){ .pl-unit{grid-template-columns:minmax(70px,auto) auto auto} .pl-unit .ub{display:none} }
 @media(max-width:520px){
   .pl-grid{grid-template-columns:auto auto;gap:2px 10px}
   .pl-a{grid-column:1/-1;margin-bottom:4px}
@@ -3583,6 +3602,39 @@ function renderPlants(){
         p.status==='planned' ? 'még nem üzemel' : 'nincs számottevő kivétel'));
     }
 
+    // The machines themselves, under the plant's own figures.
+    //
+    // "1467 MW" is the plant; "seven of eight generators, one down, this one 26% above
+    // what it usually does at this hour" is what is actually happening inside it. The
+    // baseline is that unit's own last sixty days by hour of day, because comparing a
+    // gas turbine's evening against its own midnight - or against nameplate - says
+    // nothing.
+    const ud = p.unitDetail;
+    const unitRows = ud && ud.units && ud.units.length
+      ? `<div class="pl-units">`+
+        `<div class="pl-uhead">${ud.running}/${ud.known} blokk termel`+
+          (ud.ratioToHour!=null
+            ? ` · együtt <b>${fmt(ud.ratioToHour*100,0)}%</b>-a annak, amit ilyenkor szoktak`
+            : '')+
+        `</div>`+
+        ud.units.map(u => {
+          const off = !(u.powerMw > 0);
+          const rel = u.ratioToHour!=null ? `${fmt(u.ratioToHour*100,0)}%` : '–';
+          const cls = u.ratioToHour==null ? '' : u.ratioToHour >= 1.05 ? 'up' : u.ratioToHour <= 0.95 ? 'dn' : '';
+          return `<div class="pl-unit${off?' off':''}">`+
+            `<span class="un">${u.unitName}</span>`+
+            `<span class="uw">${off?'áll':fmt(u.powerMw,0)+' MW'}</span>`+
+            `<span class="ur ${cls}">${off?'':rel}</span>`+
+            `<span class="ub">${off?'' : u.hourMeanMw!=null?`ilyenkor ${fmt(u.hourMeanMw,0)} MW szokott`:''}</span>`+
+          `</div>`;
+        }).join('')+
+        `<div class="pl-ufoot">A viszonyítás minden blokk saját, elmúlt ${ud.units[0] && ud.units[0].baselineDays || 60} napjának `+
+        `ugyanezen órája — nem a névleges teljesítmény.</div>`+
+      `</div>`
+      : (p.status==='operating' && p.type!=='pumped_storage'
+          ? `<div class="pl-units"><div class="pl-ufoot">Erről az erőműről nincs blokkonkénti közlés az ENTSO-E-ben.</div></div>`
+          : '');
+
     return `<div class="plantcard clickable" data-plant="${p.id}" tabindex="0" role="button">`+
       `<div class="pl-head">`+
         `<div class="pl-nm">${p.name}</div>`+
@@ -3590,6 +3642,7 @@ function renderPlants(){
       `</div>`+
       `<div class="pl-track"><div class="pl-fill" style="width:${Math.max(0.6,(w/max)*100).toFixed(1)}%"></div></div>`+
       `<div class="pl-grid">${detail.join('')}</div>`+
+      unitRows+
     `</div>`;
   }).join('');
 

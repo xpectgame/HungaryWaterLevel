@@ -341,6 +341,62 @@ async function fetchShallowWells({ days = 10, now = new Date(), env = process.en
     fetchedAt: now.toISOString(), windowDays: days, wells, errors };
 }
 
+/**
+ * Synthetic unit availability, anchored to each unit's own baked hourly baseline.
+ *
+ * Fixture mode used to return an empty availability record, which meant the whole
+ * per-unit branch - how many machines are running, what each is producing, how that
+ * compares with its own recent behaviour - was dead in local development and in CI, and
+ * would first have been exercised in production. That is the failure this file exists to
+ * prevent, so the fixture now produces units shaped like the real ones.
+ *
+ * One unit per plant is deliberately held at zero: a plant with everything running is the
+ * easy case, and the interesting rendering is the one with a machine down.
+ */
+async function fetchAvailability(env = process.env, at = new Date()) {
+  const { listPlants } = require('../config/powerplants');
+  const { loadUnitHistory } = require('../domain/unit-baseline');
+  const history = loadUnitHistory() || {};
+  const hour = at.getUTCHours();
+  const availability = {};
+
+  for (const plant of listPlants('operating')) {
+    if (!plant.entsoeUnitPattern) continue;
+    const matcher = new RegExp(plant.entsoeUnitPattern, 'i');
+    const names = Object.keys(history).filter((n) => matcher.test(n)).sort();
+    if (!names.length) continue;
+
+    const units = names.map((name, index) => {
+      const entry = history[name];
+      const base = entry.hourlyMeanMw[hour] || entry.meanMw || 0;
+      const jitter = 1 + 0.18 * noise(seedFor(name) + Math.floor(at.getTime() / (15 * 60 * 1000)));
+      // The last unit of a plant with more than one is shut, so the "down" branch is
+      // rendered somewhere on every run.
+      const down = names.length > 1 && index === names.length - 1;
+      return {
+        unitName: name,
+        powerMw: down ? 0 : round(Math.max(0, base * jitter), 1),
+        sourceType: entry.sourceType,
+        at: at.toISOString(),
+      };
+    });
+
+    const running = units.filter((u) => u.powerMw > 0).length;
+    availability[plant.id] = {
+      unitsOnline: Math.max(1, Math.round((running / units.length) * (plant.unitCount || units.length))),
+      unitCount: plant.unitCount,
+      source: 'fixture',
+      basis: 'generation',
+      measuredMw: round(units.reduce((sum, u) => sum + u.powerMw, 0), 1),
+      declaredOnline: null,
+      units,
+      synthetic: true,
+    };
+  }
+
+  return { source: 'fixture', configured: true, synthetic: true, fetchedAt: at.toISOString(), availability };
+}
+
 /** Paks refuels one unit at a time, mostly outside the winter peak. */
 function seasonalOutage(at) {
   const month = at.getMonth();
@@ -352,4 +408,4 @@ function round(v, digits) {
   return Math.round(v * f) / f;
 }
 
-module.exports = { fetchAll, fetchGeneration, fetchRainfall, fetchWells, fetchShallowWells, stationFlow, seasonalFactor };
+module.exports = { fetchAll, fetchGeneration, fetchRainfall, fetchWells, fetchShallowWells, fetchAvailability, stationFlow, seasonalFactor };

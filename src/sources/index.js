@@ -25,8 +25,7 @@ function createProvider(config) {
         return fixture.fetchGeneration();
       },
       async fetchAvailability() {
-        // Synthetic mode has no outage feed; the units model infers instead.
-        return { source: 'fixture', configured: false, availability: {} };
+        return fixture.fetchAvailability();
       },
     };
   }

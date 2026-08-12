@@ -32,6 +32,37 @@ function buildSnapshot({ readings, generation, historyLookup, availability, conf
   };
 }
 
+/**
+ * A plant's units, each ranked against its own hour-of-day baseline, plus the plant total.
+ *
+ * The plant-level figures are the sum of the unit-level ones rather than a separately
+ * derived number: adding the parts is the only arrangement in which the total and the
+ * parts cannot disagree on the page.
+ */
+function rankPlantUnits(units, at = new Date()) {
+  const { rankUnit } = require('./unit-baseline');
+  const ranked = units
+    .map((u) => ({ ...(rankUnit(u.unitName, u.powerMw, { at }) || {}), unitName: u.unitName,
+      powerMw: u.powerMw, at: u.at }))
+    .sort((a, b) => (b.powerMw || 0) - (a.powerMw || 0));
+
+  const sum = (key) => ranked.reduce((s, u) => s + (Number.isFinite(u[key]) ? u[key] : 0), 0);
+  const total = sum('powerMw');
+  const hourMean = sum('hourMeanMw');
+  const recentMax = sum('recentMaxMw');
+
+  return {
+    units: ranked,
+    running: ranked.filter((u) => Number.isFinite(u.powerMw) && u.powerMw > 0).length,
+    known: ranked.length,
+    totalMw: round(total, 1),
+    hourMeanMw: hourMean > 0 ? round(hourMean, 1) : null,
+    recentMaxMw: recentMax > 0 ? round(recentMax, 1) : null,
+    ratioToHour: hourMean > 0 ? round(total / hourMean, 3) : null,
+    ratioToMax: recentMax > 0 ? round(total / recentMax, 3) : null,
+  };
+}
+
 function buildPowerWater({ readings, generation, coolingModel, availability }) {
   const generationMw = (generation && generation.generationMw) || {};
 
@@ -58,6 +89,12 @@ function buildPowerWater({ readings, generation, coolingModel, availability }) {
 
     // Availability, when present, replaces the inference the units model would make.
     const known = (availability && availability[plant.id]) || null;
+    // Each machine against its own recent behaviour. A bare "1467 MW" cannot be read;
+    // "seven of eight generators, 26% above what this one usually does at this hour"
+    // can be, and the baseline it needs is baked rather than fetched.
+    const unitDetail = known && Array.isArray(known.units) && known.units.length
+      ? rankPlantUnits(known.units)
+      : null;
     const unitsOnline = known ? known.unitsOnline : undefined;
     const water = computePlantWater(plant, allocation.powerMw, { model: coolingModel, unitsOnline });
     waterByPlant[plant.id] = water;
@@ -75,6 +112,7 @@ function buildPowerWater({ readings, generation, coolingModel, availability }) {
 
     plants.push({
       id: plant.id,
+      unitDetail,
       name: plant.name,
       nameEn: plant.nameEn,
       type: plant.type,
