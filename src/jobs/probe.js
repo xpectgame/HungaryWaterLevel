@@ -2039,6 +2039,133 @@ function round2(v) {
  * request, and a single 500 across 56 combinations tells you nothing about which.
  */
 /**
+ * What each generating unit normally does, hour by hour.
+ *
+ * "Gönyű is at 340 MW" is a number, not information. The reader's actual question is
+ * whether that is a lot, and answering it needs a yardstick - and the two obvious
+ * yardsticks are both wrong on their own:
+ *
+ *   - Nameplate capacity alone flatters baseload and libels solar. A PV farm at 8% of
+ *     nameplate is either midnight or a catastrophe, and nothing in the number says
+ *     which.
+ *   - A flat daily average is worse for exactly the same reason: averaging a solar
+ *     unit's midnight zeros with its noon peak produces a figure it is never at.
+ *
+ * So the baseline is per unit AND per hour of day. A gas turbine that runs the evening
+ * peak gets compared against its own evenings; Paks gets compared against a flat line,
+ * because that is what a flat line looks like in this document.
+ *
+ * One request per day - the platform refuses A73 windows wider than a day and says so -
+ * walked backwards, sequentially, because this is a free public service.
+ */
+async function probeUnitHistory(args = []) {
+  console.log('\n########## per-unit generation history (A73) ##########');
+  const entsoe = require('../sources/entsoe');
+  const cfg = entsoe.config();
+  if (!cfg.token) {
+    console.log(cfg.tokenError || 'ENTSOE_TOKEN is not set, so nothing can be requested.');
+    return;
+  }
+
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
+  const DAYS = Number(arg('days')) || 60;
+  const now = new Date();
+
+  // unit -> hour -> samples, plus whole-unit tallies
+  const byUnit = new Map();
+  const touch = (name) => {
+    if (!byUnit.has(name)) {
+      byUnit.set(name, {
+        hours: Array.from({ length: 24 }, () => []),
+        all: [],
+        days: new Set(),
+        nominal: null,
+        sourceType: null,
+        max: null,
+      });
+    }
+    return byUnit.get(name);
+  };
+
+  let reached = 0;
+  for (let back = 1; back <= DAYS; back += 1) {
+    const day = new Date(now.getTime() - back * 86400000);
+    try {
+      const out = await entsoe.fetchUnitGenerationDay(day);
+      if (!out.units.length) {
+        console.log(`  ${out.date}: no units`);
+        continue;
+      }
+      reached += 1;
+      for (const unit of out.units) {
+        const entry = touch(unit.unitName);
+        if (unit.nominalMw != null) entry.nominal = unit.nominalMw;
+        if (unit.sourceType) entry.sourceType = unit.sourceType;
+        entry.days.add(out.date);
+        for (const point of unit.series || []) {
+          const hour = new Date(point.at).getUTCHours();
+          if (!Number.isFinite(point.mw)) continue;
+          entry.hours[hour].push(point.mw);
+          entry.all.push(point.mw);
+          if (entry.max === null || point.mw > entry.max) entry.max = point.mw;
+        }
+      }
+      if (back % 10 === 0 || back === 1) {
+        console.log(`  ${out.date}: ${out.units.length} units, ${byUnit.size} seen so far`);
+      }
+    } catch (err) {
+      console.log(`  ${day.toISOString().slice(0, 10)}: FAILED ${entsoe.describeError(err).slice(0, 90)}`);
+    }
+  }
+
+  const out = {};
+  console.log(`\n${byUnit.size} units over ${reached}/${DAYS} days:\n`);
+  for (const [name, entry] of [...byUnit.entries()].sort((a, b) => (b[1].max || 0) - (a[1].max || 0))) {
+    const mean = (xs) => (xs.length ? Math.round((xs.reduce((s, x) => s + x, 0) / xs.length) * 10) / 10 : null);
+    const hourly = entry.hours.map(mean);
+    out[name] = {
+      sourceType: entry.sourceType,
+      nominalMw: entry.nominal,
+      // Per hour of day, in UTC - the same clock the series arrives on, so no timezone
+      // guess sits between the baseline and the reading it will be compared with.
+      hourlyMeanMw: hourly,
+      meanMw: mean(entry.all),
+      maxMw: entry.max,
+      days: entry.days.size,
+      samples: entry.all.length,
+    };
+    console.log(
+      `  ${name.padEnd(26)} ${String(entry.sourceType || '?').padEnd(11)}` +
+        ` mean ${String(mean(entry.all) ?? '-').padStart(7)}  max ${String(entry.max ?? '-').padStart(7)}` +
+        `  of ${String(entry.nominal ?? '?').padStart(5)} MW  ${String(entry.days.size).padStart(3)} days`,
+    );
+  }
+
+  // Does every registered plant's pattern actually match something?
+  //
+  // The pattern written from expectation ('^paks') matched none of the eight PA_gép
+  // generators, and a pattern that matches nothing reports a plant as fully available
+  // forever rather than failing. That bug is silent by construction, so it gets a check.
+  console.log('\nplant pattern -> units matched:');
+  for (const plant of require('../config/powerplants').listPlants('operating')) {
+    if (!plant.entsoeUnitPattern) {
+      console.log(`  ${plant.id.padEnd(16)} (no pattern)`);
+      continue;
+    }
+    const matcher = new RegExp(plant.entsoeUnitPattern, 'i');
+    const hits = [...byUnit.keys()].filter((n) => matcher.test(n));
+    console.log(
+      `  ${plant.id.padEnd(16)} ${String(hits.length).padStart(2)}  ${hits.join(', ') || 'NOTHING MATCHED'}`,
+    );
+  }
+
+  emitDocument('unit-history', out, 'src/config/unit-history.json');
+}
+
+/**
  * Is there a real drought measurement to be had, or only a rainfall ratio?
  *
  * The site currently says, in its own words, "not an official drought index - a real one
@@ -2457,6 +2584,11 @@ async function main() {
     return;
   }
 
+  if (args.includes('--unit-history')) {
+    await probeUnitHistory(args);
+    return;
+  }
+
   if (args.includes('--drought')) {
     await probeDrought(args);
     return;
@@ -2559,7 +2691,8 @@ async function main() {
     console.error(
       '\nActions: --live --vizugy --mavir --discover --portal --thresholds --lakes --datatypes\n' +
       '         --forecast --groundwater --rain --matrix --rain-scan --well-scan --rain-normals\n' +
-      '         --flow-history --lake-history --well-history --drought --operations\n' +
+      '         --flow-history --lake-history --well-history --drought --unit-history\n' +
+      '         --operations\n' +
       '         --mavir-charts\n' +
       '         --mavir-sheet --entsoe --find=NAME --url=URL --page=URL --site=BASEURL\n' +
       '\nRefusing to fall back to the full sweep: it is dozens of requests against two\n' +
