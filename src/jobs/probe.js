@@ -2149,6 +2149,70 @@ async function probeDrought(args = []) {
     console.log('  (codes with no line answered nowhere)');
   }
 
+  // --- 2b. The network nobody had asked for ----------------------------------------
+  //
+  // The sweep above turned up vmoType 12 with 2030 stations, more than any other network
+  // here, carrying the same `Npt` datum field the groundwater wells do. Only 11, 13 and
+  // 14 had ever been requested, so this has been sitting there the whole time.
+  //
+  // If it is the shallow water-table network it is the most important thing on this page
+  // that is currently missing: talajvíz is what a garden well reaches and what a maize
+  // root system drinks, it is the standing negative result of this project so far
+  // (AdatFajtaKod 69 answered nowhere on vmoType 13), and it is half of what makes a
+  // drought a drought rather than a dry month.
+  const twelve = networks.find((n) => n.vmoType === 12);
+  if (twelve) {
+    console.log(`\n--- vmoType 12: ${twelve.rows.length} stations, what do they publish? ---`);
+    console.log(`  sample rows: ${twelve.rows.slice(0, 4).map((r) => `${r.Tsz}:${r.Nev}`).join('  |  ')}`);
+
+    const stations = twelve.rows.filter((r) => r.Tsz && r.Lat != null).slice(0, 40);
+    const now = new Date();
+    const start = new Date(now.getTime() - 60 * 86400000).toISOString();
+    const end = new Date(now.getTime() + 3600000).toISOString();
+
+    for (const [code, label] of [[69, 'talajvízállás'], [70, 'rétegvízszint'], [71, 'csapadék'], [68, 'vízállás']]) {
+      for (const atCode of [100, 2, 6, 1]) {
+        try {
+          const out = await askSeries(
+            stations.map((s, i) => ({
+              ItemId: i,
+              Torzsszam: Number(s.Tsz),
+              AdatFajtaKod: code,
+              AdatTipusKod: atCode,
+              StartTime: start,
+              EndTime: end,
+            })),
+            { timeoutMs: 60000 },
+          );
+          const byItemId = require('../sources/vizugy').indexByItemId(Array.isArray(out) ? out : []);
+          const live = [];
+          stations.forEach((s, i) => {
+            const items = usable(byItemId.get(i));
+            if (items.length) live.push({ s, items });
+          });
+          if (!live.length) continue;
+
+          const values = live.map((l) => Number(l.items[l.items.length - 1].Adat))
+            .filter(Number.isFinite).sort((a, b) => a - b);
+          console.log(
+            `  ${code}/${atCode}  ${label.padEnd(14)} ${String(live.length).padStart(3)}/${stations.length} answered  ` +
+              `values ${values[0]} .. ${values[values.length - 1]} (median ${values[Math.floor(values.length / 2)]})`,
+          );
+          for (const l of live.slice(0, 3)) {
+            const last = l.items[l.items.length - 1];
+            console.log(
+              `        ${String(l.s.Tsz).padEnd(7)} ${String(l.s.Nev).slice(0, 24).padEnd(24)} ` +
+                `npt ${String(l.s.Npt).padStart(7)}  ${String(l.items.length).padStart(4)} samples  ` +
+                `last ${last.UTCTime.slice(0, 16)} = ${last.Adat}`,
+            );
+          }
+        } catch {
+          // Unsupported pair; the absence of a line is the result.
+        }
+      }
+    }
+  }
+
   // --- 3. The official drought service ---------------------------------------------
   //
   // Its front end is a map, so the useful question is what the map fetches. Same method
@@ -2176,6 +2240,26 @@ async function probeDrought(args = []) {
         for (const hit of list) console.log(`         ${hit}`);
       } else {
         console.log('       no endpoint-shaped strings in the response');
+      }
+
+      // It serves 26 KB of server-rendered HTML with one endpoint in it, which means it
+      // is not a front end calling an API - so if the numbers exist at all they are IN
+      // this document. Look for them rather than concluding from the absence of a JSON
+      // route that there is nothing here.
+      const tables = (body.match(/<table/gi) || []).length;
+      const options = [...body.matchAll(/<option[^>]*value=["']([^"']+)["'][^>]*>([^<]*)</gi)].slice(0, 12);
+      const numbers = [...body.matchAll(/>\s*(-?\d+[.,]\d+)\s*</g)].slice(0, 12).map((m) => m[1]);
+      const forms = [...body.matchAll(/<form[^>]*action=["']([^"']*)["'][^>]*>/gi)].map((m) => m[1]);
+      const inputs = [...body.matchAll(/<(?:input|select)[^>]*name=["']([^"']+)["']/gi)].map((m) => m[1]);
+      console.log(`       ${tables} table(s), ${options.length} option(s), ${numbers.length} decimal(s) in text nodes`);
+      if (forms.length) console.log(`       form action(s): ${[...new Set(forms)].join(', ')}`);
+      if (inputs.length) console.log(`       form field(s): ${[...new Set(inputs)].slice(0, 20).join(', ')}`);
+      if (options.length) console.log(`       options: ${options.map((m) => `${m[1]}=${m[2].trim().slice(0, 18)}`).join(' | ')}`);
+      if (numbers.length) console.log(`       decimals: ${numbers.join(' ')}`);
+      // Whatever it calls the index, in its own words.
+      for (const term of ['HDI', 'aszályindex', 'talajnedvesség', 'Aszályindex']) {
+        const at = body.indexOf(term);
+        if (at >= 0) console.log(`       "${term}" at ${at}: ${body.slice(at - 60, at + 120).replace(/\s+/g, ' ')}`);
       }
     } catch (err) {
       console.log(`  FAIL ${url}  ${err.message.split('\n')[0].slice(0, 70)}`);

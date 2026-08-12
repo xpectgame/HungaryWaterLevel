@@ -204,6 +204,50 @@ function lastPoint(period) {
 }
 
 /**
+ * Every point in a period, not just the last one.
+ *
+ * `lastPoint` answers "what is it doing now", which is the only question this file used
+ * to ask. It is the wrong question for a power station: a plant that produced 400 MW all
+ * night and 0 MW since dawn is a different fact from one that has produced 0 MW for a
+ * week, and both look identical at the last point.
+ *
+ * ENTSO-E omits unchanged points rather than repeating them - a series can jump from
+ * position 4 to position 9, meaning the value held for five intervals. Filling that gap
+ * forward is not interpolation, it is what the format says: the quantity stays in force
+ * until the next point supersedes it. Dropping the gap instead would silently shorten
+ * every flat night to a handful of samples and make a baseload unit look intermittent.
+ */
+function allPoints(period) {
+  const start = tagValue(period, 'start');
+  const resolution = tagValue(period, 'resolution') || 'PT15M';
+  const minutes = Number((resolution.match(/PT(\d+)M/) || [])[1]) || 60;
+  const startMs = start ? Date.parse(start) : NaN;
+  if (!Number.isFinite(startMs)) return [];
+
+  const raw = [];
+  for (const point of allBlocks(period, 'Point')) {
+    const position = Number(tagValue(point, 'position'));
+    const quantity = Number(tagValue(point, 'quantity'));
+    if (!Number.isFinite(position) || !Number.isFinite(quantity)) continue;
+    raw.push({ position, mw: quantity });
+  }
+  raw.sort((a, b) => a.position - b.position);
+
+  const out = [];
+  for (const [index, point] of raw.entries()) {
+    const next = raw[index + 1];
+    const until = next ? next.position : point.position + 1;
+    for (let position = point.position; position < until; position += 1) {
+      out.push({
+        at: new Date(startMs + (position - 1) * minutes * 60000).toISOString(),
+        mw: point.mw,
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * Generation by production type, in the shape the MAVIR adapter returns.
  *
  * A75 answers the same question MAVIR's chart does - what is Hungary generating right
@@ -244,7 +288,7 @@ function parseGeneration(xml) {
  * model actually wants: four Paks units listed separately, so "how many are running" is
  * read rather than inferred from a total.
  */
-function parseUnitGeneration(xml) {
+function parseUnitGeneration(xml, { withSeries = false } = {}) {
   const units = [];
 
   for (const series of allBlocks(xml, 'TimeSeries')) {
@@ -262,9 +306,11 @@ function parseUnitGeneration(xml) {
     const nominal = Number((resources && tagValue(resources, 'nominalP')) || tagValue(series, 'nominalP'));
 
     let latest = null;
+    const points = [];
     for (const period of allBlocks(series, 'Period')) {
       const point = lastPoint(period);
       if (point && (!latest || (point.timestamp || '') > (latest.timestamp || ''))) latest = point;
+      if (withSeries) points.push(...allPoints(period));
     }
     if (!latest) continue;
 
@@ -274,6 +320,7 @@ function parseUnitGeneration(xml) {
       powerMw: latest.mw,
       nominalMw: Number.isFinite(nominal) ? nominal : null,
       timestamp: latest.timestamp,
+      ...(withSeries ? { series: points.sort((a, b) => (a.at < b.at ? -1 : 1)) } : {}),
     });
   }
 
@@ -685,15 +732,49 @@ async function fetchUnitGeneration(env = process.env, now = new Date()) {
   return { source: 'entsoe', fetchedAt: new Date().toISOString(), units: parseUnitGeneration(body) };
 }
 
+/**
+ * One UTC day of per-unit output, every point of it.
+ *
+ * Same document as `fetchUnitGeneration` and the same hard one-day ceiling - the platform
+ * rejects anything wider outright - but it keeps the series instead of the last point.
+ * That is the difference between "Paks 2 is at 484 MW" and "Paks 2 ran flat at 484 MW all
+ * day while Gönyű followed the evening peak", and the second is the thing a reader can
+ * actually learn something from.
+ *
+ * @param {Date} day  any instant inside the UTC day wanted
+ */
+async function fetchUnitGenerationDay(day, env = process.env) {
+  const cfg = config(env);
+  if (!cfg.token) throw new Error(cfg.tokenError || 'ENTSOE_TOKEN is not set');
+
+  const date = new Date(day);
+  const from = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  // Ends one minute short of midnight rather than at it: the platform measures the span
+  // inclusively and a clean 24 hours reads as spanning two days.
+  const to = new Date(from.getTime() + 24 * 3600 * 1000 - 60000);
+
+  const url = buildUrl(cfg, { from, to, documentType: 'A73', processType: 'A16', domainParam: 'in_Domain' });
+  const { body } = await fetchText(url, { timeoutMs: Math.max(cfg.timeoutMs, 60000) });
+
+  return {
+    source: 'entsoe',
+    date: from.toISOString().slice(0, 10),
+    fetchedAt: new Date().toISOString(),
+    units: parseUnitGeneration(body, { withSeries: true }),
+  };
+}
+
 module.exports = {
   fetchAvailability,
   fetchGeneration,
   fetchGenerationRaw,
   fetchUnitGeneration,
+  fetchUnitGenerationDay,
   parseOutages,
   parseGeneration,
   parseUnitGeneration,
   lastPoint,
+  allPoints,
   activeAt,
   unitsOnlineFor,
   unitsRunningFrom,
