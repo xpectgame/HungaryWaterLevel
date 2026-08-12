@@ -2455,12 +2455,38 @@ async function probeDroughtIndex(args = []) {
   // whatever window the log API returns - and the answer here is a 1800-character sample
   // that a log line would truncate anyway. The document goes to the branch and can be
   // read at leisure.
+  // The two pieces of source that define the request, in full.
+  //
+  // Six URL spellings all returned the front page byte for byte, which means the shape
+  // is not a GET parameter at all and no further guessing is justified. autodroughtload.js
+  // is 3.6 KB - small enough to read whole - and it is the script that makes the FIRST
+  // request on page load, so whatever it does is the request. The window after
+  // `var url = "index.php"` in hydroinfo_v5.js carries the $.ajax config with its `data`.
+  const sources = {};
+  for (const [name, url] of [
+    ['autodroughtload', 'https://aszalymonitoring.vizugy.hu/js/autodroughtload.js'],
+    ['hydroinfo', 'https://aszalymonitoring.vizugy.hu/js/hydroinfo_v5.js'],
+  ]) {
+    try {
+      const { body: js } = await fetchText(url, { timeoutMs: 25000 });
+      if (name === 'autodroughtload') {
+        sources[name] = js;                       // whole file, it is tiny
+      } else {
+        const at = js.indexOf('var url = "index.php"');
+        sources[name] = at >= 0 ? js.slice(Math.max(0, at - 800), at + 3200) : null;
+      }
+    } catch (err) {
+      sources[name] = `FAILED ${err.message.split('\n')[0]}`;
+    }
+  }
+
   emitDocument('drought-index-scan', {
     stations: stations.length,
     stationSample: stations.slice(0, 3),
     frontPageBytes: home.length,
     hiddenInputs: hidden.length,
     attempts,
+    sources,
   }, 'src/config/aszaly-stations.json (after review)');
 }
 
