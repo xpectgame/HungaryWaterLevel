@@ -2296,6 +2296,42 @@ async function probeDroughtIndex(args = []) {
     console.log('  identical length to the front page: the POST probably did not select anything');
   }
 
+  // The parameter spellings, tried against the one thing that distinguishes a hit: the
+  // response stops being byte-identical to the front page.
+  //
+  // The commented-out debug line left in their own source names the shape -
+  // index.php?settlement=Fert%C5%91d - and the form fields name two more. Five GETs
+  // settles which of them the server actually reads, and a probe that guesses in a loop
+  // against someone else's service is worse than one that guesses five times and stops.
+  console.log('\n--- which parameter does it read? ---');
+  const tries = [
+    ['GET', `?settlement=${encodeURIComponent(station.name)}`],
+    ['GET', `?drought_station=${station.guid}`],
+    ['GET', `?searchsettlement=${encodeURIComponent(station.name)}`],
+    ['GET', `?settlement=${encodeURIComponent(station.name)}&drought_station=${station.guid}`],
+    ['GET', `?station=${station.guid}`],
+  ];
+  for (const [method, query] of tries) {
+    try {
+      const res = await fetchText(`${BASE}${query}`, {
+        timeoutMs: 25000,
+        headers: browserHeaders('https://aszalymonitoring.vizugy.hu'),
+      });
+      const same = res.body.length === home.length;
+      const dataAt = res.body.indexOf('DROUGHT_DATA');
+      console.log(
+        `  ${method} ${query.slice(0, 70).padEnd(70)} ${String(res.body.length).padStart(7)} bytes` +
+          `${same ? '  (identical to front page)' : '  <-- DIFFERENT'}` +
+          `${dataAt >= 0 ? `  DROUGHT_DATA @${dataAt}` : ''}`,
+      );
+      if (!same && dataAt >= 0) {
+        console.log(`      ${res.body.slice(dataAt, dataAt + 400).replace(/\s+/g, ' ')}`);
+      }
+    } catch (err) {
+      console.log(`  ${method} ${query.slice(0, 70)}  FAILED ${err.message.split('\n')[0].slice(0, 50)}`);
+    }
+  }
+
   // What arrived that was not there before. A diff is the fastest way to find the numbers
   // in 26 KB of page furniture.
   const numbers = [...body.matchAll(/(-?\d+[.,]\d+)/g)].map((m) => m[1]);
