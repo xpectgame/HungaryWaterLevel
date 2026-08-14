@@ -2931,6 +2931,125 @@ async function probeSewage(args = []) {
  * Enumerates before querying, for the same reason --geoportal does: the layer ids in a
  * public ArcGIS catalogue are not guessable and change between editions.
  */
+/**
+ * One ArcGIS layer, asked what it is before being asked for anything.
+ *
+ * The geoportal enumeration found the two layers this project had been looking for -
+ * Honlap/Vizfolyasok (the national watercourses) and Honlap/Vizikozmu layer 0, which is
+ * literally named "Szennyviztisztito telepek kapacitasa (LE)": the treatment plants WITH
+ * their capacity in population equivalent, the field OSM did not have on a single one of
+ * its 662 objects.
+ *
+ * Three questions in a fixed order, because getting them out of order is how a probe ends
+ * up downloading a hundred thousand features to find out it wanted a different column:
+ *
+ *   1. What fields does it have, and what geometry?
+ *   2. How many features are there? (returnCountOnly - one cheap request)
+ *   3. Only then, and only when asked, the features themselves - paged, because ArcGIS
+ *      caps a response at maxRecordCount and silently returns a truncated set with
+ *      exceededTransferLimit rather than an error.
+ *
+ * That last one has bitten enough people to be worth stating: a query that returns
+ * exactly 1000 features has almost certainly not returned all of them.
+ */
+async function probeLayer(args = []) {
+  console.log('\n########## ArcGIS layer inspection ##########');
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
+  const layers = args.filter((a) => a.startsWith('--layer=')).map((a) => a.slice(8));
+  if (!layers.length) {
+    console.log('nothing to inspect: pass --layer=<url> (repeatable)');
+    return;
+  }
+
+  const where = arg('where') || '1=1';
+  const fetchAll = args.includes('--fetch');
+  const outName = arg('out') || 'layer';
+  const geometry = !args.includes('--no-geometry');
+  const REQ = { timeoutMs: 30000, retries: 0 };
+  const out = {};
+
+  for (const url of layers) {
+    const record = { url };
+    out[url] = record;
+    console.log(`\n=== ${url}`);
+    try {
+      const meta = await fetchJson(`${url}?f=json`, REQ);
+      record.name = meta.name;
+      record.geometryType = meta.geometryType || null;
+      record.maxRecordCount = meta.maxRecordCount || null;
+      record.fields = (meta.fields || []).map((f) => ({
+        name: f.name, type: String(f.type).replace('esriFieldType', ''), alias: f.alias,
+      }));
+      console.log(`  name: ${meta.name}   geometry: ${meta.geometryType}   maxRecordCount: ${meta.maxRecordCount}`);
+      console.log(`  fields: ${record.fields.map((f) => `${f.name}:${f.type}`).join(' ')}`);
+      if (record.fields.some((f) => f.alias && f.alias !== f.name)) {
+        console.log(`  aliases: ${record.fields.filter((f) => f.alias !== f.name).map((f) => `${f.name}="${f.alias}"`).join(' ')}`);
+      }
+    } catch (err) {
+      record.error = err.message.split('\n')[0];
+      console.log(`  metadata FAILED: ${record.error.slice(0, 100)}`);
+      continue;
+    }
+
+    try {
+      const counted = await fetchJson(
+        `${url}/query?where=${encodeURIComponent(where)}&returnCountOnly=true&f=json`, REQ,
+      );
+      record.count = counted.count;
+      console.log(`  count where ${where}: ${counted.count}`);
+    } catch (err) {
+      console.log(`  count FAILED: ${err.message.split('\n')[0].slice(0, 90)}`);
+    }
+    writeDocument(outName, out);
+
+    if (!fetchAll) continue;
+
+    const page = Math.min(record.maxRecordCount || 1000, 1000);
+    const features = [];
+    for (let offset = 0; ; offset += page) {
+      try {
+        const body = await fetchJson(
+          `${url}/query?where=${encodeURIComponent(where)}&outFields=*` +
+          `&returnGeometry=${geometry}&outSR=4326&resultOffset=${offset}&resultRecordCount=${page}&f=json`,
+          { ...REQ, timeoutMs: 90000 },
+        );
+        const batch = body.features || [];
+        features.push(...batch);
+        console.log(`    +${batch.length} (${features.length}${record.count ? '/' + record.count : ''})`);
+        // Two stop conditions, both needed. A short page means the end; but a server that
+        // ignores resultOffset would loop for ever returning full pages, so the known
+        // count is the backstop.
+        if (batch.length < page) break;
+        if (record.count && features.length >= record.count) break;
+        await sleep(500);
+      } catch (err) {
+        record.fetchError = err.message.split('\n')[0];
+        console.log(`    FAILED at offset ${offset}: ${record.fetchError.slice(0, 90)}`);
+        break;
+      }
+    }
+    record.fetched = features.length;
+    record.sample = features.slice(0, 2);
+    writeRaw(`${outName}-${features.length}`, JSON.stringify({ url, features }));
+    // Attributes are small and are what a human reviews; geometry is not, and lives in
+    // the artifact only.
+    record.attributes = features.map((f) => f.attributes);
+    if (record.geometryType === 'esriGeometryPoint') {
+      record.points = features.map((f) => ({
+        ...f.attributes,
+        lon: f.geometry && Math.round(f.geometry.x * 10000) / 10000,
+        lat: f.geometry && Math.round(f.geometry.y * 10000) / 10000,
+      }));
+    }
+    writeDocument(outName, out);
+  }
+
+  emitDocument(outName, out, 'src/config/ (after review)');
+}
+
 async function probeUwwtd(args = []) {
   console.log('\n########## EEA urban waste water register ##########');
   const arg = (name) => {
@@ -3639,6 +3758,11 @@ async function main() {
     return;
   }
 
+  if (args.some((a) => a.startsWith('--layer='))) {
+    await probeLayer(args);
+    return;
+  }
+
   if (args.includes('--drought-soil')) {
     await probeDroughtSoil(args);
     return;
@@ -3753,6 +3877,7 @@ async function main() {
       '         --forecast --groundwater --rain --matrix --rain-scan --well-scan --rain-normals\n' +
       '         --flow-history --lake-history --well-history --drought --drought-index\n' +
       '         --drought-soil --geoportal --waters --sewage --uwwtd\n' +
+      '         --layer=URL [--fetch] [--where=] [--out=NAME]\n' +
       '         --unit-history\n' +
       '         --operations\n' +
       '         --mavir-charts\n' +
