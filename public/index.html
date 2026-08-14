@@ -647,6 +647,23 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .analog ul{margin:6px 0 0;padding-left:18px}
 .analog li{margin:2px 0;color:var(--ink-soft)}
 .analog-note{display:block;margin-top:8px;font-size:11.5px;color:var(--ink-faint);line-height:1.45}
+
+/* --- outlook: what happened from here, in the years that started here --------
+   Deliberately not styled like a forecast. No arrow, no highlight colour, no big
+   number: a panel that looks like a prediction will be read as one however carefully
+   it is worded, and the wording is the only thing keeping this honest. */
+.ou{margin:12px 0 0;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--sunk);font-size:13px}
+.ou h5{margin:0 0 7px;font-size:12px;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-faint);font-weight:650}
+.ou p{margin:0 0 7px;color:var(--ink-soft);line-height:1.5}
+.ou ul{margin:5px 0 0;padding-left:18px}
+.ou li{margin:3px 0;color:var(--ink-soft);line-height:1.45}
+.ou-note{display:block;margin-top:9px;font-size:11.5px;color:var(--ink-faint);line-height:1.45}
+/* The twelve months ahead as a strip of bars: the shape of the year is the part of
+   this that survives being skim-read, and it is also the robust half. */
+.ou-strip{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;align-items:end;height:44px;margin:9px 0 3px}
+.ou-strip i{display:block;background:var(--flow);opacity:.42;border-radius:2px 2px 0 0;min-height:2px}
+.ou-strip i.lo{opacity:.75;background:var(--silt)}
+.ou-mon{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;font-size:9.5px;color:var(--ink-faint);text-align:center}
 .lake-season{font-size:12.5px;color:var(--ink-soft);margin:8px 0 2px;line-height:1.5}
 /* The annual reference, kept but visibly secondary to the seasonal one above it. */
 .meta-year{color:var(--ink-faint)}
@@ -2174,6 +2191,21 @@ const MONTH_NOM2 = ['január','február','március','április','május','június
                     'július','augusztus','szeptember','október','november','december'];
 
 /**
+ * Two more inflections, written out rather than assembled.
+ *
+ * A suffix rule looks cheap and gets it wrong: vowel harmony makes it -tól after
+ * "augusztus" and -től after "szeptember", and the possessive is -ára after "május" but
+ * -jára after "január" and -ére after "december". Concatenating a fixed suffix produced
+ * "októbertól" and "2023. decemberra" on the first render, both of which a Hungarian
+ * reader hears immediately. Twelve strings each are cheaper than a rule with exceptions.
+ */
+const MONTH_TOL = ['januártól','februártól','márciustól','áprilistól','májustól','júniustól',
+                   'júliustól','augusztustól','szeptembertől','októbertől','novembertől','decembertől'];
+/** "2023 májusára", "2023 januárjára" - the year owns the month, so it takes the possessive. */
+const MONTH_RA  = ['januárjára','februárjára','márciusára','áprilisára','májusára','júniusára',
+                   'júliusára','augusztusára','szeptemberére','októberére','novemberére','decemberére'];
+
+/**
  * "The last time it was this low, here is what happened next."
  *
  * The nearest this page comes to looking forward, and it is careful not to be. The
@@ -2199,6 +2231,95 @@ function analoguePhrase(a){
     `<span class="analog-note">Ez nem előrejelzés: az OVF nem tesz közzé olyat. `+
     `Csak annyit mond, mi történt a korábbi években ugyanebből a helyzetből — `+
     `a ${a.yearsConsidered} vizsgált évből azok, amelyek ${a.tolerancePct}%-on belül vannak a mostani értékhez.</span></div>`;
+}
+
+/**
+ * "Mikor töltődik fel?" - answered with the past, because the future is not published.
+ *
+ * This is the question the whole site gets asked and the one it has never answered. The
+ * temptation is to answer it with a forecast, and there is no forecast to be had: the
+ * upstream endpoint for one returns HTTP 500, nothing here reads a weather model, and a
+ * lake's refill depends almost entirely on rain that has not fallen yet.
+ *
+ * What the record CAN say is laid out in two parts, in the order they can be trusted:
+ *
+ *   1. The shape of the year, from ten years pooled. A lake's seasonal cycle is a real
+ *      repeating thing - the Balaton bottoms out in autumn and refills through winter -
+ *      and this is the robust half. It answers WHEN refilling happens at all, which is
+ *      most of what is being asked and is not a prediction about this year in any sense.
+ *   2. The years that started here, named, with what each did next. Small n, always
+ *      stated. This answers HOW LONG it took the last time things were this bad, and
+ *      the years disagreeing with each other IS the uncertainty, shown rather than
+ *      summarised away.
+ *
+ * Nothing here is styled like a forecast on purpose - see the .ou rules. A box with an
+ * arrow and a big number gets read as a prediction whatever the words under it say.
+ */
+function outlookBlock(o, unit){
+  if(!o || !o.normal) return '';
+  const u = unit || 'cm';
+  const n = o.normal;
+
+  // --- the shape of the year ---
+  const meds = n.path.map(s => s.median);
+  const known = meds.filter(v => v!=null);
+  let strip = '';
+  if(known.length >= 6){
+    // Bars are drawn from a floor a little below the smallest value, not from zero: a
+    // lake level sits on an arbitrary datum, so a zero-based bar chart of it is mostly
+    // empty space and hides the only thing that varies.
+    const lo = Math.min(...known), hi = Math.max(...known);
+    const span = (hi - lo) || 1;
+    const bars = n.path.map(s => s.median==null
+      ? `<i style="height:2px;opacity:.15"></i>`
+      : `<i class="${s.median < (o.normalNow ?? lo) ? 'lo' : ''}" style="height:${(8 + 92*(s.median-lo)/span).toFixed(0)}%"></i>`).join('');
+    strip = `<div class="ou-strip">${bars}</div><div class="ou-mon">`+
+      n.path.map(s => `<span>${MONTH_NOM2[s.month-1].slice(0,3)}</span>`).join('')+`</div>`;
+  }
+
+  const low = n.lowestAhead, rise = n.risesFrom, back = n.backToHereAt;
+  const bits = [];
+  if(low) bits.push(`a mélypont <b>${MONTH_NOM[low.month-1]}</b> van (${fmt(low.median,0)} ${u})`);
+  if(rise) bits.push(`<b>${MONTH_TOL[rise.month-1]}</b> szokott emelkedni`);
+  // The one that answers the question with a month: when does the ordinary year get back
+  // to the level it is at now. "It starts rising in October" is true of the Balaton and
+  // understates it - October is two centimetres, and this August's median is not seen
+  // again until December.
+  // "a mostani szintet" would be read as the level the lake is standing at right now -
+  // 78 cm on the Balaton - when the comparison is against this month's MEDIAN, 100 cm.
+  // Naming the month makes the denominator unambiguous.
+  if(back) bits.push(`a szokásos ${MONTH_ADJ[o.month-1]} szintet <b>${MONTH_RA[back.month-1]}</b> éri el újra`);
+  const shape = bits.length ? `A tíz év mediánja szerint innen ${bits.join(', ')}.` : '';
+
+  // --- the years that started here ---
+  // Only when the water is actually low. Asked of a lake sitting in its normal band this
+  // produces four lines of "that year was normal too", which is true and tells the reader
+  // nothing they did not already see above.
+  const a = o.analogues || {};
+  let years = '';
+  if(o.belowNormal && a.available && a.years && a.years.some(y => y.startedBelow)){
+    const rows = a.years.filter(y => y.startedBelow).map(y => {
+      const from = `<b>${y.year}</b> — akkor ${fmt(y.valueThen,0)} ${u}`;
+      if(y.recovered){
+        const r = y.recovered;
+        return `<li>${from}, és <b>${r.monthsAhead} hónap</b> alatt, `+
+          `<b>${r.year} ${MONTH_RA[r.month-1]}</b> ért vissza a szokásos sávba (${fmt(r.value,0)} ${u})</li>`;
+      }
+      if(y.truncated) return `<li>${from} — az azóta eltelt hónapok még nincsenek lezárva az adatsorban</li>`;
+      return `<li>${from}, és <b>egy éven belül nem</b> jött vissza a szokásos sávba</li>`;
+    }).join('');
+    years = `<p style="margin-top:9px">Az elmúlt ${a.yearsConsidered} évből ezek ${MONTH_NOM[o.month-1]} `+
+      `nagyjából itt álltak (±${fmt(a.tolerance,0)} ${u}), és így folytatódtak:</p><ul>${rows}</ul>`;
+  } else if(o.belowNormal && a.available && a.lowerThanAll){
+    years = `<p style="margin-top:9px">Az elmúlt ${a.yearsConsidered} évben <b>egyszer sem</b> volt `+
+      `${MONTH_NOM[o.month-1]} ilyen alacsonyan, így nincs mihez hasonlítani.</p>`;
+  }
+
+  return `<div class="ou"><h5>Mi következett eddig innen</h5>`+
+    (shape?`<p>${shape}</p>`:'') + strip + years +
+    `<span class="ou-note">Ez <b>nem előrejelzés</b>, hanem a korábbi évek mérése. `+
+    `Előrejelzést a vízügyi szolgálat nem tesz közzé gépi felületen, és ez az oldal nem talál ki egyet. `+
+    `Hogy idén mi lesz, azt a még le nem hullott csapadék dönti el.</span></div>`;
 }
 
 /** The record itself, with its date - "a mélypont 2022. augusztus 29-én volt, 96 m³/s". */
@@ -2930,6 +3051,7 @@ function renderLakes(data){
       trendRows(l) +
       (l.unavailableReason?`<p class="why">${l.unavailableReason}</p>`:'')+
       facts +
+      outlookBlock(c && c.outlook, 'cm') +
       `</div>`;
   }).join('');
 

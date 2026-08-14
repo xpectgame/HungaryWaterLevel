@@ -3,6 +3,7 @@
 const { LAKES, volumePerCm } = require('../config/lakes');
 const { describeStage } = require('./stage');
 const { rankLake } = require('./flow-history');
+const { outlookFor } = require('./outlook');
 
 /**
  * The state of Hungary's standing water.
@@ -111,6 +112,11 @@ function buildLakes(readings, historyByLake = {}) {
             // plan and being under it in June is a story. An annual figure cannot tell
             // those apart, which is the whole reason this is here.
             history: rankLake(lake.id, levelCm, { at: reading.timestamp }),
+            // "Mikor töltődik fel" is the question every reader actually has, and this
+            // is the only honest form of an answer available: the seasonal shape of the
+            // record, plus the years that started this low and what each of them did
+            // next. Not a forecast, and it says so in its own note.
+            outlook: outlookFor('lake', lake.id, levelCm, { at: reading.timestamp }),
           }
         : null,
       trend: {
