@@ -1726,6 +1726,12 @@ async function probeLakeHistory(args = []) {
 
   console.log(`${LAKES.length} lakes, ${YEARS} years each (${LAKES.length * YEARS} requests)\n`);
   const out = {};
+  // Per-year monthly medians alongside the pooled percentiles, same shape as
+  // flow-yearly.json. The pooled document answers "is this low for August"; it cannot
+  // answer "the last time it was this low in August, how long until it came back",
+  // because pooling deliberately throws away which year each reading belonged to. The
+  // refill question needs the years kept apart, so they are baked apart.
+  const yearly = {};
 
   for (const lake of LAKES) {
     const perMonth = Array.from({ length: 12 }, () => []);
@@ -1767,15 +1773,25 @@ async function probeLakeHistory(args = []) {
         const daysInMonth = Array.from({ length: 12 }, () => 0);
         for (const day of byDay.keys()) daysInMonth[Number(day.slice(5, 7)) - 1] += 1;
 
+        const thisYear = Array.from({ length: 12 }, () => []);
+
         for (const [day, bucket] of byDay) {
           const month = Number(day.slice(5, 7)) - 1;
           if (daysInMonth[month] < MIN_DAYS_IN_MONTH) continue;
           const mean = bucket.sum / bucket.n;
           perMonth[month].push(mean);
+          thisYear[month].push(mean);
           yearsIn[month].add(year);
           const ex = extremes[month];
           if (ex.min === null || mean < ex.min.value) ex.min = { value: round2(mean), year, day };
           if (ex.max === null || mean > ex.max.value) ex.max = { value: round2(mean), year, day };
+        }
+
+        const yearMonths = thisYear.map((values) =>
+          values.length ? round2(percentileOf(values.slice().sort((a, b) => a - b), 50)) : null,
+        );
+        if (yearMonths.some((v) => v !== null)) {
+          (yearly[lake.id] = yearly[lake.id] || {})[year] = yearMonths;
         }
       } catch (err) {
         failures += 1;
@@ -1803,10 +1819,14 @@ async function probeLakeHistory(args = []) {
         `median [${months.map((m) => (m ? m.p[3].toFixed(0) : '-')).join(' ')}]`,
     );
     writeDocument('lake-history', out);
+    writeDocument('lake-yearly', yearly);
   }
 
   console.log('\npercentiles are [5 10 25 50 75 90 95] of daily mean level, cm on the gauge datum');
+  const yearCount = Object.values(yearly).reduce((n, y) => n + Object.keys(y).length, 0);
+  console.log(`${Object.keys(yearly).length} lakes x ${yearCount} lake-years of monthly medians`);
   emitDocument('lake-history', out, 'src/config/lake-history.json');
+  emitDocument('lake-yearly', yearly, 'src/config/lake-yearly.json');
 }
 
 /**
