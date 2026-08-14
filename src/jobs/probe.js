@@ -2906,6 +2906,104 @@ async function probeSewage(args = []) {
   emitDocument('sewage', out, 'src/config/sewage.js (after review)');
 }
 
+/**
+ * The plants' actual size, from the European register that exists precisely to record it.
+ *
+ * WHY OSM WAS NOT ENOUGH, MEASURED RATHER THAN ASSUMED
+ *
+ * The --sewage probe found 662 objects tagged man_made=wastewater_plant in Hungary and
+ * exactly ZERO of them carried any capacity tag. It also found that the tag is being used
+ * for things that do not treat anything: "Szennyvízátemelő" is a pumping station and
+ * "Szennyvíztároló" is a holding tank, and both are in that 662.
+ *
+ * So OSM answers where and does not answer how much - which is the half that matters.
+ * Drawing 662 identical dots would say that the works treating the sewage of 1.6 million
+ * people on Csepel and a village pumping station are the same kind of object, and a map
+ * that says that is worse than a map that says nothing.
+ *
+ * The Urban Waste Water Treatment Directive obliges every member state to report each
+ * agglomeration's plants with their design capacity in population equivalent, the load
+ * actually arriving, the treatment applied, and THE RECEIVING WATER BODY - which is the
+ * field that turns a dot into a fact about a particular river. The EEA publishes the
+ * result. That register is the right source for this, and OSM becomes what it is good at:
+ * a check on where the buildings are.
+ *
+ * Enumerates before querying, for the same reason --geoportal does: the layer ids in a
+ * public ArcGIS catalogue are not guessable and change between editions.
+ */
+async function probeUwwtd(args = []) {
+  console.log('\n########## EEA urban waste water register ##########');
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
+  const DEADLINE_MS = (Number(arg('deadline')) || 10) * 60000;
+  const startedAt = Date.now();
+  const elapsed = () => `${((Date.now() - startedAt) / 1000).toFixed(0)}s`;
+  const outOfTime = () => Date.now() - startedAt > DEADLINE_MS;
+  const REQ = { timeoutMs: 20000, retries: 0 };
+
+  const ROOTS = (arg('roots') || 'https://discomap.eea.europa.eu/arcgis/rest/services').split(',');
+  const INTEREST = /(uww|waste ?water|urban|water)/i;
+  const out = { roots: {}, services: {}, query: null };
+
+  for (const ROOT of ROOTS) {
+    try {
+      const root = await fetchJson(`${ROOT}?f=json`, REQ);
+      const folders = root.folders || [];
+      out.roots[ROOT] = { folders, services: root.services || [] };
+      console.log(`${ROOT}\n  ArcGIS ${root.currentVersion}, ${folders.length} folders  [${elapsed()}]`);
+      console.log(`  folders: ${folders.join(', ')}`);
+
+      for (const folder of folders.filter((f) => INTEREST.test(f))) {
+        if (outOfTime()) break;
+        try {
+          const body = await fetchJson(`${ROOT}/${encodeURIComponent(folder)}?f=json`, REQ);
+          const services = body.services || [];
+          out.services[`${ROOT}/${folder}`] = services;
+          console.log(`\n  --- ${folder}: ${services.length} service(s) ---`);
+          for (const s of services) console.log(`      ${s.type.padEnd(11)} ${s.name}`);
+        } catch (err) {
+          console.log(`  --- ${folder}: FAILED ${err.message.split('\n')[0].slice(0, 60)}`);
+        }
+      }
+    } catch (err) {
+      out.roots[ROOT] = { error: err.message.split('\n')[0] };
+      console.log(`${ROOT}\n  FAILED ${err.message.split('\n')[0].slice(0, 90)}`);
+    }
+    writeDocument('uwwtd', out);
+  }
+
+  // A layer named on the command line is queried directly - the enumeration above is for
+  // finding it the first time, and hard-coding a guess would be the thing that breaks
+  // silently when the register is republished.
+  const layerUrl = arg('layer');
+  if (layerUrl) {
+    console.log(`\nquerying ${layerUrl}`);
+    try {
+      const meta = await fetchJson(`${layerUrl}?f=json`, REQ);
+      console.log(`  ${meta.name}: ${(meta.fields || []).map((f) => f.name).join(' ')}`);
+      out.query = { layer: layerUrl, fields: (meta.fields || []).map((f) => f.name) };
+
+      const where = encodeURIComponent(arg('where') || "countryCode='HU'");
+      const body = await fetchJson(
+        `${layerUrl}/query?where=${where}&outFields=*&returnGeometry=true&outSR=4326&f=json`,
+        { ...REQ, timeoutMs: 60000 },
+      );
+      const features = body.features || [];
+      console.log(`  ${features.length} features`);
+      out.query.count = features.length;
+      out.query.sample = features.slice(0, 3);
+      out.query.features = features.map((f) => ({ ...f.attributes, ...(f.geometry || {}) }));
+    } catch (err) {
+      out.query = { layer: layerUrl, error: err.message.split('\n')[0] };
+      console.log(`  FAILED ${err.message.split('\n')[0].slice(0, 120)}`);
+    }
+  }
+
+  emitDocument('uwwtd', out, 'src/config/sewage.js (after review)');
+}
+
 async function probeGeoportal(args = []) {
   console.log('\n########## geoportal.vizugy.hu catalogue ##########');
   const ROOT = 'https://geoportal.vizugy.hu/arcgis/rest/services';
@@ -3536,6 +3634,11 @@ async function main() {
     return;
   }
 
+  if (args.includes('--uwwtd')) {
+    await probeUwwtd(args);
+    return;
+  }
+
   if (args.includes('--drought-soil')) {
     await probeDroughtSoil(args);
     return;
@@ -3649,7 +3752,7 @@ async function main() {
       '\nActions: --live --vizugy --mavir --discover --portal --thresholds --lakes --datatypes\n' +
       '         --forecast --groundwater --rain --matrix --rain-scan --well-scan --rain-normals\n' +
       '         --flow-history --lake-history --well-history --drought --drought-index\n' +
-      '         --drought-soil --geoportal --waters --sewage\n' +
+      '         --drought-soil --geoportal --waters --sewage --uwwtd\n' +
       '         --unit-history\n' +
       '         --operations\n' +
       '         --mavir-charts\n' +

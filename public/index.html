@@ -2288,7 +2288,10 @@ function outlookBlock(o, unit){
   // "a mostani szintet" would be read as the level the lake is standing at right now -
   // 78 cm on the Balaton - when the comparison is against this month's MEDIAN, 100 cm.
   // Naming the month makes the denominator unambiguous.
-  if(back) bits.push(`a szokásos ${MONTH_ADJ[o.month-1]} szintet <b>${MONTH_RA[back.month-1]}</b> éri el újra`);
+  // "szint" is a level and a river has a discharge. The same sentence about the Danube
+  // would be measuring the wrong quantity in the reader's head.
+  const noun = u === 'cm' ? 'szintet' : 'vízhozamot';
+  if(back) bits.push(`a szokásos ${MONTH_ADJ[o.month-1]} ${noun} <b>${MONTH_RA[back.month-1]}</b> éri el újra`);
   const shape = bits.length ? `A tíz év mediánja szerint innen ${bits.join(', ')}.` : '';
 
   // --- the years that started here ---
@@ -3986,7 +3989,9 @@ async function showStation(id){
     .then((full) => {
       const el = $('det-analog');
       // The detail may have been replaced by another gauge while this was in flight.
-      if(el && location.hash.includes(encodeURIComponent(id))) el.innerHTML = analoguePhrase(full.analogues);
+      if(el && location.hash.includes(encodeURIComponent(id))){
+        el.innerHTML = analoguePhrase(full.analogues) + outlookBlock(full.outlook, 'm³/s');
+      }
     })
     .catch(() => {});
 

@@ -4,6 +4,7 @@ const express = require('express');
 const { listStations, getStation, UNGAUGED_INFLOW } = require('../config/stations');
 const { describeStage } = require('../domain/stage');
 const { rankFlow, loadHistory, findAnalogues, QUANTILES } = require('../domain/flow-history');
+const { outlookFor } = require('../domain/outlook');
 const { parseRange, toCsv } = require('../lib/params');
 const { asyncRoute } = require('../lib/async-route');
 const { withMeta } = require('./balance');
@@ -47,6 +48,13 @@ module.exports = function stationRoutes(ctx) {
     // the payload the map polls every cycle for something the map never shows.
     body.analogues = reading && Number.isFinite(reading.flowM3s)
       ? findAnalogues(station.id, reading.flowM3s, { at: reading.timestamp })
+      : null;
+    // The same record read a year forward instead of a month. `analogues` answers "and
+    // what did the next month do", which is a sharp question with a sharp answer; this
+    // answers "and when did it come back", which is the one people ask out loud. Both,
+    // because neither subsumes the other and they are cheap on a single-station response.
+    body.outlook = reading && Number.isFinite(reading.flowM3s)
+      ? outlookFor('river', station.id, reading.flowM3s, { at: reading.timestamp })
       : null;
     return res.json(await withMeta(body, ctx));
   }));
