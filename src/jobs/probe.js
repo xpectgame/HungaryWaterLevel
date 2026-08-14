@@ -3034,20 +3034,72 @@ async function probeLayer(args = []) {
     record.fetched = features.length;
     record.sample = features.slice(0, 2);
     writeRaw(`${outName}-${features.length}`, JSON.stringify({ url, features }));
-    // Attributes are small and are what a human reviews; geometry is not, and lives in
-    // the artifact only.
-    record.attributes = features.map((f) => f.attributes);
+
     if (record.geometryType === 'esriGeometryPoint') {
       record.points = features.map((f) => ({
         ...f.attributes,
         lon: f.geometry && Math.round(f.geometry.x * 10000) / 10000,
         lat: f.geometry && Math.round(f.geometry.y * 10000) / 10000,
       }));
+    } else if (record.geometryType === 'esriGeometryPolyline') {
+      // Reduced here rather than kept raw. Sixteen thousand watercourses arrive as
+      // several hundred thousand fragments; drawn as they come they are unshippable and
+      // unlabelable, and the reduction is the same one the OSM path uses - chain the
+      // fragments of one named watercourse back together, then simplify the long run.
+      const nameField = arg('name-field') || guessNameField(record.fields);
+      const keep = (arg('keep') || '').split(',').filter(Boolean);
+      console.log(`  reducing polylines, name field: ${nameField || '(none found)'}`);
+      const elements = [];
+      for (const f of features) {
+        const a = f.attributes || {};
+        const props = {};
+        for (const k of keep) if (a[k] !== undefined && a[k] !== null && a[k] !== '') props[k] = a[k];
+        for (const p of (f.geometry && f.geometry.paths) || []) {
+          elements.push({
+            tags: { name: nameField ? a[nameField] || null : null, waterway: arg('type') || 'vizfolyas' },
+            geometry: p.map(([lon, lat]) => ({ lon, lat })),
+            props,
+          });
+        }
+      }
+      const { reduceWays } = require('../../scripts/geometry');
+      for (const tol of [0.0005, 0.0002]) {
+        const r = reduceWays(elements, { tolerance: tol, decimals: 4 });
+        const bytes = JSON.stringify(r).length;
+        console.log(`    tolerance ${tol}: ${r.length} features, ${(bytes / 1048576).toFixed(2)} MB`);
+      }
+      record.features = reduceWays(elements, { tolerance: 0.0002, decimals: 4 });
+      record.reducedFrom = elements.length;
+      console.log(`  ${elements.length} paths -> ${record.features.length} watercourses`);
+      console.log(`  longest: ${record.features.slice(0, 8).map((f) => `${f.name || '(névtelen)'} ${f.km}km`).join(', ')}`);
+    } else {
+      // Attributes are small and are what a human reviews; geometry of an unknown type
+      // is neither, and stays in the artifact.
+      record.attributes = features.map((f) => f.attributes);
     }
     writeDocument(outName, out);
   }
 
   emitDocument(outName, out, 'src/config/ (after review)');
+}
+
+/**
+ * Which column holds the name.
+ *
+ * A guess with a stated shortlist rather than a hard-coded field: the two watercourse
+ * layers on this geoportal call it VIZFOLYAS and Nev respectively, and a probe that only
+ * knew one of them would quietly produce sixteen thousand unnamed lines - which looks
+ * like working code and is a useless file. Overridable with --name-field= when the guess
+ * is wrong, which is the case this exists to make cheap rather than to pretend away.
+ */
+function guessNameField(fields) {
+  const names = (fields || []).map((f) => f.name);
+  const preferred = ['VIZFOLYAS', 'Nev', 'NEV', 'name', 'NEV0', 'NevT'];
+  for (const p of preferred) {
+    const hit = names.find((n) => n === p || n.endsWith(`.${p}`));
+    if (hit) return hit;
+  }
+  return names.find((n) => /nev|name/i.test(n)) || null;
 }
 
 async function probeUwwtd(args = []) {
