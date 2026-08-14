@@ -1710,6 +1710,10 @@ function emitDocument(name, doc, destination) {
  * reads in a diff and a fifty-megabyte blob nobody wanted in the history. Raw upstream
  * responses go here; the reduced document a human might promote goes alongside.
  */
+function round4(v) {
+  return Math.round(v * 10000) / 10000;
+}
+
 /** Deliberate pacing between requests to someone else's service. */
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -3104,6 +3108,24 @@ async function probeLayer(args = []) {
       record.reducedFrom = elements.length;
       console.log(`  ${elements.length} paths -> ${record.features.length} watercourses`);
       console.log(`  longest: ${record.features.slice(0, 8).map((f) => `${f.name || '(névtelen)'} ${f.km}km`).join(', ')}`);
+    } else if (record.geometryType === 'esriGeometryPolygon') {
+      // Rings, simplified. A national layer of administrative districts is megabytes of
+      // vertex at source and a few hundred kilobytes once it is drawn at the scale this
+      // map draws it - and without this branch the polygons went only to the raw
+      // artifact, which the commit deliberately cannot reach.
+      const { simplify } = require('../../scripts/geometry');
+      const tol = Number(arg('tolerance')) || 0.002;
+      record.features = features.map((f) => ({
+        ...f.attributes,
+        rings: ((f.geometry && f.geometry.rings) || [])
+          .map((ring) => simplify(ring, tol).map(([x, y]) => [round4(x), round4(y)]))
+          // Three points is a line; a ring needs to close, so four is the minimum that
+          // can enclose anything.
+          .filter((ring) => ring.length >= 4),
+      }));
+      const pts = record.features.reduce((n, f) => n + f.rings.reduce((m, r) => m + r.length, 0), 0);
+      console.log(`  ${record.features.length} polygons, ${pts} points at tolerance ${tol}` +
+        ` (${(JSON.stringify(record.features).length / 1048576).toFixed(2)} MB)`);
     } else {
       // Attributes are small and are what a human reviews; geometry of an unknown type
       // is neither, and stays in the artifact.
