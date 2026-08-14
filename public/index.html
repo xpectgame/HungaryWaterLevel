@@ -213,8 +213,11 @@ svg.map text{user-select:none;-webkit-user-select:none}
    every ditch in a county, and drawn at the weight of a river they turn the map into a
    solid blue field with the actual rivers lost inside it. */
 .water-line{fill:none;stroke:rgba(14,143,158,.42);stroke-width:calc(.55px * var(--mk,1));
-  stroke-linecap:round;stroke-linejoin:round;pointer-events:stroke}
-.water-line:hover{stroke:var(--flow);stroke-width:calc(1.6px * var(--mk,1))}
+  stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+/* The catchable twin. Transparent, several times wider, and the only one of the pair
+   the pointer can reach - see drawWaters. */
+.water-hit{fill:none;stroke:transparent;pointer-events:stroke;cursor:help}
+.water-hit:hover{stroke:rgba(14,143,158,.22)}
 
 /* --- wastewater ---------------------------------------------------------
    A square, because every other mark on this map is taken: gauges are circles,
@@ -270,6 +273,19 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .dmapkey b{color:var(--ink);font-weight:650}
 .dmapkey .key{display:inline-block;width:11px;height:11px;border-radius:3px;
   vertical-align:-1px;margin:0 1px}
+.key.g-nonekey{background:#fdffff;box-shadow:inset 0 0 0 1px var(--line)}
+/* The swatch is the shape it stands for. A square chip next to the words "the dots"
+   makes the reader translate; a round chip next to a round mark does not. */
+.dmapkey .key.dot{border-radius:50%;width:10px;height:10px}
+.dmapkey .key.tri{background:none;width:0;height:0;border-radius:0;
+  border-left:6px solid transparent;border-right:6px solid transparent;
+  border-top:9px solid currentColor;vertical-align:-1px}
+.tri.b-extreme-deficit{color:#a3341f}.tri.b-severe-deficit{color:#cf6a2e}
+.tri.b-deficit{color:#dfa53c}.tri.b-near-normal{color:#5aa86e}
+.tri.b-surplus{color:#2f7fb5}.tri.b-extreme-surplus{color:#2b4f9e}
+.dmaptoggles{display:flex;flex-wrap:wrap;gap:6px 16px;padding-bottom:7px;
+  margin-bottom:3px;border-bottom:1px solid var(--line)}
+.dmaptoggles .toggle{font-size:12px}
 .dm-abroad{fill:#e9eff1;stroke:#dae5e9;stroke-width:.6}
 .dm-outline{fill:#fdffff;stroke:var(--deep);stroke-width:1.2;stroke-linejoin:round}
 
@@ -373,6 +389,24 @@ svg.map text{user-select:none;-webkit-user-select:none}
    hold; only the shape changed. A slightly thinner outline because a chevron has more
    perimeter than a circle of the same area and a 1.2 stroke closes its notch. */
 .node .core.arrow{stroke-width:.85;stroke-linejoin:round}
+
+/* --- the long border arrows ---------------------------------------------
+   Not counter-scaled: these say how much water crosses the frontier, so they belong
+   to the country and grow with it, unlike the markers which stay a constant size on
+   screen. */
+.bf{pointer-events:none}
+.bf.shaft{fill:none;stroke-linecap:round;opacity:.30}
+.bf.streak{fill:none;stroke-linecap:round;opacity:.85;
+  stroke-dasharray:6 22;animation:bfmove 2.4s linear infinite}
+.bf.head{stroke:none}
+.bf.in{stroke:var(--flow)} .bf.in.head{fill:var(--flow)}
+.bf.out{stroke:var(--silt)} .bf.out.head{fill:var(--silt)}
+@keyframes bfmove{ to{ stroke-dashoffset:-28 } }
+/* A reader who has asked for less motion gets the arrow without the sliding dash;
+   direction and size are in the shape, so nothing is lost but the movement. */
+@media (prefers-reduced-motion: reduce){
+  .bf.streak{animation:none;stroke-dasharray:none;opacity:.55}
+}
 .node.outflow .core{fill:var(--silt)} .node.outflow .halo{fill:var(--silt)}
 .node.interior .core{fill:var(--ink-faint)} .node.interior .halo{opacity:.06}
 .node text{font-family:var(--sans);font-size:6.5px;fill:var(--ink-soft);pointer-events:none}
@@ -1001,7 +1035,9 @@ footer a{color:var(--ink-soft)}
 <section class="mapcard" id="s-terkep">
   <div class="maphead">
     <h2>A folyók most</h2>
-    <div class="hint">A sodrás sebessége a tényleges vízhozamot követi. Koppints vagy kattints egy pontra.</div>
+    <div class="hint">A sodrás sebessége a tényleges vízhozamot követi.
+      <b>Kattints</b> egy szelvényre vagy erőműre a részletekért, <b>görgess</b> vagy húzd a térképet a nagyításhoz.
+      A jelmagyarázat a térkép alatt van.</div>
   </div>
   <!-- role="group", not role="img". An image is announced as one opaque thing and its
        children are hidden, which would have made the focusable markers inside it silent.
@@ -1048,6 +1084,12 @@ footer a{color:var(--ink-soft)}
     <label class="toggle"><input type="checkbox" id="rain-layer" checked><i class="tri"></i> csapadék az elmúlt 30 napban</label>
     <label class="toggle"><input type="checkbox" id="waters-layer"> minden vízfolyás (15 566 patak, ér, csatorna)</label>
     <label class="toggle"><input type="checkbox" id="sewage-layer"> szennyvíztisztító telepek</label>
+    <!-- The red watercourse had no entry here at all: a line turned warm because a works
+         discharges into it, and nothing on the page said so. -->
+    <span title="csak akkor látszik, ha a szennyvíztisztító telepek réteg be van kapcsolva">
+      <svg class="keyshape" viewBox="0 0 14 6" aria-hidden="true">
+        <path d="M0,3 H14" style="stroke:rgba(194,82,28,.75);stroke-width:2;fill:none"/></svg>
+      <b>pirosas vízfolyás:</b> ide tisztított szennyvizet engednek — minél vastagabb, annál többet</span>
     <span class="ramp" title="a telepre érkező terhelés a tervezett kapacitásához mérve — nem a kiengedett víz minősége">
       <i class="key s-ok"></i><i class="key s-near"></i><i class="key s-over"></i><i class="key s-far-over"></i>
       a kapacitása alatt → jóval a kapacitása fölött üzemel
@@ -1065,7 +1107,12 @@ footer a{color:var(--ink-soft)}
     <span><i class="key" style="background:var(--ink-faint)"></i>belső mérce (nem összegezzük)</span>
     <span><i class="key" style="background:var(--ember)"></i>erőmű, hűtővíz-kivétellel</span>
     <span><i class="key" style="background:var(--deep);border-radius:2px"></i>tó, vízszinttel</span>
-    <span style="color:var(--ink-faint)">Határok, folyók, tavak: Natural Earth (10 m)</span>
+    <span><svg class="keyshape" viewBox="0 0 16 8" aria-hidden="true">
+        <path d="M0,4 H9" style="stroke:var(--flow);stroke-width:2.6;opacity:.35;fill:none"/>
+        <path d="M0,4 H9" style="stroke:var(--flow);stroke-width:1.4;stroke-dasharray:3 3;fill:none"/>
+        <polygon points="16,4 9,6.6 9,1.4" style="fill:var(--flow)"/></svg>
+      <b>hosszú nyíl a határon:</b> a belépő vagy kilépő vízhozam — a vastagsága a vízmennyiséggel nő</span>
+    <span style="color:var(--ink-faint)">Vízfolyások: vízügyi geoportál · határok, tavak: Natural Earth (10 m)</span>
   </div>
 </section>
 
@@ -1197,15 +1244,28 @@ footer a{color:var(--ink-soft)}
       <g id="dm-rain"></g>
     </svg>
     <figcaption class="dmapkey">
-      <span><b>Kihirdetett fokozat:</b>
-        <i class="key g-ii"></i> II. <i class="key g-iii"></i> III.
-        <i class="key g-extraordinary"></i> rendkívüli</span>
-      <span><b>Talajvízkutak</b> a saját tízéves rekordjukhoz mérve:
-        <i class="key p-record-low"></i> mélyebb, mint valaha ilyenkor
-        <i class="key p-very-low"></i><i class="key p-low"></i> szárazabb
-        <i class="key p-normal"></i> szokásos
-        <i class="key p-high"></i><i class="key p-very-high"></i> nedvesebb</span>
-      <span><b>Csapadék</b> az elmúlt 30 napban, háromszögekkel, a saját sokéves átlagához mérve.</span>
+      <div class="dmaptoggles">
+        <label class="toggle"><input type="checkbox" id="dm-vh-on" checked> kihirdetett vízhiány-fokozat</label>
+        <label class="toggle"><input type="checkbox" id="dm-gw-on" checked> talajvízkutak</label>
+        <label class="toggle"><input type="checkbox" id="dm-rain-on"> csapadék</label>
+      </div>
+      <span><b>A körzet színe</b> — a vízügyi igazgatóság által <b>kihirdetett</b> fokozat:
+        <i class="key g-ii"></i> II. fok
+        <i class="key g-iii"></i> III. fok
+        <i class="key g-extraordinary"></i> rendkívüli vízhiány
+        <i class="key g-nonekey"></i> nincs kihirdetve</span>
+      <span><b>A pöttyök</b> — 687 talajvízkút, mindegyik a <b>saját</b> tízéves rekordjához mérve
+        (nem egymáshoz: a kutak különböző mélységben állnak):
+        <i class="key dot p-record-low"></i> mélyebb, mint valaha ilyenkor
+        <i class="key dot p-very-low"></i><i class="key dot p-low"></i> szárazabb a szokásosnál
+        <i class="key dot p-normal"></i> szokásos
+        <i class="key dot p-high"></i><i class="key dot p-very-high"></i> nedvesebb</span>
+      <span><b>A lefelé mutató háromszögek</b> — csapadék az elmúlt 30 napban, mindegyik mérce
+        a saját sokéves átlagához mérve:
+        <i class="key tri b-extreme-deficit"></i><i class="key tri b-severe-deficit"></i><i class="key tri b-deficit"></i>
+        kevesebb <i class="key tri b-near-normal"></i> szokásos
+        <i class="key tri b-surplus"></i><i class="key tri b-extreme-surplus"></i> több eső</span>
+      <span style="color:var(--ink-faint)">Vidd az egeret egy pöttyre vagy egy körzetre a nevéért és a számáért.</span>
     </figcaption>
   </figure>
 
@@ -2023,6 +2083,29 @@ function drawNodes(){
     if(st.role === 'inflow' || st.role === 'outflow'){
       g.appendChild(svgEl('path',{ class:'core arrow', d: arrowPath(r),
         transform:`rotate(${flowHeading(x, y, st.role).toFixed(1)})` }));
+
+      /* And the long one, reaching across the frontier.
+
+         Drawn in its own layer under the markers rather than inside this group, because
+         the group is counter-scaled by 1/zoom to keep the marker a constant size on
+         screen - and an arrow that says "this much water crosses here" must grow with
+         the country, not stay the same size while the map underneath it doubles. */
+      const heading = flowHeading(x, y, st.role);
+      /* Long and slim rather than short and fat.
+
+         The first pass took the width up to nine units and the length to about thirty,
+         which on the Danube drew a wedge rather than an arrow - it read as a delta
+         symbol pointing at Komarom instead of as water travelling. Halving the width cap
+         and nearly doubling the shaft puts the emphasis back on the direction, and the
+         square-root scale still separates the Danube from the Krasznа plainly. */
+      const w = flow == null ? 1.4 : Math.max(1.2, Math.min(5.2, Math.sqrt(flow) / 7.4));
+      const a = crossBorderArrow(x, y, heading, 34 + w * 4.2, w);
+      const cls = st.role === 'inflow' ? 'bf in' : 'bf out';
+      flows.appendChild(svgEl('path',{ class:cls+' shaft', d:a.shaft,
+        'stroke-width': w.toFixed(2) }));
+      flows.appendChild(svgEl('path',{ class:cls+' streak', d:a.shaft,
+        'stroke-width': Math.max(1, w * 0.5).toFixed(2) }));
+      flows.appendChild(svgEl('polygon',{ class:cls+' head', points:a.head }));
     } else {
       g.appendChild(svgEl('circle',{ class:'core', r:r.toFixed(1) }));
     }
@@ -2109,6 +2192,38 @@ function arrowPath(r){
  * topology, which this page does not have. Entry sections point inward, exit sections
  * point out.
  */
+/**
+ * A long arrow crossing the frontier, as a shaft path and a head polygon.
+ *
+ * The shaft stops short of the head so the moving dash never runs out over the solid
+ * tip, which reads as the animation glitching rather than as water arriving.
+ *
+ * @param {number} x,y   the gauge, in viewBox units
+ * @param {number} deg   heading: the direction the WATER travels
+ * @param {number} len   how far back from the gauge the tail starts
+ * @param {number} w     shaft width
+ */
+function crossBorderArrow(x, y, deg, len, w){
+  const rad = deg * Math.PI / 180;
+  const dx = Math.cos(rad), dy = Math.sin(rad);
+  // The tail sits upstream of the gauge for an inflow and downstream for an outflow -
+  // both fall out of the heading, which already encodes the role.
+  const tailX = x - dx * len, tailY = y - dy * len;
+  const headLen = Math.max(w * 2.2, 7.5);
+  const tipX = x + dx * (w * 0.8), tipY = y + dy * (w * 0.8);
+  const baseX = tipX - dx * headLen, baseY = tipY - dy * headLen;
+  // Perpendicular, for the head's two corners.
+  const px_ = -dy, py_ = dx;
+  const hw = headLen * 0.52;
+  return {
+    shaft: `M ${tailX.toFixed(1)} ${tailY.toFixed(1)} L ${baseX.toFixed(1)} ${baseY.toFixed(1)}`,
+    head: `${tipX.toFixed(1)},${tipY.toFixed(1)} `
+        + `${(baseX + px_ * hw).toFixed(1)},${(baseY + py_ * hw).toFixed(1)} `
+        + `${(baseX - px_ * hw).toFixed(1)},${(baseY - py_ * hw).toFixed(1)}`,
+    tail: [tailX, tailY],
+  };
+}
+
 function flowHeading(x, y, role){
   const cx = W / 2, cy = H / 2;
   const angle = Math.atan2(cy - y, cx - x) * 180 / Math.PI;
@@ -3550,15 +3665,30 @@ function drawWaters(){
     // "Heavy" is a quarter of a cubic metre a second entering one watercourse, which on
     // anything that is not the Danube is a large fraction of it.
     const cls = 'water-line' + (g ? ' receives' + (g.m3s >= 0.25 ? ' heavy' : '') : '');
-    const el = svgEl('path',{ d, class: cls });
-    // Native tooltip rather than the shared tip panel: there are thousands of these and
-    // binding a handler to each would cost more than drawing them.
-    const t = svgEl('title');
-    t.textContent = (f.n || 'névtelen vízfolyás') + (f.km ? ` — ${fmt(f.km,1)} km` : '')
+
+    const label = (f.n || 'névtelen vízfolyás') + (f.km ? ` — ${fmt(f.km,1)} km` : '')
       + (f.b ? `, ${f.b}ba/be folyik` : '')
-      + (g ? ` · ${g.plants} szennyvíztisztító telep engedi ide a tisztított vizet, együtt ${fmt(g.m3s,3)} m³/s` : '');
-    el.appendChild(t);
-    layer.appendChild(el);
+      + (g ? ` · ${g.plants} szennyvíztisztító telep engedi ide a tisztított vizet, `
+           + `együtt ${fmt(g.m3s,3)} m³/s` : '');
+
+    /* The hit target, first and invisible.
+
+       A watercourse is drawn about half a pixel wide and `pointer-events: stroke` makes
+       the stroke the target - so the target was half a pixel and the line was, in
+       practice, unhoverable. This is the same path with a transparent stroke several
+       times wider. It carries the tooltip and the hover class; the visible line carries
+       neither and is left alone.
+
+       Counter-scaled by the zoom like every other target on this map, so the catchable
+       width stays constant on screen rather than growing with the country. */
+    const hit = svgEl('path',{ d, class:'water-hit' + (g ? ' receives' : ''),
+      'stroke-width': (7 / zoom).toFixed(2) });
+    const t = svgEl('title');
+    t.textContent = label;
+    hit.appendChild(t);
+    layer.appendChild(hit);
+
+    layer.appendChild(svgEl('path',{ d, class: cls }));
     drawn++;
   }
 }
@@ -3580,6 +3710,10 @@ function drawWaters(){
  * after it was lifted, or miss one after it was declared.
  */
 let vhGeo = null, vhGrades = null, vhLoading = false;
+// Which of the drought map's three layers are shown. Rain is off by default: it is the
+// one that is about the sky rather than the ground, and with all three on at once the
+// 687 dots and 47 triangles compete for the same space.
+const dmOn = { vh: true, gw: true, rain: false };
 
 function loadVizhiany(){
   if(vhLoading) return Promise.resolve();
@@ -3650,16 +3784,23 @@ function drawDroughtMap(){
   for(const ring of geo.hungary)
     country.appendChild(svgEl('path',{ d: path(ring)+' Z', class:'dm-outline' }));
 
-  if(vhGeo && vhGeo.districts){
+  if(dmOn.vh && vhGeo && vhGeo.districts){
     const byId = new Map(((vhGrades && vhGrades.districts) || []).map(d => [d.id, d]));
     for(const d of vhGeo.districts){
       const g = byId.get(d.id);
-      for(const ring of d.rings)
-        vh.appendChild(svgEl('path',{ d: path(ring)+' Z', class:'vh g-'+((g&&g.grade)||'none') }));
+      for(const ring of d.rings){
+        const el = svgEl('path',{ d: path(ring)+' Z', class:'vh g-'+((g&&g.grade)||'none') });
+        const t = svgEl('title');
+        t.textContent = (d.name || 'körzet') + ' — '
+          + (g && g.gradeLabel ? g.gradeLabel : 'nincs kihirdetett fokozat')
+          + (g && g.updatedAt ? `, kihirdetve ${g.updatedAt.slice(0,10)}` : '');
+        el.appendChild(t);
+        vh.appendChild(el);
+      }
     }
   }
 
-  if(droughtData && droughtData.stations){
+  if(dmOn.gw && droughtData && droughtData.stations){
     for(const st of droughtData.stations){
       if(!st.rank || st.rank.percentile == null || !st.lat || !st.lon) continue;
       const [x,y] = px(st.lon, st.lat);
@@ -3674,7 +3815,7 @@ function drawDroughtMap(){
   }
 
   // The rain, in the same downward triangle the main map uses, so the two agree.
-  for(const g of rainMap){
+  for(const g of (dmOn.rain ? rainMap : [])){
     const [x,y] = px(g.lon, g.lat);
     const s = 4.6;
     rain.appendChild(svgEl('polygon',{
@@ -4976,6 +5117,12 @@ function tick(){
   // data is already in hand, so calling only the loader left the first toggle doing
   // nothing at all on any visit where the data had arrived by another route - which for
   // the works is every visit, because the section fetches them at boot.
+  for(const [id, key] of [['dm-vh-on','vh'], ['dm-gw-on','gw'], ['dm-rain-on','rain']]){
+    const box = $(id);
+    if(!box) continue;
+    box.checked = dmOn[key];
+    box.addEventListener('change', (e) => { dmOn[key] = e.target.checked; drawDroughtMap(); });
+  }
   $('waters-layer').addEventListener('change', (e) => {
     showWaters = e.target.checked;
     Promise.resolve(showWaters ? loadWaters() : null).then(drawWaters);
