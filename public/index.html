@@ -103,9 +103,18 @@ h1 em{font-style:normal;color:var(--flow)}
 .nav{position:sticky;top:8px;z-index:40;margin-bottom:16px;border-radius:99px;
   background:rgba(255,255,255,.9);backdrop-filter:blur(12px);
   border:1px solid var(--line);box-shadow:0 2px 10px rgba(10,44,55,.07)}
-.nav-inner{display:flex;align-items:center;gap:6px;
-  padding:5px 7px;overflow-x:auto;scrollbar-width:none}
-.nav-inner::-webkit-scrollbar{display:none}
+/* Wraps rather than scrolls. Fourteen links in one scrolling row meant most of
+   them sat off-screen with nothing to indicate it - the row never looked broken,
+   it just quietly hid half the site. */
+.nav-inner{display:flex;align-items:center;gap:4px 10px;flex-wrap:wrap;padding:6px 9px}
+.navgroup{display:flex;align-items:center;gap:3px;flex:0 0 auto}
+.navgroup + .navgroup{border-left:1px solid var(--line);padding-left:9px}
+.navlabel{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-faint);font-weight:650;padding-right:3px;white-space:nowrap}
+@media (max-width:640px){
+  .navlabel{display:none}
+  .navgroup + .navgroup{border-left:none;padding-left:0}
+}
 .nav a{flex:0 0 auto;font-size:12.5px;color:var(--ink-soft);text-decoration:none;
   padding:6px 11px;border-radius:99px;white-space:nowrap;transition:background .15s,color .15s}
 .nav a:hover{background:var(--sunk);color:var(--ink)}
@@ -251,6 +260,18 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .vh.g-extraordinary{fill:rgba(163,52,31,.34)}
 .key.g-ii{background:rgba(223,165,60,.55)}.key.g-iii{background:rgba(207,106,46,.6)}
 .key.g-extraordinary{background:rgba(163,52,31,.7)}
+
+/* The drought map. Fixed scale on purpose - see the header of this change. */
+.dmapwrap{margin:0 auto 16px;max-width:860px;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  background:linear-gradient(180deg,#fbfeff,#f2fafc)}
+.dmap{display:block;width:100%;height:auto}
+.dmapkey{display:grid;gap:5px;padding:9px 13px 11px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--ink-soft);line-height:1.5;background:var(--sunk)}
+.dmapkey b{color:var(--ink);font-weight:650}
+.dmapkey .key{display:inline-block;width:11px;height:11px;border-radius:3px;
+  vertical-align:-1px;margin:0 1px}
+.dm-abroad{fill:#e9eff1;stroke:#dae5e9;stroke-width:.6}
+.dm-outline{fill:#fdffff;stroke:var(--deep);stroke-width:1.2;stroke-linejoin:round}
 
 .gwdot{stroke:none;pointer-events:none}
 .key.p-record-low{background:#7a1f10}.key.p-very-low{background:#a3341f}.key.p-low{background:#dfa53c}.key.p-normal{background:#5aa86e}
@@ -911,20 +932,30 @@ footer a{color:var(--ink-soft)}
 
 <nav class="nav" aria-label="Szekciók">
   <div class="nav-inner">
-    <a href="#s-terkep">Térkép</a>
-    <a href="#s-szelvenyek">Szelvények</a>
-    <a href="#s-rendszerek">Folyórendszerek</a>
-    <a href="#s-csapadek">Csapadék</a>
-    <a href="#s-hirek">Mi történik</a>
-    <a href="#s-tavak">Tavak</a>
-    <a href="#s-vizhiany">Vízhiány</a>
-    <a href="#s-szennyviz">Szennyvíz</a>
-    <a href="#s-retegviz">Rétegvíz</a>
-    <a href="#s-aszaly">Aszály</a>
-    <a href="#s-vizallas">Vízállás</a>
-    <a href="#s-eromuvek">Erőművek</a>
-    <a href="#s-elozmeny">48 óra</a>
-    <a href="#s-modszertan">Módszertan</a>
+    <div class="navgroup" role="group" aria-label="Mennyi víz van most">
+      <span class="navlabel">Most</span>
+      <a href="#s-terkep">Térkép</a>
+      <a href="#s-rendszerek">Folyók</a>
+      <a href="#s-vizallas">Vízállás</a>
+      <a href="#s-tavak">Tavak</a>
+      <a href="#s-hirek">Mi történik</a>
+      <a href="#s-elozmeny">48 óra</a>
+    </div>
+    <div class="navgroup" role="group" aria-label="Szárazság">
+      <span class="navlabel">Szárazság</span>
+      <a href="#s-vizhiany">Vízhiány</a>
+      <a href="#s-csapadek">Csapadék</a>
+      <a href="#s-aszaly">Talajvíz</a>
+      <a href="#s-retegviz">Rétegvíz</a>
+    </div>
+    <div class="navgroup" role="group" aria-label="Amit a vízzel csinálunk">
+      <span class="navlabel">Terhelés</span>
+      <a href="#s-szennyviz">Szennyvíz</a>
+      <a href="#s-eromuvek">Erőművek</a>
+    </div>
+    <div class="navgroup">
+      <a href="#s-modszertan">Módszertan</a>
+    </div>
     <span class="spacer"></span>
     <div class="scenario" role="group" aria-label="Mit mutasson az oldal">
       <button type="button" id="mode-now" aria-pressed="true">Most</button>
@@ -989,14 +1020,6 @@ footer a{color:var(--ink-soft)}
     </defs>
     <g id="layer-abroad"></g>
     <g id="layer-country"></g>
-    <!-- ABOVE the country outline, which fills with an opaque gradient - drawn under it
-         the wash was painted over and the layer was invisible. Still below the water and
-         every marker: it is the condition the rest of the picture is happening in, not
-         another thing drawn on top of it. -->
-    <g id="layer-vizhiany"></g>
-    <!-- Under the rain and the water: 687 well readings drawn as a field of colour,
-         so "where is it dry" is answered by measurements rather than by a model. -->
-    <g id="layer-gw"></g>
     <g id="layer-rain"></g>
     <!-- Under the named rivers, deliberately. These are the sixteen thousand creeks and
          canals; the Danube and the Tisza are drawn over them with their own weight, so
@@ -1021,17 +1044,6 @@ footer a{color:var(--ink-soft)}
   </div>
   <div class="legend">
     <label class="toggle"><input type="checkbox" id="rain-layer" checked><i class="tri"></i> csapadék az elmúlt 30 napban</label>
-    <label class="toggle"><input type="checkbox" id="vh-layer" checked> elrendelt vízhiány-fokozat</label>
-    <span class="ramp" title="a vízügyi igazgatóság által kihirdetett fokozat, körzetenként">
-      <i class="key g-ii"></i><i class="key g-iii"></i><i class="key g-extraordinary"></i>
-      II. fok → rendkívüli vízhiány
-    </span>
-    <label class="toggle"><input type="checkbox" id="gw-layer"> talajvízszint — 687 mért kút</label>
-    <span class="ramp" title="mindegyik kút a SAJÁT tízéves augusztusi rekordjához mérve">
-      <i class="key p-record-low"></i><i class="key p-very-low"></i><i class="key p-low"></i><i class="key p-normal"></i><i
-        class="key p-high"></i><i class="key p-very-high"></i>
-      mélyebb, mint valaha ilyenkor → a saját rekordjához képest nedvesebb
-    </span>
     <label class="toggle"><input type="checkbox" id="waters-layer"> minden vízfolyás (15 566 patak, ér, csatorna)</label>
     <label class="toggle"><input type="checkbox" id="sewage-layer"> szennyvíztisztító telepek</label>
     <span class="ramp" title="a telepre érkező terhelés a tervezett kapacitásához mérve — nem a kiengedett víz minősége">
@@ -1102,21 +1114,35 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
-<section class="card" id="s-csapadek" style="margin-bottom:18px">
-  <div class="cardhead">
-    <h3>Csapadék — mennyi esett, és mennyi szokott</h3>
-    <div class="sortbar" role="group" aria-label="Időszak">
-      <button type="button" data-rain-days="7" aria-pressed="false">7 nap</button>
-      <button type="button" data-rain-days="30" aria-pressed="true">30 nap</button>
-      <button type="button" data-rain-days="90" aria-pressed="false">90 nap</button>
-    </div>
+<section class="card" id="s-vizallas" style="margin-bottom:18px">
+  <h3>Vízállás — hol tart a folyó a saját történetéhez képest</h3>
+  <div id="levels" class="levels"></div>
+  <div class="lvl-legend">
+    <span><i style="background:var(--ink)"></i>mostani vízállás</span>
+    <span><i style="background:rgba(194,82,28,.42)"></i>I. és II. fokú készültség</span>
+    <span><i style="background:rgba(179,36,60,.55)"></i>III. fokú készültség</span>
+    <span>a sáv bal széle a valaha mért legkisebb, jobb széle a legnagyobb vízállás</span>
   </div>
-  <p class="lead" id="rain-headline">&nbsp;</p>
-  <div id="rain-regions" class="regions"></div>
-  <div id="rain-gauges" class="rainlist"></div>
-  <p style="margin:12px 0 0"><button type="button" class="linkish" id="rain-more"></button></p>
-  <p class="fineprint" id="rain-coverage"></p>
-  <p class="fineprint" id="rain-baseline"></p>
+  <p style="font-size:13px;color:var(--ink-soft);margin-top:12px">
+    A centiméter mindig a mérce saját nullpontjához mérve értendő, ezért két szelvény
+    vízállása egymással soha nem összehasonlítható — mindegyik csak a maga múltjával.
+    A készültségi szintek nem természeti határok: az adott szakasz védművei alapján
+    állapítják meg őket. Pakson például a III. fok 9 centivel a valaha mért legmagasabb
+    vízállás fölött van — 2013-ban ennyi hiányzott hozzá.
+  </p>
+</section>
+
+<section class="card" id="s-tavak" style="margin-bottom:18px">
+  <h3>Tavaink</h3>
+  <p id="lakes-lead" style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">&nbsp;</p>
+  <div id="lakes" class="lakes"></div>
+  <p style="font-size:13px;color:var(--ink-soft);margin-top:14px">
+    A tavaknál nincs értelmes vízhozam — a Balaton elfolyását a siófoki zsilip szabja meg,
+    ami döntés, nem folyamat. Ezért itt a vízszint a mért adat, és az számít. A köbméterre
+    átváltás a tó felszínéből jön: egy centiméter a Balatonon 5,94 millió m³, a Velencei-tavon
+    0,24 millió. Ez becslés, nem mérés — a tó nem henger, a partközeli sávban egy centi
+    nagyobb területet fed le, mint amivel itt számolunk.
+  </p>
 </section>
 
 <section class="card" id="s-hirek" style="margin-bottom:18px">
@@ -1141,17 +1167,10 @@ footer a{color:var(--ink-soft)}
   <p style="font-size:12.5px;color:var(--ink-faint);margin-top:14px" id="feed-note"></p>
 </section>
 
-<section class="card" id="s-tavak" style="margin-bottom:18px">
-  <h3>Tavaink</h3>
-  <p id="lakes-lead" style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">&nbsp;</p>
-  <div id="lakes" class="lakes"></div>
-  <p style="font-size:13px;color:var(--ink-soft);margin-top:14px">
-    A tavaknál nincs értelmes vízhozam — a Balaton elfolyását a siófoki zsilip szabja meg,
-    ami döntés, nem folyamat. Ezért itt a vízszint a mért adat, és az számít. A köbméterre
-    átváltás a tó felszínéből jön: egy centiméter a Balatonon 5,94 millió m³, a Velencei-tavon
-    0,24 millió. Ez becslés, nem mérés — a tó nem henger, a partközeli sávban egy centi
-    nagyobb területet fed le, mint amivel itt számolunk.
-  </p>
+<section class="card" id="s-elozmeny" style="margin-bottom:18px">
+  <h3>Az elmúlt 48 óra</h3>
+  <svg class="spark" id="spark" viewBox="0 0 800 120" preserveAspectRatio="none"></svg>
+  <p id="spark-note">&nbsp;</p>
 </section>
 
 <section class="card" id="s-vizhiany" style="margin-bottom:18px">
@@ -1161,8 +1180,97 @@ footer a{color:var(--ink-soft)}
     ország 85 vízhiány-körzetre van osztva, és mindegyikre a vízügyi igazgatóság hirdet ki
     fokozatot — ez itt az, amit ténylegesen elrendeltek, a kihirdetés dátumával együtt.
   </p>
+  <figure class="dmapwrap">
+    <svg class="dmap" id="dmap" viewBox="0 0 800 518" role="img"
+         aria-label="Magyarország vízhiány-térképe: a kihirdetett fokozat körzetenként, és 687 mért talajvízkút.">
+      <g id="dm-abroad"></g>
+      <g id="dm-country"></g>
+      <g id="dm-vh"></g>
+      <g id="dm-gw"></g>
+      <g id="dm-rain"></g>
+    </svg>
+    <figcaption class="dmapkey">
+      <span><b>Kihirdetett fokozat:</b>
+        <i class="key g-ii"></i> II. <i class="key g-iii"></i> III.
+        <i class="key g-extraordinary"></i> rendkívüli</span>
+      <span><b>Talajvízkutak</b> a saját tízéves rekordjukhoz mérve:
+        <i class="key p-record-low"></i> mélyebb, mint valaha ilyenkor
+        <i class="key p-very-low"></i><i class="key p-low"></i> szárazabb
+        <i class="key p-normal"></i> szokásos
+        <i class="key p-high"></i><i class="key p-very-high"></i> nedvesebb</span>
+      <span><b>Csapadék</b> az elmúlt 30 napban, háromszögekkel, a saját sokéves átlagához mérve.</span>
+    </figcaption>
+  </figure>
+
   <div id="vh-head" class="gw-head"></div>
   <div id="vh-body"></div>
+</section>
+
+<section class="card" id="s-csapadek" style="margin-bottom:18px">
+  <div class="cardhead">
+    <h3>Csapadék — mennyi esett, és mennyi szokott</h3>
+    <div class="sortbar" role="group" aria-label="Időszak">
+      <button type="button" data-rain-days="7" aria-pressed="false">7 nap</button>
+      <button type="button" data-rain-days="30" aria-pressed="true">30 nap</button>
+      <button type="button" data-rain-days="90" aria-pressed="false">90 nap</button>
+    </div>
+  </div>
+  <p class="lead" id="rain-headline">&nbsp;</p>
+  <div id="rain-regions" class="regions"></div>
+  <div id="rain-gauges" class="rainlist"></div>
+  <p style="margin:12px 0 0"><button type="button" class="linkish" id="rain-more"></button></p>
+  <p class="fineprint" id="rain-coverage"></p>
+  <p class="fineprint" id="rain-baseline"></p>
+</section>
+
+<section class="card" id="s-aszaly" style="margin-bottom:18px">
+  <h3>Mennyire száraz a föld?</h3>
+  <p class="lead" style="margin-bottom:6px">
+    A csapadék azt mondja meg, mennyi víz <b>érkezett</b> — azt nem, hogy mennyi maradt.
+    Két egyforma csapadékú augusztus két különböző aszály, ha az egyiket csapadékos tavasz
+    előzte meg. A talajvízszint viszont hónapok esőjét integrálja: ez az a víz, amit a
+    gyökér elér és a kerti kút ad.
+  </p>
+  <p class="fineprint" style="margin:0 0 14px">
+    Az OVF országos talajvíz-észlelőhálózatának mérései, mind a 12 vízügyi igazgatóság
+    területéről. Minden állomás a <b>saját</b> tízéves, azonos havi eloszlásához mérve —
+    a mélység állomásonként mást jelent, a rangsor nem.
+  </p>
+
+  <p id="dr-health" class="dr-health" hidden></p>
+  <div id="dr-head" class="gw-head"></div>
+  <div id="dr-regions" class="dr-regions"></div>
+  <p class="fineprint" id="dr-coverage" style="margin-top:14px"></p>
+  <p class="fineprint" id="dr-not" style="margin-top:8px"></p>
+</section>
+
+<section class="card" id="s-retegviz" style="margin-bottom:18px">
+  <h3>A víz, ami nem látszik</h3>
+  <p class="lead" style="margin-bottom:6px">
+    A folyó és a tó a felszínen van. Alattuk <b>rétegvíz</b>: a mélyebb, lezárt vízadó, amiből
+    az ivóvizünk nagy része jön, és ami nem egy esőtől töltődik újra, hanem évtizedek alatt.
+    Ezt a legnehezebb észrevenni, mert nem látszik rajta, ha fogy.
+  </p>
+  <p class="fineprint" style="margin:0 0 14px">
+    Ez nem a talajvíz — nem a kerti kút vize, hanem az alatta lévő réteg. A talajvízszintet
+    ez az adatforrás egyáltalán nem közli, semmilyen kóddal, egyetlen kútnál sem.
+  </p>
+
+  <div id="gw-head" class="gw-head"></div>
+  <div id="gw-list" class="gw-list"></div>
+  <p id="gw-more-wrap" style="margin:10px 0 0">
+    <button type="button" id="gw-more" class="det-close" hidden></button>
+  </p>
+
+  <p class="fineprint" id="gw-coverage" style="margin-top:14px"></p>
+  <p class="fineprint" id="gw-why" style="margin-top:8px">
+    Itt nincs országos átlag, és ez szándékos. Minden kút a saját nullpontjához méri a
+    mélységet, és a hálózat nem ugyanabban az egységben teszi: van, ahol méterben, van, ahol
+    centiméterben, néhol pedig fordított előjellel. Ezeket a számokat összeátlagolni annyit
+    tenne, mint métert és centimétert összeadni — kijönne belőle egy tizedesjegyes szám, ami
+    semmit nem jelent. Amit viszont lehet: minden kutat a <b>saját</b> tíz évéhez mérni, és
+    megszámolni, hányban alacsony most a víz. Minden alábbi szám így készült.
+  </p>
 </section>
 
 <section class="card" id="s-szennyviz" style="margin-bottom:18px">
@@ -1236,79 +1344,6 @@ footer a{color:var(--ink-soft)}
   <div id="sw-body"></div>
 </section>
 
-<section class="card" id="s-retegviz" style="margin-bottom:18px">
-  <h3>A víz, ami nem látszik</h3>
-  <p class="lead" style="margin-bottom:6px">
-    A folyó és a tó a felszínen van. Alattuk <b>rétegvíz</b>: a mélyebb, lezárt vízadó, amiből
-    az ivóvizünk nagy része jön, és ami nem egy esőtől töltődik újra, hanem évtizedek alatt.
-    Ezt a legnehezebb észrevenni, mert nem látszik rajta, ha fogy.
-  </p>
-  <p class="fineprint" style="margin:0 0 14px">
-    Ez nem a talajvíz — nem a kerti kút vize, hanem az alatta lévő réteg. A talajvízszintet
-    ez az adatforrás egyáltalán nem közli, semmilyen kóddal, egyetlen kútnál sem.
-  </p>
-
-  <div id="gw-head" class="gw-head"></div>
-  <div id="gw-list" class="gw-list"></div>
-  <p id="gw-more-wrap" style="margin:10px 0 0">
-    <button type="button" id="gw-more" class="det-close" hidden></button>
-  </p>
-
-  <p class="fineprint" id="gw-coverage" style="margin-top:14px"></p>
-  <p class="fineprint" id="gw-why" style="margin-top:8px">
-    Itt nincs országos átlag, és ez szándékos. Minden kút a saját nullpontjához méri a
-    mélységet, és a hálózat nem ugyanabban az egységben teszi: van, ahol méterben, van, ahol
-    centiméterben, néhol pedig fordított előjellel. Ezeket a számokat összeátlagolni annyit
-    tenne, mint métert és centimétert összeadni — kijönne belőle egy tizedesjegyes szám, ami
-    semmit nem jelent. Amit viszont lehet: minden kutat a <b>saját</b> tíz évéhez mérni, és
-    megszámolni, hányban alacsony most a víz. Minden alábbi szám így készült.
-  </p>
-</section>
-
-<section class="card" id="s-aszaly" style="margin-bottom:18px">
-  <h3>Mennyire száraz a föld?</h3>
-  <p class="lead" style="margin-bottom:6px">
-    A csapadék azt mondja meg, mennyi víz <b>érkezett</b> — azt nem, hogy mennyi maradt.
-    Két egyforma csapadékú augusztus két különböző aszály, ha az egyiket csapadékos tavasz
-    előzte meg. A talajvízszint viszont hónapok esőjét integrálja: ez az a víz, amit a
-    gyökér elér és a kerti kút ad.
-  </p>
-  <p class="fineprint" style="margin:0 0 14px">
-    Az OVF országos talajvíz-észlelőhálózatának mérései, mind a 12 vízügyi igazgatóság
-    területéről. Minden állomás a <b>saját</b> tízéves, azonos havi eloszlásához mérve —
-    a mélység állomásonként mást jelent, a rangsor nem.
-  </p>
-
-  <p id="dr-health" class="dr-health" hidden></p>
-  <div id="dr-head" class="gw-head"></div>
-  <div id="dr-regions" class="dr-regions"></div>
-  <p class="fineprint" id="dr-coverage" style="margin-top:14px"></p>
-  <p class="fineprint" id="dr-not" style="margin-top:8px"></p>
-</section>
-
-<section class="card" id="s-vizallas" style="margin-bottom:18px">
-  <h3>Vízállás — hol tart a folyó a saját történetéhez képest</h3>
-  <div id="levels" class="levels"></div>
-  <div class="lvl-legend">
-    <span><i style="background:var(--ink)"></i>mostani vízállás</span>
-    <span><i style="background:rgba(194,82,28,.42)"></i>I. és II. fokú készültség</span>
-    <span><i style="background:rgba(179,36,60,.55)"></i>III. fokú készültség</span>
-    <span>a sáv bal széle a valaha mért legkisebb, jobb széle a legnagyobb vízállás</span>
-  </div>
-  <p style="font-size:13px;color:var(--ink-soft);margin-top:12px">
-    A centiméter mindig a mérce saját nullpontjához mérve értendő, ezért két szelvény
-    vízállása egymással soha nem összehasonlítható — mindegyik csak a maga múltjával.
-    A készültségi szintek nem természeti határok: az adott szakasz védművei alapján
-    állapítják meg őket. Pakson például a III. fok 9 centivel a valaha mért legmagasabb
-    vízállás fölött van — 2013-ban ennyi hiányzott hozzá.
-  </p>
-</section>
-
-<section class="card" style="margin-bottom:18px">
-  <h3>Mire elég ennyi víz?</h3>
-  <div id="scale" class="scale"></div>
-</section>
-
 <section class="card" id="s-eromuvek" style="margin-bottom:18px">
   <h3>Erőművek és hűtővizük</h3>
   <div id="plantlist" class="bars"></div>
@@ -1317,20 +1352,6 @@ footer a{color:var(--ink-soft)}
     visszakerül a folyóba — felmelegítve; a mérlegből ténylegesen csak az elpárolgó rész hiányzik.
   </p>
 </section>
-
-<section class="card" style="margin-bottom:18px">
-  <h3>Honnan jön az áram most</h3>
-  <div id="mix" class="mixbar"></div>
-  <div id="mixlegend" class="mixlegend"></div>
-</section>
-
-<section class="card" id="s-elozmeny" style="margin-bottom:18px">
-  <h3>Az elmúlt 48 óra</h3>
-  <svg class="spark" id="spark" viewBox="0 0 800 120" preserveAspectRatio="none"></svg>
-  <p id="spark-note">&nbsp;</p>
-</section>
-
-<div class="note-block" id="explainer"></div>
 
 <section class="card" id="s-modszertan" style="margin-bottom:18px">
   <h3>Módszertan — mit számolunk, és mit nem</h3>
@@ -1457,6 +1478,31 @@ footer a{color:var(--ink-soft)}
   </div>
 </section>
 
+
+
+
+
+
+
+
+
+
+<section class="card" style="margin-bottom:18px">
+  <h3>Mire elég ennyi víz?</h3>
+  <div id="scale" class="scale"></div>
+</section>
+
+
+<section class="card" style="margin-bottom:18px">
+  <h3>Honnan jön az áram most</h3>
+  <div id="mix" class="mixbar"></div>
+  <div id="mixlegend" class="mixlegend"></div>
+</section>
+
+
+<div class="note-block" id="explainer"></div>
+
+
 <footer>
   Adatforrás: <a href="https://data.vizugy.hu" rel="noopener">OVF / data.vizugy.hu</a> vízrajzi adatok,
   negyedóránként frissítve. A szennyvíztisztító telepek és az ország vízfolyásai a
@@ -1555,7 +1601,7 @@ function clampPan(){
 }
 
 function applyView({ redraw = true } = {}){
-  if(redraw && geo){ drawBase(); drawNodes(); drawRainNodes(); drawVizhiany(); drawGwField(); drawWaters(); drawSewage(); }
+  if(redraw && geo){ drawBase(); drawNodes(); drawRainNodes(); drawWaters(); drawSewage(); }
   clampPan();
   const w = W / zoom, h = H / zoom;
   // After the redraw, not before: drawBase re-establishes the projection and can change
@@ -3021,6 +3067,9 @@ async function loadRain(){
     rainGauges = data.gauges || [];
     rainMap = data.gauges || [];
     drawRainNodes();
+    // The drought map shows the same gauges and is painted when its own data lands,
+    // which is usually before this - so it has to be told when the rain arrives too.
+    drawDroughtMap();
   }catch(err){
     $('rain-headline').textContent = 'A csapadékadat most nem érhető el.';
   }
@@ -3523,7 +3572,7 @@ function drawWaters(){
  * because a stale declaration is worse than none - it would go on announcing an emergency
  * after it was lifted, or miss one after it was declared.
  */
-let vhGeo = null, vhGrades = null, vhLoading = false, showVh = true;
+let vhGeo = null, vhGrades = null, vhLoading = false;
 
 function loadVizhiany(){
   if(vhLoading) return Promise.resolve();
@@ -3535,35 +3584,11 @@ function loadVizhiany(){
   ]).then(([g, v]) => {
     vhGeo = g; vhGrades = v;
     vhLoading = false;
-    drawVizhiany();
+    drawDroughtMap();
     renderVizhiany(v);
   });
 }
 
-function drawVizhiany(){
-  const layer = $('layer-vizhiany');
-  if(!layer) return;
-  layer.textContent = '';
-  if(!geo || !showVh || !vhGeo || !vhGeo.districts) return;
-
-  // Grade by district id. A district with geometry but no declaration is drawn with no
-  // fill rather than as though it were at grade zero - "nothing on file" and "declared
-  // to be fine" are different statements.
-  const byId = new Map(((vhGrades && vhGrades.districts) || []).map(d => [d.id, d]));
-
-  for(const d of vhGeo.districts){
-    const g = byId.get(d.id);
-    const cls = 'vh g-' + (g && g.grade ? g.grade : 'none');
-    for(const ring of d.rings){
-      let path = '';
-      for(let i=0;i<ring.length;i++){
-        const q = px(ring[i][0], ring[i][1]);
-        path += (i?'L':'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1);
-      }
-      layer.appendChild(svgEl('path', { d: path + ' Z', class: cls }));
-    }
-  }
-}
 
 /** The section: counts and the escalation, never an average of ordinal grades. */
 function renderVizhiany(v){
@@ -3600,6 +3625,59 @@ function renderVizhiany(v){
     `A körzetek nem egyforma méretűek, ezért körzetet számolunk, nem az ország területének százalékát.</p>`;
 }
 
+/**
+ * The drought map: the declared grade, the wells, and the rain, and nothing else.
+ *
+ * Fixed at national scale, so it borrows px() untouched and needs none of the main map's
+ * zoom machinery. It also redraws on nothing: the three things it shows change on a scale
+ * of days, so it is drawn once when its data arrives and left alone.
+ */
+function drawDroughtMap(){
+  const abroad = $('dm-abroad'), country = $('dm-country');
+  const vh = $('dm-vh'), gw = $('dm-gw'), rain = $('dm-rain');
+  if(!abroad || !geo) return;
+  for(const l of [abroad, country, vh, gw, rain]) l.textContent = '';
+
+  for(const c of geo.neighbours) for(const ring of c.shapes)
+    abroad.appendChild(svgEl('path',{ d: path(ring)+' Z', class:'dm-abroad' }));
+  for(const ring of geo.hungary)
+    country.appendChild(svgEl('path',{ d: path(ring)+' Z', class:'dm-outline' }));
+
+  if(vhGeo && vhGeo.districts){
+    const byId = new Map(((vhGrades && vhGrades.districts) || []).map(d => [d.id, d]));
+    for(const d of vhGeo.districts){
+      const g = byId.get(d.id);
+      for(const ring of d.rings)
+        vh.appendChild(svgEl('path',{ d: path(ring)+' Z', class:'vh g-'+((g&&g.grade)||'none') }));
+    }
+  }
+
+  if(droughtData && droughtData.stations){
+    for(const st of droughtData.stations){
+      if(!st.rank || st.rank.percentile == null || !st.lat || !st.lon) continue;
+      const [x,y] = px(st.lon, st.lat);
+      const dot = svgEl('circle',{ class:'gwdot p-'+st.rank.band+(st.rank.belowRecord?' record':''),
+        cx:x.toFixed(1), cy:y.toFixed(1), r:'3.1' });
+      const t = svgEl('title');
+      t.textContent = `${st.name}: ${st.rank.percentile}. percentilis a saját ${MONTH_ADJ[st.rank.month-1]} rekordjában`
+        + (st.rank.belowRecord ? ' — mélyebb, mint bármelyik ilyenkori nap az elmúlt tíz évben' : '');
+      dot.appendChild(t);
+      gw.appendChild(dot);
+    }
+  }
+
+  // The rain, in the same downward triangle the main map uses, so the two agree.
+  for(const g of rainMap){
+    const [x,y] = px(g.lon, g.lat);
+    const s = 4.6;
+    rain.appendChild(svgEl('polygon',{
+      points: `${(x-s).toFixed(1)},${(y-s*0.7).toFixed(1)} ${(x+s).toFixed(1)},${(y-s*0.7).toFixed(1)} `
+            + `${x.toFixed(1)},${(y+s*1.05).toFixed(1)}`,
+      class: 'mark ' + (g.band ? 'b-'+g.band : 'nobase'), opacity: '.85',
+    }));
+  }
+}
+
 /* --- the water table, as a field ------------------------------------------ */
 
 /**
@@ -3617,33 +3695,17 @@ function renderVizhiany(v){
  * beside the Tisza is at the surface - so a national colour scale over raw depth would
  * be a map of geology, not of drought.
  */
-let droughtData = null, droughtLoading = false, showDrought = false;
+let droughtData = null, droughtLoading = false;
 
 function loadDrought(){
   if(droughtData || droughtLoading) return Promise.resolve(droughtData);
   droughtLoading = true;
   return fetch('/api/v1/drought', { cache:'no-store' })
     .then(r => r.ok ? r.json() : null)
-    .then(j => { droughtData = j; droughtLoading = false; return j; })
+    .then(j => { droughtData = j; droughtLoading = false; drawDroughtMap(); return j; })
     .catch(() => { droughtLoading = false; return null; });
 }
 
-function drawGwField(){
-  const layer = $('layer-gw');
-  if(!layer) return;
-  layer.textContent = '';
-  if(!geo || !showDrought || !droughtData || !droughtData.stations) return;
-
-  const r = 2.6 / zoom;
-  for(const s of droughtData.stations){
-    if(!s.rank || s.rank.percentile == null || !s.lat || !s.lon) continue;
-    const [x,y] = px(s.lon, s.lat);
-    layer.appendChild(svgEl('circle',{
-      class: 'gwdot p-' + s.rank.band + (s.rank.belowRecord ? ' record' : ''),
-      cx: x.toFixed(1), cy: y.toFixed(1), r: r.toFixed(2),
-    }));
-  }
-}
 
 /* --- wastewater treatment works ------------------------------------------- */
 
@@ -4780,7 +4842,9 @@ async function refresh(){
     // until the reader asks for them. The register is 180 KB and the section is the
     // point - the map layer is the illustration.
     loadSewage();
+    // Both feed the drought map; neither is behind a toggle any more.
     loadVizhiany();
+    loadDrought();
     if(ev){ renderRegions(ev.regions); renderFeed(ev); renderArrivals(ev.arrivals); }
 
     $('synthetic').classList.toggle('hidden', !(s._meta && s._meta.synthetic));
@@ -4910,14 +4974,6 @@ function tick(){
   // data is already in hand, so calling only the loader left the first toggle doing
   // nothing at all on any visit where the data had arrived by another route - which for
   // the works is every visit, because the section fetches them at boot.
-  $('vh-layer').addEventListener('change', (e) => {
-    showVh = e.target.checked;
-    Promise.resolve(showVh ? loadVizhiany() : null).then(drawVizhiany);
-  });
-  $('gw-layer').addEventListener('change', (e) => {
-    showDrought = e.target.checked;
-    Promise.resolve(showDrought ? loadDrought() : null).then(drawGwField);
-  });
   $('waters-layer').addEventListener('change', (e) => {
     showWaters = e.target.checked;
     Promise.resolve(showWaters ? loadWaters() : null).then(drawWaters);
