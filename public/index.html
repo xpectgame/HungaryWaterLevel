@@ -245,6 +245,26 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .water-line.receives.heavy{stroke:rgba(163,52,31,.85);stroke-width:calc(2.4px * var(--mk,1))}
 .sw:hover,.swnode:focus .sw{fill:var(--silt);stroke-width:calc(.9px * var(--mk,1))}
 
+/* --- industrial outfalls -------------------------------------------------
+   A DIAMOND, and the sixth shape on this map, because it is a sixth kind of thing:
+   not a gauge, not a works, not a power station. Deliberately not coloured by sector -
+   there are eleven of them, and eleven colours on a map that already carries a rainfall
+   ramp, a well ramp and a wastewater ramp is a colour chart, not a map. The one
+   distinction drawn is the one with a consequence for the water: whether it goes into a
+   watercourse or into the ground. The sector is in the tooltip and in the filter. */
+.ind{fill:rgba(112,74,140,.72);stroke:#fff;stroke-width:calc(.45px * var(--mk,1));cursor:pointer}
+/* Hollow, because nothing enters a river here. A filled mark on a map of river
+   discharges would be read as one, and 112 of the 424 are not. */
+.ind.ground{fill:rgba(112,74,140,.14);stroke:rgba(112,74,140,.85);
+  stroke-width:calc(.7px * var(--mk,1))}
+/* While a sector filter is on: everything else stays, faint, so the filter reads as
+   "these ones" against the whole rather than as a map that lost most of its dots. */
+.ind.dim{opacity:.16}
+.ind:hover,.indnode:focus .ind{fill:#5c3a75;stroke-width:calc(1px * var(--mk,1))}
+.indnode:focus{outline:none}
+.key.ind-surface{background:rgba(112,74,140,.72)}
+.key.ind-ground{background:rgba(112,74,140,.14);box-shadow:inset 0 0 0 1.5px rgba(112,74,140,.85)}
+
 /* --- the water table, as a field ----------------------------------------
    687 measured wells, coloured by where each one stands in its OWN ten-year
    record for this month. Not interpolated between them and not extended to the
@@ -396,7 +416,11 @@ svg.map text{user-select:none;-webkit-user-select:none}
    to the country and grow with it, unlike the markers which stay a constant size on
    screen. */
 /* --- find your own water ------------------------------------------------- */
-.mapsearch{position:relative;margin-top:9px;max-width:460px}
+/* A flex item in .maphead, so it needs a basis. Without one it shrank to whatever the
+   heading and the hint left over - about 195px, which cut the placeholder off mid-word
+   at "Keresd meg a saját pata" and made the search look broken before it was used. The
+   basis is wider than the leftover on purpose: it wraps onto its own line instead. */
+.mapsearch{position:relative;margin-top:9px;max-width:460px;flex:1 1 300px}
 .mapsearch input{width:100%;font:inherit;font-size:13px;padding:8px 12px;
   border:1px solid var(--line);border-radius:99px;background:#fff;color:var(--ink)}
 .mapsearch input:focus{outline:2px solid var(--flow);outline-offset:1px}
@@ -650,6 +674,13 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .tbl tbody tr:last-child td{border-bottom:none}
 .tbl tbody tr:hover{background:var(--sunk)}
 .tbl .num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+/* A table row that filters the map. Given a pointer and a focus ring because it is a
+   button wearing a row's clothes, and a reader who cannot see the cursor change has no
+   other way to find out. */
+.tbl tbody tr.ind-row{cursor:pointer}
+.tbl tbody tr.ind-row:focus-visible{outline:2px solid var(--flow);outline-offset:-2px}
+.tbl tbody tr.ind-row.on{background:rgba(112,74,140,.12)}
+.tbl tbody tr.ind-row.on td:first-child{font-weight:650;box-shadow:inset 3px 0 0 #704a8c}
 .tbl thead th.num{text-align:right}
 /* Per-directorate drought share: a name, a bar, the percentage, and the counts behind
    it. The counts matter as much as the share - 100% of three stations is not the same
@@ -1010,6 +1041,7 @@ footer a{color:var(--ink-soft)}
     <div class="navgroup" role="group" aria-label="Amit a vízzel csinálunk">
       <span class="navlabel">Terhelés</span>
       <a href="#s-szennyviz">Szennyvíz</a>
+      <a href="#s-ipari">Ipar</a>
       <a href="#s-eromuvek">Erőművek</a>
     </div>
     <div class="navgroup">
@@ -1101,6 +1133,9 @@ footer a{color:var(--ink-soft)}
          the river it enters, and a reader looking for the gauge they clicked last time
          should not have to hunt for it behind seven hundred new dots. -->
     <g id="layer-sewage"></g>
+    <!-- Over the works rather than under: there are 424 of these against 732 of those,
+         and the smaller layer is the one that disappears if it goes underneath. -->
+    <g id="layer-industry"></g>
     <g id="layer-borderflow"></g>
     <g id="layer-plants"></g>
     <g id="layer-nodes"></g>
@@ -1118,6 +1153,10 @@ footer a{color:var(--ink-soft)}
     <label class="toggle"><input type="checkbox" id="rain-layer" checked><i class="tri"></i> csapadék az elmúlt 30 napban</label>
     <label class="toggle"><input type="checkbox" id="waters-layer"> minden vízfolyás (15 566 patak, ér, csatorna)</label>
     <label class="toggle"><input type="checkbox" id="sewage-layer"> szennyvíztisztító telepek</label>
+    <label class="toggle"><input type="checkbox" id="industry-layer"> ipari bevezetések (424 pont, 2009-es felmérés)</label>
+    <span title="a réteg akkor látszik, ha be van kapcsolva">
+      <i class="key ind-surface"></i> <b>tele rombusz:</b> ipari szennyvíz vízfolyásba
+      &nbsp; <i class="key ind-ground"></i> <b>üres rombusz:</b> a talajba, nem folyóba</span>
     <!-- The red watercourse had no entry here at all: a line turned warm because a works
          discharges into it, and nothing on the page said so. -->
     <span title="csak akkor látszik, ha a szennyvíztisztító telepek réteg be van kapcsolva">
@@ -1445,6 +1484,49 @@ footer a{color:var(--ink-soft)}
   <div id="sw-body"></div>
 </section>
 
+<!-- Directly after the municipal works, because it is the same subject seen from the
+     other side, and a reader who has just understood LE is the reader who should meet
+     the 424 outfalls that have no LE at all. -->
+<section class="card" id="s-ipari" style="margin-bottom:18px">
+  <h3>Az ipar vize</h3>
+  <p class="lead" style="margin-bottom:6px">
+    A szennyvíztisztító telepek mellett van egy másik, sokkal kevésbé ismert lista is:
+    azok a pontok, ahol <b>nem egy település, hanem egy üzem</b> engedi vissza a
+    használt vizét. Tejüzem, vágóhíd, halastó, bánya, fürdő, erőmű.
+  </p>
+  <div class="explain">
+    <details>
+      <summary>Miért külön lista ez, és miért nem lehet összeadni a kettőt?</summary>
+      <p>
+        Mert mást tudunk róluk. A szennyvíztisztító telepekről tudjuk, <b>mennyi</b> víz megy
+        rajtuk át — az ipari bevezetésekről <b>nem</b>. Ez a nyilvántartás a helyet, a
+        befogadó vizet és az ágazatot rögzíti, mennyiséget egyetlen sorban sem.
+      </p>
+      <p>
+        Ha a kettőt összeadnánk, egy olyan összeg jönne ki, amiben a települési rész mért,
+        az ipari rész pedig nulla — és ez úgy nézne ki, mintha az ipar nem engedne ki
+        vizet. Ezért áll a két lista külön, és ezért nincs itt közös végösszeg.
+      </p>
+    </details>
+    <details>
+      <summary>Mit jelent, hogy „a talajba” vezetik?</summary>
+      <p>
+        Azt, hogy a szennyvíz nem egy patakba folyik, hanem <b>elszikkasztják</b>: a
+        talajon keresztül szivárog el. A nyilvántartásban ilyenkor a befogadó nem egy
+        vízfolyás neve, hanem egy felszín alatti víztest kódja (például <code>sp.2.4.1</code>
+        — sekély porózus víztest).
+      </p>
+      <p>
+        Ez a patak szempontjából jó hír, a <b>talajvíz</b> szempontjából viszont nem: ugyanaz
+        a víz, amiből a kerti kutak és sok helyen az ivóvíz jön. És a talajvízbe került
+        szennyeződés nem folyik le két nap alatt, mint a patakban — évekig ott marad.
+      </p>
+    </details>
+  </div>
+  <div id="ind-head" class="gw-head"></div>
+  <div id="ind-body"></div>
+</section>
+
 <section class="card" id="s-aram" style="margin-bottom:18px">
   <h3>Honnan jön az áram most</h3>
   <div id="mix" class="mixbar"></div>
@@ -1699,7 +1781,7 @@ function clampPan(){
 }
 
 function applyView({ redraw = true } = {}){
-  if(redraw && geo){ drawBase(); drawNodes(); drawRainNodes(); drawWaters(); drawSewage(); }
+  if(redraw && geo){ drawBase(); drawNodes(); drawRainNodes(); drawWaters(); drawSewage(); drawIndustry(); }
   clampPan();
   const w = W / zoom, h = H / zoom;
   // After the redraw, not before: drawBase re-establishes the projection and can change
@@ -1750,6 +1832,14 @@ const svgEl = (n,a={}) => { const e=document.createElementNS('http://www.w3.org/
 
 const fmt = (v,d=0) => v==null || !isFinite(v) ? '–'
   : new Intl.NumberFormat('hu-HU',{minimumFractionDigits:d,maximumFractionDigits:d}).format(v);
+
+/* Text going into innerHTML or into an attribute. Every string this page interpolates
+   comes from its own API, but a register field ends up inside data-sector="..." and one
+   apostrophe in a sector name would break the attribute rather than do anything
+   interesting - so it is escaped where it is built, not trusted where it came from. */
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 /* Numbers ease to their new value instead of jumping.
 
@@ -4174,6 +4264,150 @@ function renderSewage(d){
     `mennyiségi adat — köztük ${missing} —, így a fenti m³/s alulbecslés.`:''}</p>`;
 }
 
+/* --- industrial and other non-municipal outfalls --------------------------- */
+
+let industry = null, industryLoading = false, showIndustry = false, indSector = null;
+
+function loadIndustry(){
+  if(industry || industryLoading) return Promise.resolve(industry);
+  industryLoading = true;
+  return fetch('/api/v1/ipari', { cache:'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { industry = j; industryLoading = false; drawIndustry(); renderIndustry(j); return j; })
+    .catch(() => { industryLoading = false; return null; });
+}
+
+/**
+ * The outfalls, as diamonds. All the same size, and that is a statement.
+ *
+ * Every other marker on this map is sized by something: a gauge by its flow, a works by
+ * its capacity, a plant by its output. This register carries no volume on any row, so
+ * there is nothing to size these by - and sizing them by anything else, or picking a size
+ * per sector, would invent a quantity the source does not have. Equal dots say "here is
+ * one", which is exactly what is known.
+ */
+function drawIndustry(){
+  const layer = $('layer-industry');
+  if(!layer) return;
+  layer.textContent = '';
+  if(!geo || !showIndustry || !industry || !industry.points) return;
+
+  const k = 1 / zoom;
+  const r = 3.1 * k;
+
+  for(const p of industry.points){
+    const [x,y] = px(p.lon, p.lat);
+    const ground = p.target !== 'felszíni';
+    const dim = indSector && p.sector !== indSector;
+    const node = svgEl('g',{ class:'indnode' });
+    node.appendChild(svgEl('path',{
+      class:'ind' + (ground?' ground':'') + (dim?' dim':''),
+      d:`M${x.toFixed(2)},${(y-r).toFixed(2)} L${(x+r).toFixed(2)},${y.toFixed(2)} `+
+        `L${x.toFixed(2)},${(y+r).toFixed(2)} L${(x-r).toFixed(2)},${y.toFixed(2)} Z`,
+    }));
+    node.appendChild(svgEl('circle',{ class:'hit', cx:x.toFixed(1), cy:y.toFixed(1),
+      r: hitFor(x, y, r, hitRadius()).toFixed(1) }));
+    bindMarker(node, () => renderIndustryTip(p), () => {
+      revealSection('s-ipari');
+    }, `${p.sector || 'ipari'} szennyvízbevezetés, befogadó: `+
+       (ground ? 'felszín alatti víz' : (p.waterName || 'ismeretlen')));
+    layer.appendChild(node);
+  }
+}
+
+function renderIndustryTip(p){
+  const ground = p.target !== 'felszíni';
+  $('tip').innerHTML =
+    `<div class="t-name">${p.sector || 'ipari szennyvíz'}</div>`+
+    `<div class="t-val" style="color:#704a8c;font-size:15px">`+
+    (ground ? 'a talajba vezetik' : 'vízfolyásba vezetik')+`</div>`+
+    `<div class="t-sub">befogadó: <b>${ground
+      ? 'felszín alatti víztest ('+(p.water||'kód nélkül')+')'
+      : (p.waterName || 'a nyilvántartás nem nevezi meg')}</b></div>`+
+    // On every single tooltip, not once in the section: this is the field a reader
+    // expects to be here, and its absence has to be visible where they look for it.
+    `<div class="t-sub" style="color:var(--ink-faint)">A nyilvántartás nem közöl `+
+    `mennyiséget, terhelést és üzemeltetőt — csak a helyet és az ágazatot. `+
+    `Felmérés: 2009 körül.</div>`;
+}
+
+/**
+ * The industrial section.
+ *
+ * Built around the two things in the data that a reader could not have guessed, because
+ * a table of eleven sector counts is not worth a section on its own: that spa water is
+ * the second largest source, and that most of the food industry's outfalls do not reach
+ * a river at all.
+ */
+function renderIndustry(d){
+  if(!d || !d.available){ $('ind-head').innerHTML=''; $('ind-body').innerHTML=''; return; }
+
+  const stat = (n, unit, lbl) =>
+    `<div class="gw-stat"><div class="n">${n}${unit?`<small> ${unit}</small>`:''}</div>`+
+    `<div class="lbl">${lbl}</div></div>`;
+
+  const food = (d.groundwaterSectors||[]).find(s => s.name === 'Élelmiszeripar');
+  const foodAll = (d.sectors||[]).find(s => s.name === 'Élelmiszeripar');
+  const spa = (d.sectors||[]).find(s => s.name === 'Termálvíz, fürdővíz');
+
+  $('ind-head').innerHTML =
+    stat(fmt(d.count,0), 'pont', 'ipari és egyéb nem kommunális szennyvízbevezetés')+
+    stat(fmt(d.surfaceCount,0), 'pont', 'ebből vízfolyásba vagy tóba')+
+    stat(fmt(d.groundwaterCount,0), 'pont', 'ebből a talajba, felszín alatti víztestbe');
+
+  const rows = (d.sectors||[]).map(s => {
+    const gw = (d.groundwaterSectors||[]).find(g => g.name === s.name);
+    const g = gw ? gw.count : 0;
+    const on = indSector === s.name;
+    return `<tr class="ind-row${on?' on':''}" data-sector="${esc(s.name)}" tabindex="0" `+
+      `role="button" aria-pressed="${on}">`+
+      `<td>${esc(s.name)}</td><td class="num">${fmt(s.count,0)}</td>`+
+      `<td class="num">${fmt(s.count-g,0)}</td><td class="num">${g?fmt(g,0):'–'}</td></tr>`;
+  }).join('');
+
+  $('ind-body').innerHTML =
+    `<p>Nem csak a városok engednek vizet a vizekbe. Egy tejüzem, egy vágóhíd, egy `+
+    `halastó, egy fürdő vagy egy erőmű is használ vizet, és utána visszaengedi. `+
+    `A vízgyűjtő-gazdálkodási terv <b>${fmt(d.count,0)} ilyen pontot</b> tart nyilván.</p>`+
+
+    `<div class="warnbox"><b>Két dolog, ami kiderül belőle.</b> Az egyik: `+
+    `a második legnagyobb ipari bevezető nem gyár, hanem a <b>termál- és fürdővíz</b> `+
+    `(${spa?fmt(spa.count,0):'118'} pont). A használt gyógyvíz meleg és sós, és `+
+    `sokszor egy kis patakba kerül, aminek se hőmérsékletben, se sótartalomban nincs `+
+    `mihez kezdenie vele. A másik: az <b>élelmiszeripar</b> ${foodAll?fmt(foodAll.count,0):'125'} `+
+    `bevezetéséből ${food?fmt(food.count,0):'88'} <b>nem folyóba megy, hanem a talajba</b> — `+
+    `azaz nem a patakot terheli, hanem a talajvizet, ugyanazt, amiből a kutak isznak.</div>`+
+
+    `<p class="fineprint" style="margin:14px 0 8px">Kattints egy ágazatra, és a térképen csak az ő bevezetései maradnak `+
+    `élénkek. Mégegyszer kattintva visszaáll az összes.</p>`+
+    `<div class="tablewrap"><table class="tbl"><thead><tr>`+
+    `<th>ágazat</th><th class="num">összesen</th><th class="num">vízfolyásba</th>`+
+    `<th class="num">talajba</th></tr></thead><tbody>${rows}</tbody></table></div>`+
+
+    `<p class="fineprint"><b>Amit ez a réteg nem tud.</b> Nincs benne mennyiség, nincs benne `+
+    `szennyezettség, és nincs benne cégnév — a nyilvántartás a helyet, a befogadót és az `+
+    `ágazatot rögzíti, semmi mást. A felmérés a <b>${esc(d.vintage||'')}</b>, tehát az `+
+    `azóta épült üzemek nincsenek benne. Ezért nem látszik itt egyetlen akkumulátorgyár `+
+    `sem: nem azért, mert nem vezetnek ki vizet, hanem mert egyik nyilvános vízügyi `+
+    `adatbázis sem tartja nyilván őket néven. Amit becslésként ide lehetne írni, az nem `+
+    `adat volna.</p>`;
+
+  for(const row of $('ind-body').querySelectorAll('.ind-row')){
+    const pick = () => {
+      indSector = indSector === row.dataset.sector ? null : row.dataset.sector;
+      renderIndustry(industry);
+      // Turning the layer on is the point of clicking a sector; leaving it off would
+      // filter a map the reader cannot see.
+      if(!showIndustry){ $('industry-layer').checked = true; showIndustry = true; }
+      drawIndustry();
+    };
+    row.addEventListener('click', pick);
+    row.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); pick(); }
+    });
+  }
+}
+
 function renderSewageTip(p){
   const perSec = p.m3s != null
     ? `<div class="t-sub">${fmt(p.m3Year/1e6,1)} millió m³ évente — <b>${fmt(p.m3s,3)} m³/s</b></div>`
@@ -5189,6 +5423,10 @@ async function refresh(){
     // until the reader asks for them. The register is 180 KB and the section is the
     // point - the map layer is the illustration.
     loadSewage();
+    // 90 KB, same bargain: the section reads on load, the 424 diamonds wait to be asked
+    // for. Its sector table is also the map's filter, so it has to exist before anyone
+    // can click one.
+    loadIndustry();
     // loadDrought() is called on its own further down and now feeds the map as well.
     loadVizhiany();
     if(ev){ renderRegions(ev.regions); renderFeed(ev); renderArrivals(ev.arrivals); }
@@ -5336,6 +5574,13 @@ function tick(){
     // Redraws the watercourses too: which of them are tinted as receiving depends on
     // whether this layer is on.
     Promise.resolve(showSewage ? loadSewage() : null).then(() => { drawSewage(); drawWaters(); });
+  });
+  $('industry-layer').addEventListener('change', (e) => {
+    showIndustry = e.target.checked;
+    // Same shape as the wastewater toggle, and for the same reason: the loader returns
+    // early once the data is in hand, so calling it alone left the first click doing
+    // nothing at all.
+    Promise.resolve(showIndustry ? loadIndustry() : null).then(drawIndustry);
   });
   $('rain-more').addEventListener('click', () => {
     rainExpanded = !rainExpanded;
