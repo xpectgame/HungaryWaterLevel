@@ -408,4 +408,49 @@ function round(v, digits) {
   return Math.round(v * f) / f;
 }
 
-module.exports = { fetchAll, fetchGeneration, fetchRainfall, fetchWells, fetchShallowWells, fetchAvailability, stationFlow, seasonalFactor };
+
+/**
+ * Declared water-shortage grades, synthesised from the baked district list.
+ *
+ * Anchored to the real districts rather than invented names, and deliberately NOT all at
+ * one grade: a fixture where every district is identical would let a renderer that
+ * ignores the grade entirely pass every test. The spread here is arbitrary but fixed, so
+ * the same district gets the same grade on every run.
+ */
+async function fetchVizhiany({ now = new Date() } = {}) {
+  let districts = [];
+  try {
+    districts = require('../../public/vizhiany.json').districts || [];
+  } catch {
+    districts = [];
+  }
+
+  const CODES = [724, 724, 724, 723, 722, 720];
+  const LABELS = { 720: null, 722: 'II. fok', 723: 'III. fok', 724: 'rendkívüli vízhiány' };
+  const ORDER = { 720: 0, 721: 1, 722: 2, 723: 3, 724: 4 };
+
+  return {
+    source: 'fixture',
+    synthetic: true,
+    fetchedAt: now.toISOString(),
+    districts: districts.map((d, i) => {
+      const code = CODES[Math.abs(seedFor(d.id || String(i))) % CODES.length];
+      const prev = code === 720 ? 720 : code - 1;
+      return {
+        id: d.id,
+        name: d.name,
+        vizig: d.vizig || null,
+        gradeCode: code,
+        grade: ['none', 'i', 'ii', 'iii', 'extraordinary'][ORDER[code]],
+        gradeOrder: ORDER[code],
+        gradeLabel: LABELS[code],
+        previousCode: prev,
+        previousOrder: ORDER[prev] ?? null,
+        declaredAt: new Date(now.getTime() - (i % 9) * DAY_MS).toISOString(),
+        updatedAt: new Date(now.getTime() - (i % 5) * DAY_MS).toISOString(),
+      };
+    }),
+  };
+}
+
+module.exports = { fetchAll, fetchVizhiany, fetchGeneration, fetchRainfall, fetchWells, fetchShallowWells, fetchAvailability, stationFlow, seasonalFactor };
