@@ -394,6 +394,28 @@ svg.map text{user-select:none;-webkit-user-select:none}
    Not counter-scaled: these say how much water crosses the frontier, so they belong
    to the country and grow with it, unlike the markers which stay a constant size on
    screen. */
+/* --- find your own water ------------------------------------------------- */
+.mapsearch{position:relative;margin-top:9px;max-width:460px}
+.mapsearch input{width:100%;font:inherit;font-size:13px;padding:8px 12px;
+  border:1px solid var(--line);border-radius:99px;background:#fff;color:var(--ink)}
+.mapsearch input:focus{outline:2px solid var(--flow);outline-offset:1px}
+.mapsearch ul{position:absolute;z-index:50;left:0;right:0;top:calc(100% + 4px);margin:0;
+  padding:4px;list-style:none;background:#fff;border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 6px 24px rgba(10,44,55,.14);max-height:320px;overflow:auto}
+.mapsearch li{padding:7px 10px;border-radius:8px;cursor:pointer;font-size:13px;
+  display:flex;gap:8px;align-items:baseline}
+.mapsearch li:hover,.mapsearch li[aria-selected="true"]{background:var(--sunk)}
+.mapsearch li b{font-weight:600;color:var(--ink)}
+.mapsearch li .kind{margin-left:auto;font-size:11px;color:var(--ink-faint);white-space:nowrap}
+.mapsearch .none{color:var(--ink-faint);cursor:default}
+.visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+  overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+/* What the search flew to, so the eye lands on it rather than on the middle of the map. */
+.foundline{fill:none;stroke:var(--ember);stroke-width:calc(2.2px * var(--mk,1));
+  stroke-linecap:round;pointer-events:none;animation:foundpulse 2s ease-out 3}
+@keyframes foundpulse{0%,100%{opacity:.35}50%{opacity:1}}
+@media (prefers-reduced-motion: reduce){ .foundline{animation:none;opacity:.9} }
+
 .bf{pointer-events:none}
 .bf.shaft{fill:none;stroke-linecap:round;opacity:.30}
 .bf.streak{fill:none;stroke-linecap:round;opacity:.85;
@@ -1038,6 +1060,13 @@ footer a{color:var(--ink-soft)}
     <div class="hint">A sodrás sebessége a tényleges vízhozamot követi.
       <b>Kattints</b> egy szelvényre vagy erőműre a részletekért, <b>görgess</b> vagy húzd a térképet a nagyításhoz.
       A jelmagyarázat a térkép alatt van.</div>
+    <div class="mapsearch">
+      <label class="visually-hidden" for="q">Keresés a térképen</label>
+      <input id="q" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Keresd meg a saját patakodat, folyódat, településed telepét…"
+             role="combobox" aria-expanded="false" aria-controls="qres" aria-autocomplete="list">
+      <ul id="qres" role="listbox" hidden></ul>
+    </div>
   </div>
   <!-- role="group", not role="img". An image is announced as one opaque thing and its
        children are hidden, which would have made the focusable markers inside it silent.
@@ -1074,6 +1103,10 @@ footer a{color:var(--ink-soft)}
     <g id="layer-borderflow"></g>
     <g id="layer-plants"></g>
     <g id="layer-nodes"></g>
+    <!-- Whatever the search flew to, so the eye lands on it rather than on the middle
+         of a map that just moved. Cleared after a few seconds - it is a pointer, not an
+         annotation. -->
+    <g id="layer-found"></g>
   </svg>
   <div class="mapctl" role="group" aria-label="Térkép nagyítása">
     <button type="button" id="map-zoom-in" aria-label="Nagyítás">+</button>
@@ -3588,6 +3621,175 @@ function drawRainNodes(){
   }
 }
 
+/* --- find your own water -------------------------------------------------- */
+
+/**
+ * Accent-folded, lower-cased, for matching only.
+ *
+ * Hungarian names in a search box that insists on diacritics are unusable: someone
+ * typing "raba" on a phone means the Rába, and the site knows that perfectly well.
+ * Normalising both sides means neither has to care.
+ */
+const fold = (t) => (t || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/**
+ * Everything on the page that has a name and a place, as one list.
+ *
+ * Rebuilt on each search rather than cached, because the four sources arrive at different
+ * times - the gauges with the first poll, the works with the section, the watercourses
+ * only if someone asks - and a cache would freeze whichever subset happened to exist when
+ * the reader first typed.
+ */
+function searchIndex(){
+  const out = [];
+  /* `rank` orders equally-good name matches by how likely the reader meant that one.
+
+     Sorting by name length instead - the obvious choice - put a 2.4 km ditch called
+     "Rákosi" above the 44.6 km Rákos-patak that runs through Budapest, because the ditch
+     has a shorter name. Nobody typing "rakos" means the ditch. */
+  for(const st of stations || []) if(st.location)
+    out.push({ name: st.name, kind: 'vízmérce', rank: 900, at: [st.location.lon, st.location.lat],
+               go: () => showStation(st.id) });
+  for(const l of lakes || []) if(l.location || (l.surface && l.lat))
+    out.push({ name: l.name, kind: 'tó', rank: 950,
+               at: [l.lon ?? (l.location||{}).lon, l.lat ?? (l.location||{}).lat] });
+  for(const p of (sewage && sewage.plants) || [])
+    out.push({ name: p.name, kind: 'szennyvíztelep', at: [p.lon, p.lat],
+               rank: Math.min(500, (p.capacityPe || 0) / 1500),
+               note: `${fmt(p.capacityPe,0)} LE` });
+  for(const f of (waters && waters.features) || [])
+    if(f.n) out.push({ name: f.n, kind: f.km >= 25 ? 'folyó' : 'vízfolyás', pts: f.p, rank: f.km,
+                       note: `${fmt(f.km,1)} km${f.b ? ' → ' + f.b : ''}` });
+  return out;
+}
+
+/** Best matches: a name that starts with the query beats one that merely contains it. */
+function searchFor(q){
+  const needle = fold(q).trim();
+  if(needle.length < 2) return [];
+  const starts = [], has = [];
+  for(const item of searchIndex()){
+    const n = fold(item.name);
+    if(n.startsWith(needle)) starts.push(item);
+    else if(n.includes(needle)) has.push(item);
+    if(starts.length > 40) break;
+  }
+  // An exact name wins outright; otherwise the more significant thing of that name.
+  const order = (a,b) => {
+    const ea = fold(a.name) === needle, eb = fold(b.name) === needle;
+    if(ea !== eb) return ea ? -1 : 1;
+    return (b.rank || 0) - (a.rank || 0);
+  };
+  return [...starts.sort(order), ...has.sort(order)].slice(0, 12);
+}
+
+/**
+ * Move the map so a thing fills a comfortable part of the view, and mark it.
+ *
+ * A point gets a fixed close zoom; a line gets whatever zoom makes its bounding box fit
+ * with room around it. The cap matters: a two-point creek would otherwise ask for zoom 40
+ * and land the reader in an empty white square.
+ */
+function flyTo(item){
+  const pts = item.pts || (item.at ? [item.at] : null);
+  if(!pts || !pts.length) return;
+  let x0=Infinity, y0=Infinity, x1=-Infinity, y1=-Infinity;
+  for(const p of pts){
+    const [x,y] = px(p[0], p[1]);
+    if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+  }
+  const w = Math.max(x1-x0, 4), h = Math.max(y1-y0, 4);
+  zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, item.pts ? Math.min(W/(w*1.6), H/(h*1.6)) : 5));
+  panX = (x0+x1)/2; panY = (y0+y1)/2;
+  applyView();
+
+  const layer = $('layer-found');
+  if(layer){
+    layer.textContent = '';
+    if(item.pts && item.pts.length > 1){
+      layer.appendChild(svgEl('path',{ d: path(item.pts), class:'foundline' }));
+    } else {
+      const [cx,cy] = px(pts[0][0], pts[0][1]);
+      layer.appendChild(svgEl('circle',{ class:'foundline', cx:cx.toFixed(1), cy:cy.toFixed(1),
+        r:(9/zoom).toFixed(1) }));
+    }
+    // The mark is a pointer, not a permanent annotation: it fades once it has done its
+    // job, so the next search is not competing with the last one.
+    setTimeout(() => { if(layer) layer.textContent = ''; }, 6500);
+  }
+  if(item.go) item.go();
+}
+
+function wireSearch(){
+  const box = $('q'), list = $('qres');
+  if(!box || !list) return;
+  let items = [], cursor = -1;
+
+  const close = () => { list.hidden = true; box.setAttribute('aria-expanded','false'); cursor = -1; };
+  const draw = () => {
+    if(!items.length){
+      // "No results" while the 4.7 MB of watercourses is still in flight is a lie: the
+      // Rákos-patak is in that file and the reader typed its name. Say which it is.
+      list.innerHTML = watersLoading || !waters
+        ? '<li class="none">A vízfolyások még töltődnek…</li>'
+        : '<li class="none">Nincs ilyen nevű víz, mérce vagy telep.</li>';
+    } else {
+      list.innerHTML = items.map((it,i) =>
+        `<li role="option" data-i="${i}" aria-selected="${i===cursor}">`+
+        `<b>${it.name}</b><span class="kind">${it.note ? it.note+' · ' : ''}${it.kind}</span></li>`).join('');
+    }
+    list.hidden = false;
+    box.setAttribute('aria-expanded','true');
+  };
+
+  let timer = null;
+  box.addEventListener('input', () => {
+    clearTimeout(timer);
+    // Typing is the signal that the reader wants the watercourses; 4.7 MB on page load
+    // for a box they may never touch is the wrong trade. When it lands, the query is run
+    // again - without this the reader keeps staring at the answer from before the data
+    // existed, and every stream in the country looks absent.
+    if(box.value.trim().length >= 2 && !waters && !watersLoading){
+      loadWaters().then(() => {
+        if(box.value.trim().length >= 2 && document.activeElement === box){
+          items = searchFor(box.value);
+          draw();
+        }
+      });
+    }
+    timer = setTimeout(() => {
+      items = searchFor(box.value);
+      if(box.value.trim().length < 2) close(); else draw();
+    }, 120);
+  });
+
+  list.addEventListener('click', (e) => {
+    const li = e.target.closest('li[data-i]');
+    if(!li) return;
+    flyTo(items[Number(li.dataset.i)]);
+    close();
+  });
+
+  box.addEventListener('keydown', (e) => {
+    if(list.hidden || !items.length) return;
+    if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      e.preventDefault();
+      cursor = (cursor + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+      draw();
+      const sel = list.querySelector('[aria-selected="true"]');
+      if(sel) sel.scrollIntoView({ block:'nearest' });
+    } else if(e.key === 'Enter'){
+      e.preventDefault();
+      flyTo(items[cursor >= 0 ? cursor : 0]);
+      close();
+    } else if(e.key === 'Escape'){ close(); }
+  });
+
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest('.mapsearch')) close();
+  });
+}
+
 /* --- every watercourse ---------------------------------------------------- */
 
 /**
@@ -5123,6 +5325,7 @@ function tick(){
     box.checked = dmOn[key];
     box.addEventListener('change', (e) => { dmOn[key] = e.target.checked; drawDroughtMap(); });
   }
+  wireSearch();
   $('waters-layer').addEventListener('change', (e) => {
     showWaters = e.target.checked;
     Promise.resolve(showWaters ? loadWaters() : null).then(drawWaters);
