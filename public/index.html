@@ -474,7 +474,10 @@ svg.map text{user-select:none;-webkit-user-select:none}
 /* Taller than it was: once the chart has to contain both the last two days and where a
    normal year would sit, 64 px squeezed the whole gap - which is the point of it - into
    a couple of pixels. */
-.spark{width:100%;height:118px;display:block}
+/* overflow:visible so the norm labels can sit just outside the plotting box; it was a
+   second .spark rule seventy lines further down, which is the pattern that has caused
+   six wrong-looking-but-not-broken bugs in this file. */
+.spark{width:100%;height:118px;display:block;overflow:visible}
 .spark path{fill:none;stroke:var(--flow);stroke-width:1.6}
 .spark .area{fill:url(#sparkfill);stroke:none}
 .spark .out{stroke:var(--silt)}
@@ -489,7 +492,6 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .spark .norm-label{font-family:var(--sans);font-size:9px;stroke:none;opacity:.9}
 .spark .norm-label.norm-in{fill:var(--flow)}
 .spark .norm-label.norm-out{fill:var(--silt)}
-.spark{overflow:visible}
 
 /* --- generation mix --- */
 .mixbar{display:flex;height:26px;border-radius:7px;overflow:hidden;background:var(--sunk)}
@@ -1114,6 +1116,11 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
+<section class="card" id="s-mennyi" style="margin-bottom:18px">
+  <h3>Mire elég ennyi víz?</h3>
+  <div id="scale" class="scale"></div>
+</section>
+
 <section class="card" id="s-vizallas" style="margin-bottom:18px">
   <h3>Vízállás — hol tart a folyó a saját történetéhez képest</h3>
   <div id="levels" class="levels"></div>
@@ -1344,6 +1351,12 @@ footer a{color:var(--ink-soft)}
   <div id="sw-body"></div>
 </section>
 
+<section class="card" id="s-aram" style="margin-bottom:18px">
+  <h3>Honnan jön az áram most</h3>
+  <div id="mix" class="mixbar"></div>
+  <div id="mixlegend" class="mixlegend"></div>
+</section>
+
 <section class="card" id="s-eromuvek" style="margin-bottom:18px">
   <h3>Erőművek és hűtővizük</h3>
   <div id="plantlist" class="bars"></div>
@@ -1487,17 +1500,8 @@ footer a{color:var(--ink-soft)}
 
 
 
-<section class="card" style="margin-bottom:18px">
-  <h3>Mire elég ennyi víz?</h3>
-  <div id="scale" class="scale"></div>
-</section>
 
 
-<section class="card" style="margin-bottom:18px">
-  <h3>Honnan jön az áram most</h3>
-  <div id="mix" class="mixbar"></div>
-  <div id="mixlegend" class="mixlegend"></div>
-</section>
 
 
 <div class="note-block" id="explainer"></div>
@@ -3256,6 +3260,9 @@ async function loadDrought(){
   try{
     const data = await fetch('/api/v1/drought',{cache:'no-store'}).then(r=>r.json());
     renderDrought(data);
+    // The same payload drives the 687 dots on the drought map.
+    droughtData = data;
+    drawDroughtMap();
   }catch(err){
     $('dr-head').innerHTML = '';
     $('dr-regions').innerHTML = '';
@@ -3695,16 +3702,12 @@ function drawDroughtMap(){
  * beside the Tisza is at the surface - so a national colour scale over raw depth would
  * be a map of geology, not of drought.
  */
-let droughtData = null, droughtLoading = false;
-
-function loadDrought(){
-  if(droughtData || droughtLoading) return Promise.resolve(droughtData);
-  droughtLoading = true;
-  return fetch('/api/v1/drought', { cache:'no-store' })
-    .then(r => r.ok ? r.json() : null)
-    .then(j => { droughtData = j; droughtLoading = false; drawDroughtMap(); return j; })
-    .catch(() => { droughtLoading = false; return null; });
-}
+// Filled in by loadDrought(), which is defined further up and fetches this section's
+// data anyway. There is deliberately no second loader here: declaring one shadowed the
+// original - same name, later declaration wins - and the drought SECTION silently
+// stopped rendering while the map it fed worked perfectly. Two functions with one name
+// is the seventh collision of this kind in this file.
+let droughtData = null;
 
 
 /* --- wastewater treatment works ------------------------------------------- */
@@ -4842,9 +4845,8 @@ async function refresh(){
     // until the reader asks for them. The register is 180 KB and the section is the
     // point - the map layer is the illustration.
     loadSewage();
-    // Both feed the drought map; neither is behind a toggle any more.
+    // loadDrought() is called on its own further down and now feeds the map as well.
     loadVizhiany();
-    loadDrought();
     if(ev){ renderRegions(ev.regions); renderFeed(ev); renderArrivals(ev.arrivals); }
 
     $('synthetic').classList.toggle('hidden', !(s._meta && s._meta.synthetic));
