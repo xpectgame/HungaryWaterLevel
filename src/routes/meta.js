@@ -120,6 +120,23 @@ module.exports = function metaRoutes(ctx) {
           use: 'Long-term annual balance (~110-120 km3/a inflow) used to calibrate the ungauged inflow term.',
           status: 'used as a constant, not fetched live',
         },
+        {
+          name: 'geoportal.vizugy.hu Honlap/Vizikozmu/MapServer/0',
+          use: 'The 732 municipal wastewater treatment works behind /szennyviz: design capacity in population equivalent, arriving organic load, annual volume, receiving watercourse.',
+          status: 'baked into src/config/sewage.json; the register is not a live feed',
+        },
+        {
+          name: 'geoportal.vizugy.hu VGT_1/02_00/MapServer/1',
+          use: 'The 424 industrial and other non-municipal discharge points behind /ipari: location, sector, receiving water body.',
+          status: 'baked into src/config/industry.json',
+          // Spelled out here rather than left to be discovered from empty fields: these
+          // are the four things this layer is asked for and does not contain, and the
+          // fifth is that it is fifteen years old.
+          limitation:
+            'No volume, no pollutant load, no permit limit and no operator on any row - the register records where and from which sector, nothing more. ' +
+            'Surveyed for the first river basin management plan, around 2009, so anything built since is absent. ' +
+            'Whether a discharge goes to surface water or to groundwater is derived here from the receiving body code, not read from a field.',
+        },
       ],
       attribution:
         'Hydrological data: Országos Vízügyi Főigazgatóság (OVF). Electricity system data: MAVIR Zrt. This API is an independent derived product and is not endorsed by either organisation.',

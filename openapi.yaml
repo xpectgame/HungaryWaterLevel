@@ -306,6 +306,55 @@ paths:
         "200": { description: National totals, works and receiving waters }
         "503": { description: The register has not been baked into this deployment }
 
+  /ipari:
+    get:
+      tags: [hydrology]
+      summary: Industrial and other non-municipal discharge points
+      description: |
+        424 points from the first river basin management plan's survey
+        (geoportal.vizugy.hu VGT_1/02_00 layer 1), where water used by industry - or by
+        a spa, a fish farm, a mine or a power station - re-enters the water network.
+        The other half of the discharge picture from /szennyviz, and a much smaller
+        payload, because there is far less in it.
+
+        WHAT IT DOES NOT HAVE, announced in the response as `hasVolume`, `hasLoad` and
+        `hasOperator`, all false. No volume on any row, no pollutant load, no permit
+        limit, and no company name anywhere - the register records the location, the
+        receiving body and the sector, and stops. So there is no ratio to a river's
+        current flow here as there is on /szennyviz, and no national total: adding these
+        to the municipal figure would produce a sum whose industrial half is zero.
+
+        `vintage` is the first field after the source for a reason. The survey is from
+        around 2009 and there is no newer public equivalent with per-outfall geometry,
+        so anything built since - which includes every plant people ask about - is
+        absent. It is carried in the payload so a consumer cannot render the numbers
+        without being able to date them.
+
+        `target` splits the points into `felszíni` (312, into a watercourse or lake) and
+        `felszín alatti` (112, into the ground). That distinction is DERIVED, not read:
+        the layer has no such flag, and the classification comes from the receiving
+        body's own code - `sp.2.4.1` is a shallow porous groundwater body, not a stream.
+        `waterName` is null for those, because a groundwater body code is not a place.
+
+        `byReceivingWater` groups the surface ones by water body and names the sector
+        with the most outfalls on each. Matched on the full water BODY name the register
+        uses - "Duna Szob-Baja között", not "Duna" - because the Danube is six separate
+        bodies here with different outfalls on them.
+      parameters:
+        - name: limit
+          in: query
+          description: Return only the first N outfalls. Omit for all 424.
+          schema: { type: integer, minimum: 1 }
+        - name: sector
+          in: query
+          description: >
+            Filter to one sector, spelled as the register spells it, e.g.
+            "Termálvíz, fürdővíz" or "Élelmiszeripar". Case-insensitive.
+          schema: { type: string }
+      responses:
+        "200": { description: Sector counts, receiving waters and the outfalls }
+        "503": { description: The register has not been baked into this deployment }
+
   /events:
     get:
       tags: [hydrology]

@@ -36,6 +36,7 @@ ki valósként. Az éles bekötéshez lásd: [Éles üzem előtt](#éles-üzem-e
 | `GET /api/v1/rainfall/:id` | Egy csapadékmérő napi bontásban |
 | `GET /api/v1/vizhiany` | **Elrendelt vízhiány-fokozat** 85 körzetre — a hatóság saját kihirdetése |
 | `GET /api/v1/szennyviz` | 732 szennyvíztisztító telep — kapacitás, kibocsátás, befogadó vízfolyás |
+| `GET /api/v1/ipari` | 424 ipari és egyéb bevezetés ágazatonként — hely és befogadó, **mennyiség nélkül** |
 | `GET /api/v1/events` | Miből mi következik + **`arrivals`**: mi van úton a folyón lefelé |
 | `GET /api/v1/geojson` | Térképkész FeatureCollection |
 | `GET /api/v1/meta/sources` | Adatforrások, licenc, **ismert korlátok** |
@@ -252,6 +253,8 @@ megismétli.
 | ~~**Talajvíz**~~ | **Ez a sor tévedés volt, és megdőlt.** `AdatFajtaKod 69` valóban 0 találatot ad az 524 rétegvízkútra — de azért, mert *rossz hálózatot kérdeztünk*. A talajvíz a `vmoType 12` hálózaton van, **2030 állomással**, és most 770-ből épül az aszályszekció. A tanulság megmaradt a kódban: egy negatív eredmény csak arra a kérdésre vonatkozik, amit ténylegesen feltettünk. |
 | **Rétegvíz** | `AdatFajtaKod 70` működik, de 131 kút adott bármit 60 napra, és mindössze **12 jelentett egy héten belül** — abból 10 egyetlen igazgatóság területén. Ez nem országos kép. Ráadásul a rétegvíz a mély, zárt vízadó nyomásszintje: **nem azonos a talajvízzel**, és annak nevezni a legfélrevezetőbb dolog lenne, amit ez a projekt tehet. |
 | **Belvíz** | Nincs rá mérőkód. A belvizet elöntött területként (hektár) jelentik, nem idősorként. |
+| **Árvíz- és belvízkockázat (AKK)** | A geoportál `AKK` mappájában 42 szolgáltatás van elöntési, védett területi és kockázati térképekkel. **Mind a 24 MapServer üres réteglistával válaszol**: érvényes JSON, `maxRecordCount`, hibaüzenet nélkül — és nulla lekérdezhető réteg. Ezek térképképként vannak publikálva, nem adatként; nincs mit lekérni belőlük. (A többi `ImageServer`, ami raszter.) |
+| **Cégnév bármelyik bevezetésnél** | Nincs. Sem a szennyvíz-, sem az ipari nyilvántartás nem rögzít üzemeltetőt: a sor a helyet, a befogadó víztestet és — az ipari lapon — az ágazatot tartalmazza. Ezért nem szerepel az oldalon egyetlen akkumulátorgyár sem néven; ami odaírható volna, az becslés lenne, nem adat. |
 
 Előrejelzés helyett két dolog szerepel az oldalon, mert ez a kettő **őszintén állítható**.
 
