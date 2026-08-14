@@ -34,6 +34,7 @@ ki valósként. Az éles bekötéshez lásd: [Éles üzem előtt](#éles-üzem-e
 | `GET /api/v1/lakes` | Balaton, Velencei-tó, Fertő — vízszint a saját rekordtartományában |
 | `GET /api/v1/rainfall` | Csapadék 47 állomáson, mindegyik a **saját sokéves átlagához** mérve |
 | `GET /api/v1/rainfall/:id` | Egy csapadékmérő napi bontásban |
+| `GET /api/v1/szennyviz` | 732 szennyvíztisztító telep — kapacitás, kibocsátás, befogadó vízfolyás |
 | `GET /api/v1/events` | Miből mi következik + **`arrivals`**: mi van úton a folyón lefelé |
 | `GET /api/v1/geojson` | Térképkész FeatureCollection |
 | `GET /api/v1/meta/sources` | Adatforrások, licenc, **ismert korlátok** |
@@ -247,15 +248,24 @@ megismétli.
 | Amit szeretnénk | Mit ad a szolgáltatás |
 |---|---|
 | **Előrejelzés** | `AdatTipusKod 5` („előrejelzett") **HTTP 500** minden állomásra, vízállásra és vízhozamra is, egyesével kérve is. A 6 („számított") és 15 („becsült") üres. Nincs mit lekérni. |
-| **Talajvíz** | `AdatFajtaKod 69` **0 találat az 524 közzétett kútból** 60 napra visszamenőleg, minden adattípussal. A sekély talajvízszint ezen az API-n nem jelenik meg. |
+| ~~**Talajvíz**~~ | **Ez a sor tévedés volt, és megdőlt.** `AdatFajtaKod 69` valóban 0 találatot ad az 524 rétegvízkútra — de azért, mert *rossz hálózatot kérdeztünk*. A talajvíz a `vmoType 12` hálózaton van, **2030 állomással**, és most 770-ből épül az aszályszekció. A tanulság megmaradt a kódban: egy negatív eredmény csak arra a kérdésre vonatkozik, amit ténylegesen feltettünk. |
 | **Rétegvíz** | `AdatFajtaKod 70` működik, de 131 kút adott bármit 60 napra, és mindössze **12 jelentett egy héten belül** — abból 10 egyetlen igazgatóság területén. Ez nem országos kép. Ráadásul a rétegvíz a mély, zárt vízadó nyomásszintje: **nem azonos a talajvízzel**, és annak nevezni a legfélrevezetőbb dolog lenne, amit ez a projekt tehet. |
 | **Belvíz** | Nincs rá mérőkód. A belvizet elöntött területként (hektár) jelentik, nem idősorként. |
 
-Előrejelzés helyett az szerepel az oldalon, ami **őszintén állítható**: hol tart most a víz.
+Előrejelzés helyett két dolog szerepel az oldalon, mert ez a kettő **őszintén állítható**.
+
+Az egyik: hol tart most a víz.
 Ami ma elhalad Komárom alatt, az holnap ér Budapestre — ez nem modell, hanem ugyanaz a víz és
 a szakasz futásideje. A futásidő a folyamkilométer-távolságból és a folyóra jellemző
 hullámsebességből **származtatott**, nem kézzel beírt: egy elgépelt óraszám, ami nem stimmel a
 két mérce távolságával, olyan hiba, amit soha senki nem venne észre.
+
+A másik: mi következett eddig ugyaninnen. Tíz év hónaponkénti mediánjából az év alakja
+(mikor van a mélypont, mikortól emelkedik), és névvel azok az évek, amelyek ugyanilyen
+alacsonyan indultak — mikor tértek vissza a szokásos sávba. Sosem átlagolva. „Visszatért"
+azt jelenti, hogy a szint a sáv alja **és** a kiindulási érték fölé került; a második
+feltétel nélkül egy süllyedő tó „gyógyulást" jelentene, mert a tíz évből számolt mérce
+maga is lesüllyed egy aszálysorozatban.
 
 ---
 

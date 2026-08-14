@@ -1257,6 +1257,33 @@ footer a{color:var(--ink-soft)}
       hanem döntések, és a védmű átépítésekor változnak. Ahol a szolgálat nem tesz közzé
       ilyen szintet (például Rajkánál), ott mi sem találunk ki egyet.</p></details>
 
+    <details><summary>Miért nincs előrejelzés, és mi van helyette?</summary>
+      <p>Mert nincs miből. A vízügyi szolgálat gépi felületén előrejelzés nem érhető el —
+      a kérésre HTTP 500 a válasz —, ez az oldal pedig nem olvas időjárási modellt.
+      Egy tó feltöltődése szinte teljes egészében a még le nem hullott csapadékon múlik,
+      úgyhogy bármi, ami itt előrejelzésnek látszana, kitalált szám volna.</p>
+      <p>Helyette két dolog van, ebben a sorrendben: <b>az év alakja</b> tíz év
+      hónaponkénti mediánjából — ez a robusztus fele, egy tó éves ciklusa valóban ismétlődő
+      dolog —, és <b>az analóg évek</b> névvel: mely évek indultak innen, és mikor tértek
+      vissza a szokásos sávba. Sosem átlagolva; hogy az évek nem értenek egyet, az maga a
+      bizonytalanság, megmutatva és nem elsimítva.</p>
+      <p>„Visszatért” azt jelenti, hogy a szint egyszerre került a szokásos sáv (a hónap
+      alsó negyede) fölé <em>és</em> a kiindulási érték fölé. A második feltétel nem
+      felesleges: a sávot tíz évből számoljuk, amiben benne vannak az aszályos évek is,
+      úgyhogy száraz évek sorozatában maga a mérce süllyed le. A Velencei-tó 2021
+      augusztusában 80 cm-ről 74-re <em>esett</em>, és ezzel átlépte a szeptemberi alsó
+      negyed határát — nem a tó tért magához, hanem a mérce jött le hozzá.</p></details>
+
+    <details><summary>Honnan jön a szennyvíz és a 15 566 vízfolyás?</summary>
+      <p>Mindkettő a vízügy saját térképszolgálatából (geoportal.vizugy.hu). A telepek a
+      <em>Vizikozmu</em> rétegből jönnek, kapacitással lakosegyenértékben és a beérkező
+      szennyvíz éves köbméterével; a vízfolyások a <em>Vizitura</em> rétegekből, névvel és
+      azzal, hogy mibe folynak. Az OpenStreetMap-ben 662 objektum van
+      <code>wastewater_plant</code> néven, és egyiken sincs kapacitás — ezért nem onnan van.</p>
+      <p>Az éves köbmétert elosztjuk az év másodperceivel, hogy összehasonlítható legyen egy
+      folyó vízhozamával. Ez az egyetlen átváltás. A lakosegyenértéket <b>nem</b> váltjuk át
+      vízmennyiséggé: az egy feltételezés a napi fejenkénti literről.</p></details>
+
     <details><summary>Miért nem vonjuk ki a hűtővizet?</summary>
       <p>Mert az erőmű nem fogyasztja el: a kivett víz több mint 99%-a visszakerül a folyóba,
       pár fokkal melegebben. Ténylegesen csak az elpárolgó rész hiányzik, ami nagyságrenddel kisebb.
@@ -1266,8 +1293,10 @@ footer a{color:var(--ink-soft)}
 
 <footer>
   Adatforrás: <a href="https://data.vizugy.hu" rel="noopener">OVF / data.vizugy.hu</a> vízrajzi adatok,
-  negyedóránként frissítve. Az energiaipari hűtővíz becslés, a modell és a bizonytalanság
-  a <a href="/api/v1/snapshot">/api/v1/snapshot</a> válaszban végig követhető.
+  negyedóránként frissítve. A szennyvíztisztító telepek és az ország vízfolyásai a
+  <a href="https://geoportal.vizugy.hu" rel="noopener">vízügyi geoportálról</a>, a
+  villamosenergia-termelés az ENTSO-E átláthatósági platformjáról. Az energiaipari hűtővíz becslés,
+  a modell és a bizonytalanság a <a href="/api/v1/snapshot">/api/v1/snapshot</a> válaszban végig követhető.
   <br><br>
   A vízhozam nem közvetlenül mért érték: vízállásból származik egy vízhozamgörbén keresztül,
   ami jó folyón is 5–10% hibát hordoz. Ezért van minden számnak hibasávja, és ezért nem jelentünk

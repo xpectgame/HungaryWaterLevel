@@ -46,7 +46,7 @@ paths:
     get:
       tags: [meta]
       summary: Service health and data freshness
-      description: Returns 503 with `status: degraded` when the newest reading is older than the configured limit.
+      description: "Returns 503 with `status: degraded` when the newest reading is older than the configured limit."
       responses:
         "200": { description: Healthy, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
         "503": { description: Data is stale, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
@@ -235,6 +235,45 @@ paths:
       responses:
         "200": { description: Gauge with daily totals }
         "404": { description: Unknown gauge, or it did not report in the window }
+
+  /szennyviz:
+    get:
+      tags: [hydrology]
+      summary: Wastewater treatment works, their capacity and where they discharge
+      description: |
+        732 works from the water directorate's utilities register
+        (geoportal.vizugy.hu Honlap/Vizikozmu layer 0), with design capacity in
+        population equivalent, the organic load actually arriving, and the annual
+        volume of sewage in cubic metres. 13.9 million LE and 347 million m3 a year,
+        which is about 11 m3/s returning to the country's rivers.
+
+        Three limits are in the payload rather than left to be inferred.
+
+        `volumeCapacityShare` says the volume total covers 79% of installed capacity:
+        17 works report no volume and they include all three in Budapest, so the m3/s
+        figure is an underestimate. `volumeMissingLargest` names the biggest omissions.
+
+        `receivingWaterCount` says only 133 works name the watercourse they discharge
+        into. The rest carry `receivingWater: null` and are NOT assigned to the nearest
+        line in the hydrography - a plant attached to the wrong stream would make that
+        stream's total wrong in the one direction nobody would think to check.
+
+        `byReceivingWater` groups the named ones and, where this project gauges that
+        watercourse, adds the live flow and the resulting `shareOfFlow`. The gauge is
+        the river's OUTFLOW section, not whichever matched first: the Tisza has eight
+        works on it and five gauges, and comparing against the inflow at the Ukrainian
+        border is a ratio taken upstream of every one of the discharges.
+
+        Nothing here converts population equivalent into a volume. That conversion is an
+        assumption about litres per person per day, not a measurement.
+      parameters:
+        - name: limit
+          in: query
+          description: Return only the largest N works. Omit for all 732.
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200": { description: National totals, works and receiving waters }
+        "503": { description: The register has not been baked into this deployment }
 
   /events:
     get:
