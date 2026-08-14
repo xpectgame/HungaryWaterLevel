@@ -2571,6 +2571,75 @@ async function probeDroughtIndex(args = []) {
 }
 
 /**
+ * Everything the water directorate's geoportal publishes.
+ *
+ * The drought hunt turned up geoportal.vizugy.hu/arcgis/rest/services and only looked
+ * inside one folder. An ArcGIS root enumerates itself - folders and services, with their
+ * layers - so one request says what else is there, and three open questions all depend on
+ * the answer:
+ *
+ *   - WATERCOURSES. The map draws rivers from Natural Earth at 10m, which is a world
+ *     dataset: it knows the Danube and the Tisza and almost nothing else. Every creek in
+ *     the country is a national hydrography layer, and this is where one would live.
+ *   - WASTEWATER. Where treated effluent enters a river is a fact about that river that
+ *     this site cannot currently show at all.
+ *   - Anything else published for machines rather than for a map viewer.
+ *
+ * Read-only enumeration of a public catalogue, which is what the endpoint is for.
+ */
+async function probeGeoportal(args = []) {
+  console.log('\n########## geoportal.vizugy.hu catalogue ##########');
+  const ROOT = 'https://geoportal.vizugy.hu/arcgis/rest/services';
+
+  const root = await fetchJson(`${ROOT}?f=json`, { timeoutMs: 30000 });
+  const folders = root.folders || [];
+  console.log(`ArcGIS ${root.currentVersion}, ${folders.length} folder(s), ${(root.services || []).length} service(s) at the root`);
+  console.log(`folders: ${folders.join(', ')}`);
+
+  const catalogue = { root: { folders, services: root.services || [] }, folders: {} };
+  const INTEREST = /(viz|víz|foly|patak|csatorna|szennyviz|szennyvíz|hidro|hydro|vkj|vgt|meder|tavak|to_|allomas|állomás)/i;
+
+  for (const folder of folders) {
+    try {
+      const body = await fetchJson(`${ROOT}/${encodeURIComponent(folder)}?f=json`, { timeoutMs: 30000 });
+      const services = body.services || [];
+      catalogue.folders[folder] = services;
+      console.log(`\n--- ${folder}: ${services.length} service(s) ---`);
+      for (const svc of services) {
+        const flag = INTEREST.test(svc.name) ? ' <--' : '';
+        console.log(`  ${svc.type.padEnd(12)} ${svc.name}${flag}`);
+      }
+    } catch (err) {
+      catalogue.folders[folder] = { error: err.message.split('\n')[0] };
+      console.log(`\n--- ${folder}: FAILED ${err.message.split('\n')[0].slice(0, 60)}`);
+    }
+  }
+
+  // The layers inside the services that look like they carry the country's water.
+  // A MapServer's name is a hint; its layer list is the answer.
+  const wanted = [];
+  for (const [folder, services] of Object.entries(catalogue.folders)) {
+    if (!Array.isArray(services)) continue;
+    for (const svc of services) if (INTEREST.test(svc.name)) wanted.push(svc);
+  }
+  console.log(`\n--- layers inside ${wanted.length} candidate service(s) ---`);
+  catalogue.layers = {};
+  for (const svc of wanted.slice(0, 24)) {
+    try {
+      const body = await fetchJson(`${ROOT}/${svc.name}/${svc.type}?f=json`, { timeoutMs: 30000 });
+      const layers = (body.layers || []).map((l) => ({ id: l.id, name: l.name, type: l.geometryType || l.type }));
+      catalogue.layers[svc.name] = { description: body.serviceDescription || body.description || null, layers };
+      console.log(`  ${svc.name} (${layers.length} layer(s))`);
+      for (const l of layers.slice(0, 12)) console.log(`      ${String(l.id).padStart(3)}  ${l.name}`);
+    } catch (err) {
+      console.log(`  ${svc.name}  FAILED ${err.message.split('\n')[0].slice(0, 60)}`);
+    }
+  }
+
+  emitDocument('geoportal', catalogue, 'src/config/ (whatever turns out to be usable)');
+}
+
+/**
  * Soil moisture, asked of the drought network's own stations.
  *
  * This is the last thing the old caveat named that the site still could not measure. Two
@@ -3106,6 +3175,11 @@ async function main() {
     return;
   }
 
+  if (args.includes('--geoportal')) {
+    await probeGeoportal(args);
+    return;
+  }
+
   if (args.includes('--drought-soil')) {
     await probeDroughtSoil(args);
     return;
@@ -3219,7 +3293,7 @@ async function main() {
       '\nActions: --live --vizugy --mavir --discover --portal --thresholds --lakes --datatypes\n' +
       '         --forecast --groundwater --rain --matrix --rain-scan --well-scan --rain-normals\n' +
       '         --flow-history --lake-history --well-history --drought --drought-index\n' +
-      '         --drought-soil\n' +
+      '         --drought-soil --geoportal\n' +
       '         --unit-history\n' +
       '         --operations\n' +
       '         --mavir-charts\n' +
