@@ -3023,7 +3023,10 @@ async function probeLayer(args = []) {
     console.log(`\n=== ${url}`);
     try {
       const meta = await fetchJson(`${url}?f=json`, REQ);
-      record.name = meta.name;
+      // A layer calls it `name`, a whole service calls it `mapName`. Reading only the
+      // first prints "name: undefined" for every service and makes a live endpoint look
+      // like a broken one.
+      record.name = meta.name || meta.mapName || meta.serviceDescription || null;
       record.geometryType = meta.geometryType || null;
       record.maxRecordCount = meta.maxRecordCount || null;
       record.fields = (meta.fields || []).map((f) => ({
@@ -3035,6 +3038,19 @@ async function probeLayer(args = []) {
       // layer, and without printing it a service whose sublayers are the point looks
       // like an empty layer with no fields - which is exactly how the AKK flood services
       // read on three separate attempts.
+      // Reported even when it is zero, and this is the whole point. Every one of the 24
+      // AKK flood services answers normally - correct JSON, a maxRecordCount, no error -
+      // and publishes an EMPTY layer list. Printing nothing for that is indistinguishable
+      // from printing nothing for a plain feature layer, which is why three attempts at
+      // the flood data read as "the probe did not work" rather than as the finding it is:
+      // those services are published as map images, and there are no features to fetch.
+      if (Array.isArray(meta.layers)) {
+        record.layerCount = meta.layers.length;
+        if (!meta.layers.length) {
+          console.log('  0 sublayers - the service publishes no queryable layers ' +
+            '(map images only; nothing here can be fetched as data)');
+        }
+      }
       if (Array.isArray(meta.layers) && meta.layers.length) {
         record.layers = meta.layers.map((l) => ({
           id: l.id, name: l.name, type: l.geometryType || l.type,
