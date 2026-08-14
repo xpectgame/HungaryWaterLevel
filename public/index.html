@@ -238,6 +238,20 @@ svg.map text{user-select:none;-webkit-user-select:none}
    streams: this is 687 measurements drawn where they were taken, and the pattern
    they make is the reader's to see. Small and unstroked, so they read as a field
    of colour rather than as 687 markers competing with the gauges. */
+/* --- declared water-shortage grade ---------------------------------------
+   Low opacity on purpose. Eighty of the eighty-five districts are at the top grade,
+   so at any strength that reads as a warning colour the map becomes a red rectangle
+   and every gauge, plant and stream on it stops being legible. It is a wash saying
+   "this is the condition", not an alarm. */
+.vh{stroke:rgba(255,255,255,.5);stroke-width:calc(.4px * var(--mk,1));pointer-events:none}
+.vh.g-none{fill:none}
+.vh.g-i{fill:rgba(223,165,60,.16)}
+.vh.g-ii{fill:rgba(223,165,60,.26)}
+.vh.g-iii{fill:rgba(207,106,46,.30)}
+.vh.g-extraordinary{fill:rgba(163,52,31,.34)}
+.key.g-ii{background:rgba(223,165,60,.55)}.key.g-iii{background:rgba(207,106,46,.6)}
+.key.g-extraordinary{background:rgba(163,52,31,.7)}
+
 .gwdot{stroke:none;pointer-events:none}
 .key.p-record-low{background:#7a1f10}.key.p-very-low{background:#a3341f}.key.p-low{background:#dfa53c}.key.p-normal{background:#5aa86e}
 .key.p-high{background:#2f7fb5}.key.p-very-high{background:#2b4f9e}
@@ -903,6 +917,7 @@ footer a{color:var(--ink-soft)}
     <a href="#s-csapadek">Csapadék</a>
     <a href="#s-hirek">Mi történik</a>
     <a href="#s-tavak">Tavak</a>
+    <a href="#s-vizhiany">Vízhiány</a>
     <a href="#s-szennyviz">Szennyvíz</a>
     <a href="#s-retegviz">Rétegvíz</a>
     <a href="#s-aszaly">Aszály</a>
@@ -974,6 +989,11 @@ footer a{color:var(--ink-soft)}
     </defs>
     <g id="layer-abroad"></g>
     <g id="layer-country"></g>
+    <!-- ABOVE the country outline, which fills with an opaque gradient - drawn under it
+         the wash was painted over and the layer was invisible. Still below the water and
+         every marker: it is the condition the rest of the picture is happening in, not
+         another thing drawn on top of it. -->
+    <g id="layer-vizhiany"></g>
     <!-- Under the rain and the water: 687 well readings drawn as a field of colour,
          so "where is it dry" is answered by measurements rather than by a model. -->
     <g id="layer-gw"></g>
@@ -1001,6 +1021,11 @@ footer a{color:var(--ink-soft)}
   </div>
   <div class="legend">
     <label class="toggle"><input type="checkbox" id="rain-layer" checked><i class="tri"></i> csapadék az elmúlt 30 napban</label>
+    <label class="toggle"><input type="checkbox" id="vh-layer" checked> elrendelt vízhiány-fokozat</label>
+    <span class="ramp" title="a vízügyi igazgatóság által kihirdetett fokozat, körzetenként">
+      <i class="key g-ii"></i><i class="key g-iii"></i><i class="key g-extraordinary"></i>
+      II. fok → rendkívüli vízhiány
+    </span>
     <label class="toggle"><input type="checkbox" id="gw-layer"> talajvízszint — 687 mért kút</label>
     <span class="ramp" title="mindegyik kút a SAJÁT tízéves augusztusi rekordjához mérve">
       <i class="key p-record-low"></i><i class="key p-very-low"></i><i class="key p-low"></i><i class="key p-normal"></i><i
@@ -1127,6 +1152,17 @@ footer a{color:var(--ink-soft)}
     0,24 millió. Ez becslés, nem mérés — a tó nem henger, a partközeli sávban egy centi
     nagyobb területet fed le, mint amivel itt számolunk.
   </p>
+</section>
+
+<section class="card" id="s-vizhiany" style="margin-bottom:18px">
+  <h3>Elrendelt vízhiány — amit a hatóság mond</h3>
+  <p class="lead" style="margin-bottom:6px">
+    Az oldalon minden más szám a mi számításunk mások méréseiből. <b>Ez nem az.</b> Az
+    ország 85 vízhiány-körzetre van osztva, és mindegyikre a vízügyi igazgatóság hirdet ki
+    fokozatot — ez itt az, amit ténylegesen elrendeltek, a kihirdetés dátumával együtt.
+  </p>
+  <div id="vh-head" class="gw-head"></div>
+  <div id="vh-body"></div>
 </section>
 
 <section class="card" id="s-szennyviz" style="margin-bottom:18px">
@@ -1519,7 +1555,7 @@ function clampPan(){
 }
 
 function applyView({ redraw = true } = {}){
-  if(redraw && geo){ drawBase(); drawNodes(); drawRainNodes(); drawGwField(); drawWaters(); drawSewage(); }
+  if(redraw && geo){ drawBase(); drawNodes(); drawRainNodes(); drawVizhiany(); drawGwField(); drawWaters(); drawSewage(); }
   clampPan();
   const w = W / zoom, h = H / zoom;
   // After the redraw, not before: drawBase re-establishes the projection and can change
@@ -3471,6 +3507,99 @@ function drawWaters(){
   }
 }
 
+/* --- the declared water-shortage grade ------------------------------------ */
+
+/**
+ * The grade the water directorate has DECLARED, district by district.
+ *
+ * Everything else on this map is a measurement with our arithmetic on top - which is
+ * defensible, and is still our arithmetic. This is not. These are the 85 vizhiany
+ * korzetek and the grade each one is legally under, with the date it was declared and
+ * the grade it replaced. When it says most of the country is under an extraordinary
+ * water-shortage declaration, nobody has to take our word for it.
+ *
+ * Two files, on purpose, and in opposite directions: the boundaries are baked because
+ * administrative districts move on a timescale of years, and the grades are fetched live
+ * because a stale declaration is worse than none - it would go on announcing an emergency
+ * after it was lifted, or miss one after it was declared.
+ */
+let vhGeo = null, vhGrades = null, vhLoading = false, showVh = true;
+
+function loadVizhiany(){
+  if(vhLoading) return Promise.resolve();
+  if(vhGeo && vhGrades) return Promise.resolve();
+  vhLoading = true;
+  return Promise.all([
+    vhGeo ? vhGeo : fetch('/vizhiany.json', { cache:'force-cache' }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch('/api/v1/vizhiany', { cache:'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
+  ]).then(([g, v]) => {
+    vhGeo = g; vhGrades = v;
+    vhLoading = false;
+    drawVizhiany();
+    renderVizhiany(v);
+  });
+}
+
+function drawVizhiany(){
+  const layer = $('layer-vizhiany');
+  if(!layer) return;
+  layer.textContent = '';
+  if(!geo || !showVh || !vhGeo || !vhGeo.districts) return;
+
+  // Grade by district id. A district with geometry but no declaration is drawn with no
+  // fill rather than as though it were at grade zero - "nothing on file" and "declared
+  // to be fine" are different statements.
+  const byId = new Map(((vhGrades && vhGrades.districts) || []).map(d => [d.id, d]));
+
+  for(const d of vhGeo.districts){
+    const g = byId.get(d.id);
+    const cls = 'vh g-' + (g && g.grade ? g.grade : 'none');
+    for(const ring of d.rings){
+      let path = '';
+      for(let i=0;i<ring.length;i++){
+        const q = px(ring[i][0], ring[i][1]);
+        path += (i?'L':'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1);
+      }
+      layer.appendChild(svgEl('path', { d: path + ' Z', class: cls }));
+    }
+  }
+}
+
+/** The section: counts and the escalation, never an average of ordinal grades. */
+function renderVizhiany(v){
+  const head = $('vh-head'), body = $('vh-body');
+  if(!head || !body) return;
+  if(!v || !v.available || !v.summary){
+    head.innerHTML = '';
+    body.innerHTML = `<p class="fineprint">A vízhiány-fokozatok most nem érhetők el a vízügyi geoportálról. `+
+      `Ez nem azt jelenti, hogy nincs vízhiány — csak azt, hogy most nem tudjuk lekérdezni.</p>`;
+    return;
+  }
+  const s = v.summary;
+  const stat = (n, unit, lbl, cls='') =>
+    `<div class="gw-stat ${cls}"><div class="n">${n}${unit?`<small> ${unit}</small>`:''}</div><div class="lbl">${lbl}</div></div>`;
+
+  head.innerHTML =
+    stat(fmt(s.atExtraordinary,0), `/ ${fmt(s.total,0)}`, 'körzetben <b>rendkívüli vízhiány</b> van érvényben', s.atExtraordinary > s.total/2 ? 'alarm' : '')+
+    stat(fmt(s.raised,0), 'körzet', 'lépett feljebb a legutóbbi változás óta')+
+    stat(fmt(s.lowered,0), 'körzet', 'került vissza alacsonyabb fokozatba');
+
+  const rows = v.districts.slice(0, 12).map(d =>
+    `<tr><td>${d.name || '–'}</td><td>${d.gradeLabel || '<span style="color:var(--ink-faint)">nincs fokozat</span>'}</td>`+
+    `<td class="num">${d.previousOrder!=null && d.gradeOrder!=null
+      ? (d.gradeOrder>d.previousOrder ? '<b class="strain-far-over">↑</b>' : d.gradeOrder<d.previousOrder ? '<b class="strain-ok">↓</b>' : '–')
+      : '–'}</td>`+
+    `<td class="num">${d.updatedAt ? d.updatedAt.slice(0,10) : '–'}</td></tr>`).join('');
+
+  body.innerHTML =
+    `<div class="tablewrap"><table class="tbl"><thead><tr><th>Vízhiány-körzet</th><th>Fokozat</th>`+
+    `<th class="num">Változás</th><th class="num">Kihirdetve</th></tr></thead><tbody>${rows}</tbody></table></div>`+
+    `<p class="fineprint" style="margin-top:12px">A 85 körzetből a 12 legsúlyosabb. `+
+    `Forrás: vízügyi geoportál, <b>${s.newestUpdate ? s.newestUpdate.slice(0,10) : '–'}</b> a legfrissebb kihirdetés. `+
+    `Ez nem a mi számításunk: ezt a fokozatot a vízügyi igazgatóság rendelte el. `+
+    `A körzetek nem egyforma méretűek, ezért körzetet számolunk, nem az ország területének százalékát.</p>`;
+}
+
 /* --- the water table, as a field ------------------------------------------ */
 
 /**
@@ -4651,6 +4780,7 @@ async function refresh(){
     // until the reader asks for them. The register is 180 KB and the section is the
     // point - the map layer is the illustration.
     loadSewage();
+    loadVizhiany();
     if(ev){ renderRegions(ev.regions); renderFeed(ev); renderArrivals(ev.arrivals); }
 
     $('synthetic').classList.toggle('hidden', !(s._meta && s._meta.synthetic));
@@ -4780,6 +4910,10 @@ function tick(){
   // data is already in hand, so calling only the loader left the first toggle doing
   // nothing at all on any visit where the data had arrived by another route - which for
   // the works is every visit, because the section fetches them at boot.
+  $('vh-layer').addEventListener('change', (e) => {
+    showVh = e.target.checked;
+    Promise.resolve(showVh ? loadVizhiany() : null).then(drawVizhiany);
+  });
   $('gw-layer').addEventListener('change', (e) => {
     showDrought = e.target.checked;
     Promise.resolve(showDrought ? loadDrought() : null).then(drawGwField);

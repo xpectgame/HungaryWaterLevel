@@ -236,6 +236,37 @@ paths:
         "200": { description: Gauge with daily totals }
         "404": { description: Unknown gauge, or it did not report in the window }
 
+  /vizhiany:
+    get:
+      tags: [hydrology]
+      summary: The declared water-shortage grade, by district
+      description: |
+        The 85 vizhiany korzetek and the grade the water directorate has DECLARED for
+        each, with the timestamp of the declaration and the grade it replaced. Source:
+        geoportal.vizugy.hu VIR/Vizhiany_korzetek_VIR_fokozatok.
+
+        This differs in kind from every other endpoint here. The rest are measurements
+        with this project's arithmetic on top; this is somebody else's legal act, quoted.
+
+        Grades are ordinal steps and are reported as COUNTS, never averaged - there is no
+        district at "grade 3.4" and no meaning to a midpoint between II. fok and an
+        extraordinary declaration. `atExtraordinary` is a count of districts, not a share
+        of national area: the districts are not equal in size.
+
+        `raised` and `lowered` compare each district's grade with the one it replaced, so
+        the direction of travel is visible rather than only the current state.
+
+        Fetched live with a one-hour cache, never baked. A stale declaration is worse than
+        none - it would announce an emergency after it was lifted, or miss one after it
+        was declared. Returns 503, not an empty document, when the layer is unreachable:
+        an absent declaration and a declaration of "no drought" are opposite statements.
+
+        District boundaries are served separately as the static /vizhiany.json, because
+        those move on a timescale of years.
+      responses:
+        "200": { description: Districts with their declared grades, and the national counts }
+        "503": { description: The geoportal layer could not be reached }
+
   /szennyviz:
     get:
       tags: [hydrology]

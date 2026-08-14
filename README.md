@@ -34,6 +34,7 @@ ki valósként. Az éles bekötéshez lásd: [Éles üzem előtt](#éles-üzem-e
 | `GET /api/v1/lakes` | Balaton, Velencei-tó, Fertő — vízszint a saját rekordtartományában |
 | `GET /api/v1/rainfall` | Csapadék 47 állomáson, mindegyik a **saját sokéves átlagához** mérve |
 | `GET /api/v1/rainfall/:id` | Egy csapadékmérő napi bontásban |
+| `GET /api/v1/vizhiany` | **Elrendelt vízhiány-fokozat** 85 körzetre — a hatóság saját kihirdetése |
 | `GET /api/v1/szennyviz` | 732 szennyvíztisztító telep — kapacitás, kibocsátás, befogadó vízfolyás |
 | `GET /api/v1/events` | Miből mi következik + **`arrivals`**: mi van úton a folyón lefelé |
 | `GET /api/v1/geojson` | Térképkész FeatureCollection |
