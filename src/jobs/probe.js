@@ -3030,6 +3030,22 @@ async function probeLayer(args = []) {
         name: f.name, type: String(f.type).replace('esriFieldType', ''), alias: f.alias,
       }));
       console.log(`  name: ${meta.name}   geometry: ${meta.geometryType}   maxRecordCount: ${meta.maxRecordCount}`);
+      // A URL ending at the service rather than at a layer answers with the service's
+      // layer list instead of a field list. That is the only way to see inside a group
+      // layer, and without printing it a service whose sublayers are the point looks
+      // like an empty layer with no fields - which is exactly how the AKK flood services
+      // read on three separate attempts.
+      if (Array.isArray(meta.layers) && meta.layers.length) {
+        record.layers = meta.layers.map((l) => ({
+          id: l.id, name: l.name, type: l.geometryType || l.type,
+          parent: l.parentLayerId, sub: (l.subLayerIds || []).length,
+        }));
+        console.log(`  ${record.layers.length} sublayer(s):`);
+        for (const l of record.layers) {
+          console.log(`    ${String(l.id).padStart(3)}  ${(l.name || '').padEnd(46)}` +
+            `${l.type || ''}${l.sub ? `  (group of ${l.sub})` : ''}`);
+        }
+      }
       console.log(`  fields: ${record.fields.map((f) => `${f.name}:${f.type}`).join(' ')}`);
       if (record.fields.some((f) => f.alias && f.alias !== f.name)) {
         console.log(`  aliases: ${record.fields.filter((f) => f.alias !== f.name).map((f) => `${f.name}="${f.alias}"`).join(' ')}`);
