@@ -1676,13 +1676,55 @@ async function probeFlowHistory(args = []) {
  * uploads as an artifact. The log copy stays for a run from a laptop, where there is no
  * artifact to download.
  */
+/**
+ * The log ceiling for a pasted document.
+ *
+ * Everything baked so far has been tens of kilobytes - percentiles, station lists - and
+ * printing it whole is how a result gets out of a runner without anyone downloading an
+ * artifact. Geometry is not like that: a national hydrography layer is megabytes, and
+ * pasting it would flood the log, blow past what the API will return, and bury the
+ * summary lines that say what was actually found. Past this size the document goes to
+ * the artifact and the commit only.
+ */
+const LOG_PASTE_LIMIT = 400000;
+
 function emitDocument(name, doc, destination) {
   const file = writeDocument(name, doc);
   const json = JSON.stringify(doc);
   if (file) console.log(`\nwrote ${file} (${json.length} bytes) - download it from the run's artifacts`);
+  if (json.length > LOG_PASTE_LIMIT) {
+    console.log(`\n----- ${name} is ${json.length} bytes, too large to paste -----`);
+    console.log(`Destination: ${destination}. Take it from the committed probe-output/ copy or the artifact.`);
+    return;
+  }
   // One line, deliberately: pretty-printing turns 30 stations into two thousand.
   console.log(`\n----- paste into ${destination} -----`);
   console.log(json);
+}
+
+/**
+ * A response too big to commit, kept for the artifact only.
+ *
+ * `probe-out/*.json` is what the workflow copies into probe-output/ and commits, and the
+ * glob does not recurse - so a subdirectory is the difference between evidence a reviewer
+ * reads in a diff and a fifty-megabyte blob nobody wanted in the history. Raw upstream
+ * responses go here; the reduced document a human might promote goes alongside.
+ */
+/** Deliberate pacing between requests to someone else's service. */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function writeRaw(name, text) {
+  const dir = process.env.PROBE_OUT_DIR;
+  if (!dir) return null;
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const sub = path.join(dir, 'raw');
+  fs.mkdirSync(sub, { recursive: true });
+  const file = path.join(sub, `${name}.json`);
+  fs.writeFileSync(file, text);
+  return file;
 }
 
 /** The file half of emitDocument, callable mid-run as a checkpoint. Returns the path. */
@@ -2606,56 +2648,340 @@ async function probeDroughtIndex(args = []) {
  *   - Anything else published for machines rather than for a map viewer.
  *
  * Read-only enumeration of a public catalogue, which is what the endpoint is for.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS ONE HAS A DEADLINE AND WRITES AS IT GOES
+ * ---------------------------------------------------------------------------
+ * The first attempt at this ran for twenty-five minutes without emitting a line and was
+ * killed, losing everything it had learned. Every other probe in this file asks a known
+ * service a known number of questions; this one asks an UNKNOWN catalogue however many
+ * questions it turns out to contain, and a slow or unfriendly host multiplies that by the
+ * per-request timeout. Unbounded work with an all-or-nothing write at the end is the
+ * worst possible shape for that.
+ *
+ * So: a wall-clock deadline checked before every request, the partial document written
+ * after every folder, and no retry. A retry on an enumeration doubles the cost of exactly
+ * the requests that are already too slow, and a folder that times out twice tells us
+ * nothing a folder that timed out once did not.
  */
+/**
+ * Every watercourse in the country, and where treated sewage enters them.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY OPENSTREETMAP AND NOT THE OFFICIAL LAYER
+ * ---------------------------------------------------------------------------
+ * The map draws rivers from Natural Earth 10m, and inside the frame that dataset yields
+ * THIRTY-SEVEN lines - the Danube, the Tisza, the Rába, and then it stops. It is a world
+ * dataset doing a world dataset's job. A reader looking for the stream behind their
+ * village will not find it, and no amount of styling fixes a dataset that does not
+ * contain the object.
+ *
+ * The water directorate's own hydrography would be the authoritative source and is being
+ * asked for separately (--geoportal). It may or may not be published for machines. OSM
+ * is asked here because it is unambiguously open, unambiguously complete enough - Hungary
+ * is well mapped - and carries the names in Hungarian, which a world dataset does not.
+ * If the official layer turns out to be usable, it wins on provenance and this becomes
+ * the fallback. Until then, "we could not show it" is the worse answer.
+ *
+ * ---------------------------------------------------------------------------
+ * COUNTS BEFORE GEOMETRY
+ * ---------------------------------------------------------------------------
+ * This asks how many of each kind exist BEFORE asking for any of them. `out count` is one
+ * cheap query and it decides everything downstream: whether streams can be shipped whole
+ * or only the named ones, what simplification tolerance the file can afford, whether the
+ * browser gets one document or two. Guessing those parameters and discovering the answer
+ * from a 60 MB response is the expensive order to do this in - for this project and for
+ * the volunteers' server.
+ *
+ * This is a bake, not a runtime dependency: it runs by hand, its output is committed, and
+ * the site never calls Overpass. Same contract as Natural Earth in scripts/build-geo.js.
+ */
+async function probeWaters(args = []) {
+  console.log('\n########## watercourses, from OpenStreetMap ##########');
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
+
+  const ENDPOINT = arg('overpass') || 'https://overpass-api.de/api/interpreter';
+  const DEADLINE_MS = (Number(arg('deadline')) || 20) * 60000;
+  const startedAt = Date.now();
+  const elapsed = () => `${((Date.now() - startedAt) / 1000).toFixed(0)}s`;
+  const outOfTime = () => Date.now() - startedAt > DEADLINE_MS;
+
+  // One query at a time, with a pause between. Overpass is volunteer-run infrastructure
+  // and this is a batch job with nobody waiting on it, so it goes at the server's pace.
+  const ask = async (name, query, { timeoutMs = 300000 } = {}) => {
+    const { body } = await fetchText(ENDPOINT, {
+      method: 'POST',
+      body: new URLSearchParams({ data: query }).toString(),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeoutMs,
+      retries: 0,
+    });
+    await sleep(2000);
+    return body;
+  };
+
+  const AREA = 'area["ISO3166-1"="HU"][admin_level=2]->.hu;';
+  const out = { source: 'OpenStreetMap via Overpass', endpoint: ENDPOINT, counts: {}, sizes: {} };
+
+  // ---- how much is there ----
+  const KINDS = ['river', 'stream', 'canal', 'ditch', 'drain'];
+  console.log('counting first, so the geometry request can be sized:\n');
+  for (const kind of KINDS) {
+    for (const [label, filter] of [[kind, ''], [`${kind} (named)`, '["name"]']]) {
+      if (outOfTime()) break;
+      try {
+        const body = await ask(
+          `count-${label}`,
+          `[out:json][timeout:180];${AREA}way(area.hu)["waterway"="${kind}"]${filter};out count;`,
+          { timeoutMs: 200000 },
+        );
+        const n = Number(JSON.parse(body).elements?.[0]?.tags?.ways ?? NaN);
+        out.counts[label] = n;
+        console.log(`  ${label.padEnd(18)} ${String(n).padStart(7)} ways   [${elapsed()}]`);
+      } catch (err) {
+        out.counts[label] = { error: err.message.split('\n')[0] };
+        console.log(`  ${label.padEnd(18)}   FAILED ${err.message.split('\n')[0].slice(0, 60)}`);
+      }
+    }
+  }
+  writeDocument('waters-scan', out);
+
+  // ---- the geometry we are confident about ----
+  // Rivers and canals are the backbone and there are not many of them. Streams are asked
+  // for separately and only if the count above says they fit.
+  const fetchGeometry = async (label, selector) => {
+    if (outOfTime()) { console.log(`  ${label}: skipped, deadline`); return null; }
+    console.log(`\nfetching ${label} geometry ...`);
+    try {
+      const body = await ask(label, `[out:json][timeout:600];${AREA}(${selector});out tags geom;`, { timeoutMs: 600000 });
+      out.sizes[label] = body.length;
+      console.log(`  ${label}: ${body.length} bytes raw  [${elapsed()}]`);
+      const file = writeRaw(`waters-${label}`, body);
+      if (file) console.log(`  raw kept at ${file} (artifact only, never committed)`);
+      return JSON.parse(body);
+    } catch (err) {
+      out.sizes[label] = { error: err.message.split('\n')[0] };
+      console.log(`  ${label}: FAILED ${err.message.split('\n')[0].slice(0, 80)}`);
+      return null;
+    }
+  };
+
+  const collected = [];
+  const big = await fetchGeometry('rivers-canals',
+    `way(area.hu)["waterway"="river"];way(area.hu)["waterway"="canal"];`);
+  if (big) collected.push(...(big.elements || []));
+
+  // Named streams only unless the count says everything fits. An unnamed ditch behind a
+  // field is real, but it is not what "jelenjen meg minden vizünk" is asking for, and it
+  // is the difference between a file a phone can load and one it cannot.
+  const streamCount = out.counts['stream (named)'];
+  if (Number.isFinite(streamCount) && streamCount > 0) {
+    const streams = await fetchGeometry('streams-named', `way(area.hu)["waterway"="stream"]["name"];`);
+    if (streams) collected.push(...(streams.elements || []));
+  }
+
+  console.log(`\n${collected.length} ways collected  [${elapsed()}]`);
+  if (collected.length) {
+    const { reduceWays } = require('../../scripts/geometry');
+    for (const tol of [0.0005, 0.0002, 0.0001]) {
+      const reduced = reduceWays(collected, { tolerance: tol, decimals: 4 });
+      const bytes = JSON.stringify(reduced).length;
+      console.log(`  tolerance ${tol}: ${reduced.length} features, ${bytes} bytes (${(bytes / 1048576).toFixed(2)} MB)`);
+      out.sizes[`reduced@${tol}`] = bytes;
+    }
+    // 0.0002 degrees is about 20 m, which is a tenth of a screen unit at full zoom on
+    // this map - below what anyone can see, and above what costs real bytes.
+    out.features = reduceWays(collected, { tolerance: 0.0002, decimals: 4 });
+  }
+
+  emitDocument('waters', out, 'public/waters.json (after review)');
+}
+
+/**
+ * Where the country's sewage goes back into the country's water.
+ *
+ * A reader asking about the Danube at Budapest is asking, whether they say so or not,
+ * about the Central Wastewater Treatment Plant on Csepel - which treats the sewage of
+ * roughly 1.6 million people and returns it to the Danube at the bottom of the city. That
+ * is a fact about that river at that point, and the site cannot currently show it at all.
+ *
+ * Two things are wanted per plant and they are not the same thing:
+ *
+ *   - WHERE it discharges, which is what puts it on a map, and
+ *   - HOW MUCH, which is what makes it mean anything. A village plant and Csepel are the
+ *     same dot otherwise, and drawing them the same size would be its own kind of lie.
+ *
+ * OSM has the locations and the names reliably. Capacity is tagged inconsistently, so
+ * whatever is there is collected and reported as coverage rather than assumed. Nothing
+ * here estimates a load from a population: that would be a modelled number wearing a
+ * measurement's clothes, and this project does not do that.
+ */
+async function probeSewage(args = []) {
+  console.log('\n########## wastewater treatment plants ##########');
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
+  const ENDPOINT = arg('overpass') || 'https://overpass-api.de/api/interpreter';
+  const AREA = 'area["ISO3166-1"="HU"][admin_level=2]->.hu;';
+
+  const ask = async (query, timeoutMs = 300000) => {
+    const { body } = await fetchText(ENDPOINT, {
+      method: 'POST',
+      body: new URLSearchParams({ data: query }).toString(),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeoutMs,
+      retries: 0,
+    });
+    await sleep(2000);
+    return body;
+  };
+
+  const out = { source: 'OpenStreetMap via Overpass', plants: [], tagCoverage: {}, outfalls: null };
+
+  // `nwr` rather than `way`: a plant is mapped as an area in a city and as a single node
+  // in a village, and asking only for ways would silently drop every small settlement -
+  // which is most of them, and exactly the ones a national picture needs.
+  try {
+    const body = await ask(
+      `[out:json][timeout:300];${AREA}nwr(area.hu)["man_made"="wastewater_plant"];out tags center;`,
+    );
+    writeRaw('sewage-plants', body);
+    const elements = JSON.parse(body).elements || [];
+    console.log(`${elements.length} wastewater plants`);
+
+    for (const el of elements) {
+      const t = el.tags || {};
+      for (const key of Object.keys(t)) out.tagCoverage[key] = (out.tagCoverage[key] || 0) + 1;
+      const lat = el.lat ?? el.center?.lat;
+      const lon = el.lon ?? el.center?.lon;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      out.plants.push({
+        osm: `${el.type}/${el.id}`,
+        name: t.name || t.operator || null,
+        lat: Math.round(lat * 10000) / 10000,
+        lon: Math.round(lon * 10000) / 10000,
+        operator: t.operator || null,
+        // Whatever they used. Reported as found, converted by nobody.
+        capacity: t.capacity || t['capacity:pe'] || t.population_equivalent || null,
+        startDate: t.start_date || null,
+      });
+    }
+
+    const named = out.plants.filter((p) => p.name).length;
+    const withCapacity = out.plants.filter((p) => p.capacity).length;
+    console.log(`  ${named} named, ${withCapacity} with any capacity tag`);
+    console.log('\ntags present, by frequency:');
+    for (const [k, n] of Object.entries(out.tagCoverage).sort((a, b) => b[1] - a[1]).slice(0, 30)) {
+      console.log(`  ${String(n).padStart(5)}  ${k}`);
+    }
+  } catch (err) {
+    out.plants = { error: err.message.split('\n')[0] };
+    console.log(`FAILED: ${err.message.split('\n')[0]}`);
+  }
+  writeDocument('sewage', out);
+
+  // The pipe's mouth, where it exists. A plant's building is a few hundred metres from
+  // the point the treated water actually enters the river, and on a map at national scale
+  // that difference is invisible - but where an outfall IS mapped it is the truer point,
+  // so it is collected and kept separate rather than merged into the plant.
+  try {
+    const body = await ask(`[out:json][timeout:180];${AREA}nwr(area.hu)["outlet"="wastewater"];out tags center;`);
+    const elements = JSON.parse(body).elements || [];
+    out.outfalls = elements.map((el) => ({
+      osm: `${el.type}/${el.id}`,
+      name: (el.tags || {}).name || null,
+      lat: Math.round((el.lat ?? el.center?.lat) * 10000) / 10000,
+      lon: Math.round((el.lon ?? el.center?.lon) * 10000) / 10000,
+    })).filter((o) => Number.isFinite(o.lat));
+    console.log(`\n${out.outfalls.length} mapped wastewater outfalls`);
+  } catch (err) {
+    out.outfalls = { error: err.message.split('\n')[0] };
+    console.log(`\noutfalls FAILED: ${err.message.split('\n')[0].slice(0, 80)}`);
+  }
+
+  emitDocument('sewage', out, 'src/config/sewage.js (after review)');
+}
+
 async function probeGeoportal(args = []) {
   console.log('\n########## geoportal.vizugy.hu catalogue ##########');
   const ROOT = 'https://geoportal.vizugy.hu/arcgis/rest/services';
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
 
-  const root = await fetchJson(`${ROOT}?f=json`, { timeoutMs: 30000 });
-  const folders = root.folders || [];
-  console.log(`ArcGIS ${root.currentVersion}, ${folders.length} folder(s), ${(root.services || []).length} service(s) at the root`);
-  console.log(`folders: ${folders.join(', ')}`);
+  const DEADLINE_MS = (Number(arg('deadline')) || 12) * 60000;
+  const startedAt = Date.now();
+  const elapsed = () => `${((Date.now() - startedAt) / 1000).toFixed(0)}s`;
+  const outOfTime = () => Date.now() - startedAt > DEADLINE_MS;
+  const REQ = { timeoutMs: 15000, retries: 0 };
 
-  const catalogue = { root: { folders, services: root.services || [] }, folders: {} };
+  const catalogue = { root: null, folders: {}, layers: {}, stoppedEarly: false };
   const INTEREST = /(viz|víz|foly|patak|csatorna|szennyviz|szennyvíz|hidro|hydro|vkj|vgt|meder|tavak|to_|allomas|állomás)/i;
 
+  const root = await fetchJson(`${ROOT}?f=json`, REQ);
+  const folders = root.folders || [];
+  console.log(`ArcGIS ${root.currentVersion}, ${folders.length} folder(s), ${(root.services || []).length} service(s) at the root  [${elapsed()}]`);
+  console.log(`folders: ${folders.join(', ')}`);
+  catalogue.root = { folders, services: root.services || [] };
+  writeDocument('geoportal', catalogue);
+
   for (const folder of folders) {
+    if (outOfTime()) {
+      catalogue.stoppedEarly = `deadline reached before folder ${folder}`;
+      console.log(`\n!! deadline reached at ${elapsed()}, ${Object.keys(catalogue.folders).length}/${folders.length} folders done`);
+      break;
+    }
     try {
-      const body = await fetchJson(`${ROOT}/${encodeURIComponent(folder)}?f=json`, { timeoutMs: 30000 });
+      const body = await fetchJson(`${ROOT}/${encodeURIComponent(folder)}?f=json`, REQ);
       const services = body.services || [];
       catalogue.folders[folder] = services;
-      console.log(`\n--- ${folder}: ${services.length} service(s) ---`);
+      console.log(`\n--- ${folder}: ${services.length} service(s)  [${elapsed()}] ---`);
       for (const svc of services) {
         const flag = INTEREST.test(svc.name) ? ' <--' : '';
         console.log(`  ${svc.type.padEnd(12)} ${svc.name}${flag}`);
       }
     } catch (err) {
       catalogue.folders[folder] = { error: err.message.split('\n')[0] };
-      console.log(`\n--- ${folder}: FAILED ${err.message.split('\n')[0].slice(0, 60)}`);
+      console.log(`\n--- ${folder}: FAILED ${err.message.split('\n')[0].slice(0, 60)}  [${elapsed()}]`);
     }
+    // After every folder, not at the end: a killed run should still leave behind what it
+    // had already learned.
+    writeDocument('geoportal', catalogue);
   }
 
   // The layers inside the services that look like they carry the country's water.
   // A MapServer's name is a hint; its layer list is the answer.
   const wanted = [];
-  for (const [folder, services] of Object.entries(catalogue.folders)) {
+  for (const services of Object.values(catalogue.folders)) {
     if (!Array.isArray(services)) continue;
     for (const svc of services) if (INTEREST.test(svc.name)) wanted.push(svc);
   }
-  console.log(`\n--- layers inside ${wanted.length} candidate service(s) ---`);
-  catalogue.layers = {};
-  for (const svc of wanted.slice(0, 24)) {
+  console.log(`\n--- layers inside ${wanted.length} candidate service(s)  [${elapsed()}] ---`);
+  for (const svc of wanted) {
+    if (outOfTime()) {
+      catalogue.stoppedEarly = `deadline reached after ${Object.keys(catalogue.layers).length}/${wanted.length} services`;
+      console.log(`!! deadline reached at ${elapsed()}`);
+      break;
+    }
     try {
-      const body = await fetchJson(`${ROOT}/${svc.name}/${svc.type}?f=json`, { timeoutMs: 30000 });
+      const body = await fetchJson(`${ROOT}/${svc.name}/${svc.type}?f=json`, REQ);
       const layers = (body.layers || []).map((l) => ({ id: l.id, name: l.name, type: l.geometryType || l.type }));
       catalogue.layers[svc.name] = { description: body.serviceDescription || body.description || null, layers };
       console.log(`  ${svc.name} (${layers.length} layer(s))`);
-      for (const l of layers.slice(0, 12)) console.log(`      ${String(l.id).padStart(3)}  ${l.name}`);
+      for (const l of layers) console.log(`      ${String(l.id).padStart(3)}  ${l.name}`);
     } catch (err) {
+      catalogue.layers[svc.name] = { error: err.message.split('\n')[0] };
       console.log(`  ${svc.name}  FAILED ${err.message.split('\n')[0].slice(0, 60)}`);
     }
+    writeDocument('geoportal', catalogue);
   }
 
+  console.log(`\ndone in ${elapsed()}${catalogue.stoppedEarly ? ` (INCOMPLETE: ${catalogue.stoppedEarly})` : ''}`);
   emitDocument('geoportal', catalogue, 'src/config/ (whatever turns out to be usable)');
 }
 
@@ -3200,6 +3526,16 @@ async function main() {
     return;
   }
 
+  if (args.includes('--waters')) {
+    await probeWaters(args);
+    return;
+  }
+
+  if (args.includes('--sewage')) {
+    await probeSewage(args);
+    return;
+  }
+
   if (args.includes('--drought-soil')) {
     await probeDroughtSoil(args);
     return;
@@ -3313,7 +3649,7 @@ async function main() {
       '\nActions: --live --vizugy --mavir --discover --portal --thresholds --lakes --datatypes\n' +
       '         --forecast --groundwater --rain --matrix --rain-scan --well-scan --rain-normals\n' +
       '         --flow-history --lake-history --well-history --drought --drought-index\n' +
-      '         --drought-soil --geoportal\n' +
+      '         --drought-soil --geoportal --waters --sewage\n' +
       '         --unit-history\n' +
       '         --operations\n' +
       '         --mavir-charts\n' +
