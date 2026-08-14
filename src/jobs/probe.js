@@ -3018,6 +3018,19 @@ async function probeLayer(args = []) {
 
     const page = Math.min(record.maxRecordCount || 1000, 1000);
     const features = [];
+
+    // Some joined MapServer views accept resultOffset and answer with nothing at all -
+    // no error, no features, just an empty set while returnCountOnly happily reports 85.
+    // A layer that says it has rows and then hands back none is a paging failure, not an
+    // empty layer, so it is asked again the plain way before being written off.
+    const unpaged = async () => {
+      const body = await fetchJson(
+        `${url}/query?where=${encodeURIComponent(where)}&outFields=*` +
+        `&returnGeometry=${geometry}&outSR=4326&f=json`,
+        { ...REQ, timeoutMs: Math.max(REQ.timeoutMs, 90000) },
+      );
+      return body.features || [];
+    };
     for (let offset = 0; ; offset += page) {
       try {
         const body = await fetchJson(
@@ -3040,6 +3053,16 @@ async function probeLayer(args = []) {
         break;
       }
     }
+    if (!features.length && record.count) {
+      console.log(`    paged query returned nothing for ${record.count} rows; retrying without paging`);
+      try {
+        features.push(...await unpaged());
+        console.log(`    unpaged: ${features.length}`);
+      } catch (err) {
+        console.log(`    unpaged FAILED: ${err.message.split('\n')[0].slice(0, 90)}`);
+      }
+    }
+
     record.fetched = features.length;
     record.sample = features.slice(0, 2);
     writeRaw(`${outName}-${features.length}`, JSON.stringify({ url, features }));
