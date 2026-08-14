@@ -31,10 +31,29 @@ module.exports = function vizhianyRoutes(ctx) {
       : require('../sources/vizhiany').fetchVizhiany);
 
   router.get('/vizhiany', asyncRoute(async (req, res) => {
-    const body = await cache.wrapAsync('vizhiany', async () => {
-      const raw = await fetchVizhiany({});
-      return assessVizhiany(raw);
-    });
+    let body;
+    try {
+      body = await cache.wrapAsync('vizhiany', async () => {
+        const raw = await fetchVizhiany({});
+        return assessVizhiany(raw);
+      });
+    } catch (err) {
+      // The geoportal is intermittent, and when it fails it does not fail politely: it
+      // answers an ArcGIS query with an HTML error page, so the JSON parse throws. That
+      // escaped as a 500 in production for as long as this endpoint has existed - a
+      // server error for someone else's outage, on the one section built to be a
+      // quotable fact.
+      //
+      // Caught OUTSIDE the cache on purpose. Returning the unavailable document from
+      // inside the producer would store it for the full hour, so a single bad minute
+      // would blank the declared grades until the next TTL. A throw populates nothing,
+      // which means the next request tries again.
+      return res.status(503).json({
+        available: false,
+        reason: 'a vízhiány-fokozatok most nem érhetők el a vízügyi geoportálról',
+        detail: String(err && err.message || err).split('\n')[0].slice(0, 200),
+      });
+    }
 
     // 503 rather than an empty document: an absent drought declaration and a declaration
     // of "no drought" are opposite statements, and a consumer must not be able to read

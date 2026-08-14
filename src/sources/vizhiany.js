@@ -69,7 +69,17 @@ function attr(row, suffix) {
   return undefined;
 }
 
-async function fetchVizhiany({ timeoutMs = 25000 } = {}) {
+/**
+ * @param timeoutMs 12 seconds, halved from 25.
+ *
+ * With one retry behind it, 25 seconds meant a failing geoportal held the request for
+ * nearly a minute before answering - measured at 51 seconds against production - which is
+ * long enough to hit a serverless function's own ceiling and turn a clean 503 into a
+ * platform timeout. The declaration is cached for an hour once it arrives, so the cost of
+ * giving up early is one more attempt a minute later, and the cost of giving up late is
+ * the page hanging.
+ */
+async function fetchVizhiany({ timeoutMs = 12000 } = {}) {
   const url = `${LAYER}/query?where=1%3D1&outFields=*&returnGeometry=false&f=json`;
   const body = await fetchJson(url, { timeoutMs, retries: 1 });
   const rows = body.features || [];

@@ -101,3 +101,60 @@ test('a district whose previous grade is unknown is not counted as unchanged', (
   assert.strictEqual(out.summary.unchanged, 0);
   assert.strictEqual(out.summary.atExtraordinary, 1);
 });
+
+/* --- the route, and the failure that reached production ------------------- */
+
+const express = require('express');
+const vizhianyRoutes = require('../src/routes/vizhiany');
+
+/** Mount just this router, with an injected upstream. */
+async function withRoute(fetchVizhiany, fn) {
+  const app = express();
+  app.use('/api/v1', vizhianyRoutes({ config: { provider: 'live' }, fetchVizhiany }));
+  const server = app.listen(0);
+  const port = server.address().port;
+  try {
+    await fn(async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/api/v1/vizhiany`);
+      return { status: res.status, body: await res.json() };
+    });
+  } finally {
+    server.close();
+  }
+}
+
+test('an upstream failure is 503 with a reason, not a 500', async () => {
+  // What production actually did. The geoportal answers an ArcGIS query with an HTML
+  // error page when it is unwell, the JSON parse throws, and the throw escaped as a
+  // server error - reporting someone else's outage as our fault, on the one section
+  // whose whole point is that it quotes an authority.
+  await withRoute(
+    async () => { throw new Error('Expected JSON from geoportal, got text/html'); },
+    async (get) => {
+      const { status, body } = await get();
+      assert.strictEqual(status, 503);
+      assert.strictEqual(body.available, false);
+      assert.match(body.reason, /nem érhetők el/);
+      assert.match(body.detail, /Expected JSON/);
+    },
+  );
+});
+
+test('a failure is not cached: the next request tries again', async () => {
+  // Caught outside the TTL wrapper on purpose. Inside it, one bad minute would blank
+  // the declared grades for the whole hour.
+  let calls = 0;
+  await withRoute(
+    async () => {
+      calls += 1;
+      throw new Error(`upstream down ${calls}`);
+    },
+    async (get) => {
+      assert.match((await get()).body.detail, /upstream down 1/);
+      // The detail differs on the second response, which is the proof: a cached failure
+      // would repeat the first message rather than carry the second attempt's.
+      assert.match((await get()).body.detail, /upstream down 2/);
+      assert.strictEqual(calls, 2, 'the second request must reach upstream, not a cached failure');
+    },
+  );
+});
