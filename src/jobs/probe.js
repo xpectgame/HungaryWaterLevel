@@ -663,6 +663,21 @@ async function probeSite(baseUrl) {
     // is a promise about a response shape rather than about permanence. Probing the
     // versioned path reported a 404 against a perfectly healthy endpoint - a check that
     // cries wolf is worse than no check, because the next real failure gets ignored.
+    // Added with the sections themselves, not after one of them was found dark in
+    // production. Both check a field that only exists if the work actually happened.
+    ['szennyviz', '/api/v1/szennyviz?limit=1', (d) => {
+      if (!d.count) return { ok: false, note: 'no plants - the register is not in the deployment' };
+      return { ok: d.totalM3s > 0, note: `${d.count} works, ${d.totalM3s} m3/s, ` +
+        `${Math.round((d.volumeCapacityShare || 0) * 100)}% of capacity has a volume` };
+    }],
+    // The one endpoint here that reaches a THIRD host at request time. Vercel's egress to
+    // the geoportal is not something any local test can prove, so it is proved here.
+    ['vizhiany', '/api/v1/vizhiany', (d) => {
+      const s = d.summary || {};
+      if (!s.total) return { ok: false, note: 'no districts - the geoportal fetch failed in production' };
+      return { ok: s.graded > 0, note: `${s.graded}/${s.total} graded, ${s.atExtraordinary} at the ` +
+        `extraordinary grade, newest ${String(s.newestUpdate).slice(0, 10)}` };
+    }],
     ['archive', '/archive', (d) => ({
       ok: Array.isArray(d.days) ? d.days.length > 0 : Boolean(d),
       note: Array.isArray(d.days) ? `${d.days.length} days` : 'responded',
@@ -676,6 +691,24 @@ async function probeSite(baseUrl) {
       console.log(`    ${name.padEnd(14)} ${ok ? 'OK  ' : 'EMPTY'}  ${note}`);
     } catch (err) {
       console.log(`    ${name.padEnd(14)} FAIL  ${err.message.split('\n')[0]}`);
+    }
+  }
+
+  // The static documents the map fetches on demand. A 4.7 MB file is exactly the kind of
+  // thing a host quietly declines to serve, and the page degrades silently when it does -
+  // the layer simply never appears and nothing anywhere reports an error.
+  console.log('\n  the map\'s on-demand documents:');
+  for (const [name, path, key] of [
+    ['waters.json', '/waters.json', 'features'],
+    ['vizhiany.json', '/vizhiany.json', 'districts'],
+    ['geo.json', '/geo.json', 'rivers'],
+  ]) {
+    try {
+      const body = await fetchJson(`${base}${path}`, { timeoutMs: 60000 });
+      const n = Array.isArray(body[key]) ? body[key].length : 0;
+      console.log(`    ${name.padEnd(14)} ${n > 0 ? 'OK  ' : 'EMPTY'}  ${n} ${key}`);
+    } catch (err) {
+      console.log(`    ${name.padEnd(14)} FAIL  ${err.message.split('\n')[0].slice(0, 80)}`);
     }
   }
 }
