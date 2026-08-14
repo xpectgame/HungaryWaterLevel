@@ -7,13 +7,24 @@
     }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" }
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/archive", "destination": "/api/index" },
+    { "source": "/archive/(.*)", "destination": "/api/index" },
+    { "source": "/feed.xml", "destination": "/api/index" },
+    { "source": "/share/(.*)", "destination": "/api/index" },
+    { "source": "/embed/(.*)", "destination": "/api/index" }
   ],
   "headers": [
     {
       "source": "/api/v1/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, s-maxage=60, stale-while-revalidate=300" }
+      ]
+    },
+    {
+      "source": "/(waters|vizhiany|geo).json",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800" }
       ]
     }
   ]
