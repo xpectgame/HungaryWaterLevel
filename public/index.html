@@ -200,6 +200,21 @@ svg.map text{user-select:none;-webkit-user-select:none}
    that the three the balance actually turns on stay the subject. */
 .river-minor{stroke:rgba(14,143,158,.30);stroke-width:calc(.7px * var(--mk,1))}
 .river-mid{stroke:rgba(14,143,158,.45);stroke-width:calc(1.3px * var(--mk,1))}
+/* The sixteen thousand. Fainter than .river-minor on purpose: at full zoom these are
+   every ditch in a county, and drawn at the weight of a river they turn the map into a
+   solid blue field with the actual rivers lost inside it. */
+.water-line{fill:none;stroke:rgba(14,143,158,.42);stroke-width:calc(.55px * var(--mk,1));
+  stroke-linecap:round;stroke-linejoin:round;pointer-events:stroke}
+.water-line:hover{stroke:var(--flow);stroke-width:calc(1.6px * var(--mk,1))}
+
+/* --- wastewater ---------------------------------------------------------
+   A square, because every other mark on this map is taken: gauges are circles,
+   plants are flames, lakes are rounded basins and rain is a downward triangle. A
+   fifth kind of dot would be read as a fifth kind of gauge. */
+.sw{fill:rgba(150,101,45,.62);stroke:#fff;stroke-width:calc(.5px * var(--mk,1));cursor:pointer}
+.sw:hover,.swnode:focus .sw{fill:var(--silt);stroke-width:calc(.9px * var(--mk,1))}
+.swnode:focus{outline:none}
+.swnode:focus .halo{stroke:var(--ink);stroke-width:calc(1.2px * var(--mk,1));fill:none}
 
 /* A gauged river is four strokes, because one was not water.
    The old version drew a nearly invisible channel with short round dashes sliding
@@ -480,6 +495,24 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .gw-stat .lbl{font-size:12px;color:var(--ink-soft);margin-top:5px;line-height:1.35}
 .gw-stat.alarm .n{color:#9c2b16}
 .gw-list{display:grid;gap:7px}
+
+/* --- tables --------------------------------------------------------------
+   The first real table on this page. Everything else is a card grid, which reads
+   better for a handful of things and falls apart at twenty rows of five columns.
+   The wrapper scrolls rather than the page: a table wider than a phone must not
+   drag the whole document sideways. */
+.tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px}
+.tbl{border-collapse:collapse;width:100%;font-size:13px;min-width:560px}
+.tbl th,.tbl td{padding:7px 11px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+/* Not sticky. A sticky header here parks itself at the top of the viewport, which is
+   where the page's own sticky nav already is, and the two overlap. Twenty rows do not
+   need a header that follows you down. */
+.tbl thead th{background:var(--sunk);font-size:11.5px;font-weight:650;
+  color:var(--ink-soft);letter-spacing:.01em;white-space:nowrap}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl tbody tr:hover{background:var(--sunk)}
+.tbl .num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl thead th.num{text-align:right}
 /* Per-directorate drought share: a name, a bar, the percentage, and the counts behind
    it. The counts matter as much as the share - 100% of three stations is not the same
    statement as 60% of a hundred and forty. */
@@ -808,6 +841,7 @@ footer a{color:var(--ink-soft)}
     <a href="#s-csapadek">Csapadék</a>
     <a href="#s-hirek">Mi történik</a>
     <a href="#s-tavak">Tavak</a>
+    <a href="#s-szennyviz">Szennyvíz</a>
     <a href="#s-retegviz">Rétegvíz</a>
     <a href="#s-aszaly">Aszály</a>
     <a href="#s-vizallas">Vízállás</a>
@@ -879,10 +913,18 @@ footer a{color:var(--ink-soft)}
     <g id="layer-abroad"></g>
     <g id="layer-country"></g>
     <g id="layer-rain"></g>
+    <!-- Under the named rivers, deliberately. These are the sixteen thousand creeks and
+         canals; the Danube and the Tisza are drawn over them with their own weight, so
+         the big water still reads as the big water at a glance. -->
+    <g id="layer-waters"></g>
     <g id="layer-rivers"></g>
     <g id="layer-lakes"></g>
     <g id="layer-places"></g>
     <g id="layer-lakenodes"></g>
+    <!-- Under the gauges and the plants, over the water. A discharge point belongs on
+         the river it enters, and a reader looking for the gauge they clicked last time
+         should not have to hunt for it behind seven hundred new dots. -->
+    <g id="layer-sewage"></g>
     <g id="layer-borderflow"></g>
     <g id="layer-plants"></g>
     <g id="layer-nodes"></g>
@@ -894,6 +936,8 @@ footer a{color:var(--ink-soft)}
   </div>
   <div class="legend">
     <label class="toggle"><input type="checkbox" id="rain-layer" checked><i class="tri"></i> csapadék az elmúlt 30 napban</label>
+    <label class="toggle"><input type="checkbox" id="waters-layer"> minden vízfolyás (15 566 patak, ér, csatorna)</label>
+    <label class="toggle"><input type="checkbox" id="sewage-layer"> szennyvíztisztító telepek</label>
     <span class="ramp" title="a sokéves átlaghoz mérve">
       <i class="key b-extreme-deficit"></i><i class="key b-severe-deficit"></i><i class="key b-deficit"></i><i
         class="key b-near-normal"></i><i class="key b-surplus"></i><i class="key b-extreme-surplus"></i>
@@ -1008,6 +1052,22 @@ footer a{color:var(--ink-soft)}
     0,24 millió. Ez becslés, nem mérés — a tó nem henger, a partközeli sávban egy centi
     nagyobb területet fed le, mint amivel itt számolunk.
   </p>
+</section>
+
+<section class="card" id="s-szennyviz" style="margin-bottom:18px">
+  <h3>Ahol a víz visszatér</h3>
+  <p class="lead" style="margin-bottom:6px">
+    Amit elhasználunk, nem tűnik el: megtisztítva visszakerül egy folyóba vagy egy patakba,
+    néhány kilométerrel lejjebb. Ez a <b>szennyvíztisztító telepek</b> hálózata — hol áll,
+    mekkora, és mibe engedi a vizet.
+  </p>
+  <p class="fineprint" style="margin:0 0 14px">
+    Országos szinten ez kevés víz. Egy patak mellett viszont ez maga a patak, augusztusra
+    pedig sokszor szinte az egész — ezért itt minden szám telepenként és befogadónként áll,
+    nem összegben.
+  </p>
+  <div id="sw-head" class="gw-head"></div>
+  <div id="sw-body"></div>
 </section>
 
 <section class="card" id="s-retegviz" style="margin-bottom:18px">
@@ -1300,7 +1360,7 @@ function clampPan(){
 }
 
 function applyView({ redraw = true } = {}){
-  if(redraw && geo){ drawBase(); drawNodes(); drawRainNodes(); }
+  if(redraw && geo){ drawBase(); drawNodes(); drawRainNodes(); drawWaters(); drawSewage(); }
   clampPan();
   const w = W / zoom, h = H / zoom;
   // After the redraw, not before: drawBase re-establishes the projection and can change
@@ -3162,6 +3222,219 @@ function drawRainNodes(){
   }
 }
 
+/* --- every watercourse ---------------------------------------------------- */
+
+/**
+ * The sixteen thousand creeks, drawn only as far as the zoom can show them.
+ *
+ * THE FILE IS NOT LOADED UNTIL IT IS WANTED. 4.7 MB, 1.6 over the wire, against a
+ * geo.json of 63 KB - merging them would make the map's first paint twenty-five times
+ * heavier for every reader, including everyone who never turns this on.
+ *
+ * TWO GATES, AND BOTH ARE NEEDED. A length threshold that falls as the zoom rises,
+ * because at national scale fifteen thousand lines are a solid blue field with the
+ * Danube lost inside it - and a viewport test, because at full zoom the threshold alone
+ * would still hand the browser every ditch in the country to lay out when it can only
+ * show one county's worth. Together they keep the drawn count in the low thousands at
+ * every scale, which is the number SVG can take without the map stopping being
+ * draggable.
+ */
+let waters = null, watersLoading = false, showWaters = false;
+
+function minKmForZoom(z){
+  // 20 km at the national view, falling off faster than the zoom so that each step
+  // actually reveals something rather than just enlarging what was already there.
+  return Math.max(0, 20 / Math.pow(z, 1.7));
+}
+
+function loadWaters(){
+  if(waters || watersLoading) return Promise.resolve(waters);
+  watersLoading = true;
+  return fetch('/waters.json', { cache:'force-cache' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { waters = j; watersLoading = false; drawWaters(); return j; })
+    .catch(() => { watersLoading = false; return null; });
+}
+
+function drawWaters(){
+  const layer = $('layer-waters');
+  if(!layer) return;
+  layer.textContent = '';
+  if(!geo || !showWaters || !waters || !waters.features) return;
+
+  const minKm = minKmForZoom(zoom);
+  // The visible window in viewBox units, with a margin so a line entering from just
+  // outside is not clipped at the edge mid-stroke.
+  const w = W / zoom, h = H / zoom;
+  const x0 = panX - w/2 - 20, x1 = panX + w/2 + 20;
+  const y0 = panY - h/2 - 20, y1 = panY + h/2 + 20;
+
+  // Sorted longest first by the build, so this stops as soon as the lengths fall below
+  // the threshold instead of walking all 15 566 every redraw.
+  let drawn = 0;
+  for(const f of waters.features){
+    if(f.km < minKm) break;
+    const pts = f.p;
+    // Cheap bounding-box reject before building a path string, which is by far the most
+    // expensive part of this loop.
+    let bx0=Infinity, bx1=-Infinity, by0=Infinity, by1=-Infinity;
+    const proj = new Array(pts.length);
+    for(let i=0;i<pts.length;i++){
+      const q = px(pts[i][0], pts[i][1]);
+      proj[i] = q;
+      if(q[0]<bx0)bx0=q[0]; if(q[0]>bx1)bx1=q[0];
+      if(q[1]<by0)by0=q[1]; if(q[1]>by1)by1=q[1];
+    }
+    if(bx1 < x0 || bx0 > x1 || by1 < y0 || by0 > y1) continue;
+
+    let d = '';
+    for(let i=0;i<proj.length;i++) d += (i?'L':'M') + proj[i][0].toFixed(1) + ' ' + proj[i][1].toFixed(1);
+    const el = svgEl('path',{ d, class:'water-line' });
+    // Native tooltip rather than the shared tip panel: there are thousands of these and
+    // binding a handler to each would cost more than drawing them.
+    const t = svgEl('title');
+    t.textContent = (f.n || 'névtelen vízfolyás') + (f.km ? ` — ${fmt(f.km,1)} km` : '')
+      + (f.b ? `, ${f.b}ba/be folyik` : '');
+    el.appendChild(t);
+    layer.appendChild(el);
+    drawn++;
+  }
+}
+
+/* --- wastewater treatment works ------------------------------------------- */
+
+let sewage = null, sewageLoading = false, showSewage = false;
+
+function loadSewage(){
+  if(sewage || sewageLoading) return Promise.resolve(sewage);
+  sewageLoading = true;
+  return fetch('/api/v1/szennyviz', { cache:'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { sewage = j; sewageLoading = false; drawSewage(); renderSewage(j); return j; })
+    .catch(() => { sewageLoading = false; return null; });
+}
+
+/**
+ * The works, as squares sized by what they are built to treat.
+ *
+ * Square root, like every other size on this map: Csepel is 1 633 333 population
+ * equivalent and a village works is 500, and drawn in proportion the village would be
+ * invisible at any size that did not make Csepel cover Pest county. The area still says
+ * "much bigger", which is the only claim a marker can honestly make.
+ *
+ * Below a zoom-dependent threshold they are left out entirely rather than drawn tiny:
+ * seven hundred specks at national scale is a texture, not information.
+ */
+function drawSewage(){
+  const layer = $('layer-sewage');
+  if(!layer) return;
+  layer.textContent = '';
+  if(!geo || !showSewage || !sewage || !sewage.plants) return;
+
+  const k = 1 / zoom;
+  const minPe = zoom < 1.5 ? 20000 : zoom < 3 ? 5000 : zoom < 5 ? 1000 : 0;
+  const sizeOf = (pe) => Math.max(1.6, Math.min(9, 1.6 + Math.sqrt(pe || 0) * 0.011));
+
+  for(const p of sewage.plants){
+    if((p.capacityPe || 0) < minPe) continue;
+    const [x,y] = px(p.lon, p.lat);
+    const s = sizeOf(p.capacityPe) * k;
+    const node = svgEl('g',{ class:'swnode' });
+    node.appendChild(svgEl('rect',{
+      class:'sw', x:(x-s).toFixed(2), y:(y-s).toFixed(2),
+      width:(s*2).toFixed(2), height:(s*2).toFixed(2), rx:(s*0.28).toFixed(2),
+    }));
+    node.appendChild(svgEl('circle',{ class:'hit', cx:x.toFixed(1), cy:y.toFixed(1),
+      r: hitFor(x, y, s, hitRadius()).toFixed(1) }));
+    bindMarker(node, () => renderSewageTip(p), () => {
+      revealSection('s-szennyviz');
+    }, `${p.name} szennyvíztisztító telep, ${fmt(p.capacityPe,0)} lakosegyenérték`
+       + (p.receivingWater ? `, befogadó: ${p.receivingWater}` : ''));
+    layer.appendChild(node);
+  }
+}
+
+/**
+ * The wastewater section: the national figure once, then the part that matters.
+ *
+ * The national total is deliberately not the headline. Eleven cubic metres a second
+ * against a Danube carrying two thousand is a rounding error, and leading with it would
+ * tell a reader the subject is unimportant - which is true of the country and false of
+ * the canal behind their town. So the total is stated plainly, with what it is missing,
+ * and the space goes to the individual works and the waters they discharge into.
+ */
+function renderSewage(d){
+  if(!d || !d.available){ $('sw-head').innerHTML=''; $('sw-body').innerHTML=''; return; }
+
+  const stat = (n, unit, lbl, cls='') =>
+    `<div class="gw-stat ${cls}"><div class="n">${n}${unit?`<small> ${unit}</small>`:''}</div>`+
+    `<div class="lbl">${lbl}</div></div>`;
+
+  $('sw-head').innerHTML =
+    stat(fmt(d.count,0), 'telep', 'üzemelő szennyvíztisztító telep az országos nyilvántartásban')+
+    stat(fmt(d.totalCapacityPe/1e6,1), 'millió LE', 'együttes kapacitás lakosegyenértékben')+
+    stat(fmt(d.totalM3s,1), 'm³/s', `ennyi tisztított víz tér vissza a vizeinkbe — `+
+      `a kapacitás ${fmt(d.volumeCapacityShare*100,0)}%-áról van mennyiségi adat`);
+
+  // The works, largest first. Twenty is enough to reach well below the county seats and
+  // short enough to read; the rest are on the map.
+  const top = d.plants.slice(0, 20).map((p) => {
+    const vol = p.m3s!=null ? `<b>${fmt(p.m3s,3)}</b> m³/s` : '<span style="color:var(--ink-faint)">nincs adat</span>';
+    const load = p.loadPe!=null && p.capacityPe
+      ? `${fmt(100*p.loadPe/p.capacityPe,0)}%-on`
+      : '<span style="color:var(--ink-faint)">–</span>';
+    return `<tr><td>${p.name}${p.county?`<small style="color:var(--ink-faint)"> · ${p.county}</small>`:''}</td>`+
+      `<td class="num">${fmt(p.capacityPe,0)}</td><td class="num">${load}</td>`+
+      `<td class="num">${vol}</td><td>${p.receivingWater || '<span style="color:var(--ink-faint)">nincs megnevezve</span>'}</td></tr>`;
+  }).join('');
+
+  // Receiving waters, and where this site gauges them, the share of what the river is
+  // actually carrying today.
+  const waters = (d.byReceivingWater || []).slice(0, 14).map((g) => {
+    const share = g.shareOfFlow != null
+      ? `<b>${fmt(g.shareOfFlow*100,2)}%</b> <small style="color:var(--ink-faint)">a ${g.gaugedAt.name.split('–').pop().trim()} szelvényben mért ${fmt(g.riverM3s,0)} m³/s-ból</small>`
+      : '<span style="color:var(--ink-faint)">ezen a vízfolyáson nincs mérőnk</span>';
+    return `<tr><td>${g.water}</td><td class="num">${g.plants}</td>`+
+      `<td class="num">${fmt(g.capacityPe,0)}</td><td class="num">${fmt(g.m3s,3)}</td><td>${share}</td></tr>`;
+  }).join('');
+
+  const missing = (d.volumeMissingLargest||[]).map(p=>p.name).join(', ');
+
+  $('sw-body').innerHTML =
+    `<h4 style="margin:18px 0 8px;font-size:14px">A húsz legnagyobb telep</h4>`+
+    `<div class="tablewrap"><table class="tbl"><thead><tr><th>Telep</th><th class="num">Kapacitás (LE)</th>`+
+    `<th class="num">Kihasználtság</th><th class="num">Kibocsátás</th><th>Befogadó</th></tr></thead>`+
+    `<tbody>${top}</tbody></table></div>`+
+    `<h4 style="margin:20px 0 8px;font-size:14px">Befogadó vizek</h4>`+
+    `<p class="fineprint" style="margin:0 0 8px">A nyilvántartás ${fmt(d.receivingWaterCount,0)} telepnél `+
+    `nevezi meg, hova megy a víz. A többinél nem — és nem is találgatjuk: a legközelebbi `+
+    `vízfolyáshoz kötni őket többnyire eltalálná, és amit elrontana, azt épp senki nem tudná ellenőrizni.</p>`+
+    `<div class="tablewrap"><table class="tbl"><thead><tr><th>Vízfolyás</th><th class="num">Telep</th>`+
+    `<th class="num">Kapacitás (LE)</th><th class="num">m³/s</th><th>A folyó mai vízhozamához</th></tr></thead>`+
+    `<tbody>${waters}</tbody></table></div>`+
+    `<p class="fineprint" style="margin-top:12px">`+
+    `Forrás: ${d.source}. A mennyiség a beérkező szennyvíz éves köbmétere, elosztva az év `+
+    `másodperceivel — ez az egyetlen átváltás, amit elvégzünk rajta. A lakosegyenértéket `+
+    `<b>nem</b> váltjuk át vízmennyiséggé: az egy feltételezés a napi fejenkénti literről, `+
+    `nem mérés. ${missing?`A kapacitás ${fmt((1-d.volumeCapacityShare)*100,0)}%-ára nincs `+
+    `mennyiségi adat — köztük ${missing} —, így a fenti m³/s alulbecslés.`:''}</p>`;
+}
+
+function renderSewageTip(p){
+  const perSec = p.m3s != null
+    ? `<div class="t-sub">${fmt(p.m3Year/1e6,1)} millió m³ évente — <b>${fmt(p.m3s,3)} m³/s</b></div>`
+    : `<div class="t-sub">a nyilvántartás nem közöl mennyiséget erre a telepre</div>`;
+  $('tip').innerHTML =
+    `<div class="t-name">${p.name}</div>`+
+    `<div class="t-val" style="color:var(--silt)">${fmt(p.capacityPe,0)} `+
+    `<span style="font-size:12px;color:var(--ink-faint)">LE kapacitás</span></div>`+
+    (p.loadPe!=null?`<div class="t-sub">terhelés: ${fmt(p.loadPe,0)} LE`+
+      (p.capacityPe?` — a kapacitás <b>${fmt(100*p.loadPe/p.capacityPe,0)}%</b>-a`:'')+`</div>`:'')+
+    perSec+
+    `<div class="t-sub">befogadó: <b>${p.receivingWater || 'a nyilvántartás nem nevezi meg'}</b>`+
+    (p.county?` · ${p.county}`:'')+`</div>`;
+}
+
 function renderRainTip(g){
   const pct = g.ratioToNormal!=null ? fmt(g.ratioToNormal*100,0)+'%' : '–';
   $('tip').innerHTML =
@@ -4158,6 +4431,10 @@ async function refresh(){
     snapshot = s;
     if(st && st.stations) stations = st.stations;
     if(lk && lk.lakes){ lakes = lk.lakes; renderLakes(lk); }
+    // The section's text loads with the page; the 732 markers on the map do not appear
+    // until the reader asks for them. The register is 180 KB and the section is the
+    // point - the map layer is the illustration.
+    loadSewage();
     if(ev){ renderRegions(ev.regions); renderFeed(ev); renderArrivals(ev.arrivals); }
 
     $('synthetic').classList.toggle('hidden', !(s._meta && s._meta.synthetic));
@@ -4280,6 +4557,20 @@ function tick(){
   $('rain-layer').addEventListener('change', (e) => {
     showRain = e.target.checked;
     drawRainNodes();
+  });
+  // Both fetch on first use and never again. Turning the layer off does not discard what
+  // was downloaded - a reader toggling it twice should not pay for it twice.
+  // Draw unconditionally after the load resolves. The loaders return early when the
+  // data is already in hand, so calling only the loader left the first toggle doing
+  // nothing at all on any visit where the data had arrived by another route - which for
+  // the works is every visit, because the section fetches them at boot.
+  $('waters-layer').addEventListener('change', (e) => {
+    showWaters = e.target.checked;
+    Promise.resolve(showWaters ? loadWaters() : null).then(drawWaters);
+  });
+  $('sewage-layer').addEventListener('change', (e) => {
+    showSewage = e.target.checked;
+    Promise.resolve(showSewage ? loadSewage() : null).then(drawSewage);
   });
   $('rain-more').addEventListener('click', () => {
     rainExpanded = !rainExpanded;
