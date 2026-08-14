@@ -670,6 +670,14 @@ async function probeSite(baseUrl) {
       return { ok: d.totalM3s > 0, note: `${d.count} works, ${d.totalM3s} m3/s, ` +
         `${Math.round((d.volumeCapacityShare || 0) * 100)}% of capacity has a volume` };
     }],
+    ['ipari', '/api/v1/ipari?limit=1', (d) => {
+      if (!d.count) return { ok: false, note: 'no outfalls - the register is not in the deployment' };
+      // The vintage is checked, not just the count. A register whose date stopped
+      // travelling with it would render as a claim about today, and that is the one
+      // failure on this layer that would look completely fine.
+      return { ok: !!d.vintage && d.surfaceCount + d.groundwaterCount === d.count,
+        note: `${d.count} outfalls, ${d.groundwaterCount} to groundwater, ${d.sectors.length} sectors` };
+    }],
     // The one endpoint here that reaches a THIRD host at request time. Vercel's egress to
     // the geoportal is not something any local test can prove, so it is proved here.
     ['vizhiany', '/api/v1/vizhiany', (d) => {
