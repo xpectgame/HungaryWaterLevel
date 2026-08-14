@@ -4362,7 +4362,10 @@ function renderIndustry(d){
     return `<tr class="ind-row${on?' on':''}" data-sector="${esc(s.name)}" tabindex="0" `+
       `role="button" aria-pressed="${on}">`+
       `<td>${esc(s.name)}</td><td class="num">${fmt(s.count,0)}</td>`+
-      `<td class="num">${fmt(s.count-g,0)}</td><td class="num">${g?fmt(g,0):'–'}</td></tr>`;
+      // A dash for zero in both split columns, not a dash in one and a 0 in the
+      // other: two spellings of nothing in the same row read as two different facts.
+      `<td class="num">${s.count-g?fmt(s.count-g,0):'–'}</td>`+
+      `<td class="num">${g?fmt(g,0):'–'}</td></tr>`;
   }).join('');
 
   $('ind-body').innerHTML =
@@ -4379,15 +4382,15 @@ function renderIndustry(d){
     `azaz nem a patakot terheli, hanem a talajvizet, ugyanazt, amiből a kutak isznak.</div>`+
 
     `<p class="fineprint" style="margin:14px 0 8px">Kattints egy ágazatra, és a térképen csak az ő bevezetései maradnak `+
-    `élénkek. Mégegyszer kattintva visszaáll az összes.</p>`+
+    `élénkek. Még egyszer kattintva visszaáll az összes.</p>`+
     `<div class="tablewrap"><table class="tbl"><thead><tr>`+
     `<th>ágazat</th><th class="num">összesen</th><th class="num">vízfolyásba</th>`+
     `<th class="num">talajba</th></tr></thead><tbody>${rows}</tbody></table></div>`+
 
     `<p class="fineprint"><b>Amit ez a réteg nem tud.</b> Nincs benne mennyiség, nincs benne `+
     `szennyezettség, és nincs benne cégnév — a nyilvántartás a helyet, a befogadót és az `+
-    `ágazatot rögzíti, semmi mást. A felmérés a <b>${esc(d.vintage||'')}</b>, tehát az `+
-    `azóta épült üzemek nincsenek benne. Ezért nem látszik itt egyetlen akkumulátorgyár `+
+    `ágazatot rögzíti, semmi mást. <b>Mikori?</b> ${esc(d.vintage||'')}. Az azóta épült `+
+    `üzemek nincsenek benne. Ezért nem látszik itt egyetlen akkumulátorgyár `+
     `sem: nem azért, mert nem vezetnek ki vizet, hanem mert egyik nyilvános vízügyi `+
     `adatbázis sem tartja nyilván őket néven. Amit becslésként ide lehetne írni, az nem `+
     `adat volna.</p>`;
