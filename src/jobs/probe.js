@@ -3046,6 +3046,20 @@ async function probeLayer(args = []) {
             `${l.type || ''}${l.sub ? `  (group of ${l.sub})` : ''}`);
         }
       }
+      // One step further out again: a URL ending at the REST root, or at a folder inside
+      // it, answers with neither fields nor layers but with the catalogue - the folders
+      // and services the host publishes. Printing it turns this from "inspect a layer I
+      // already know about" into "find out what is here at all", which is the only way
+      // in to a server whose service names are not documented anywhere.
+      if (Array.isArray(meta.folders) && meta.folders.length) {
+        record.folders = meta.folders;
+        console.log(`  ${meta.folders.length} folder(s): ${meta.folders.join(' ')}`);
+      }
+      if (Array.isArray(meta.services) && meta.services.length) {
+        record.services = meta.services.map((s) => `${s.name}/${s.type}`);
+        console.log(`  ${record.services.length} service(s):`);
+        for (const s of record.services) console.log(`    ${s}`);
+      }
       console.log(`  fields: ${record.fields.map((f) => `${f.name}:${f.type}`).join(' ')}`);
       if (record.fields.some((f) => f.alias && f.alias !== f.name)) {
         console.log(`  aliases: ${record.fields.filter((f) => f.alias !== f.name).map((f) => `${f.name}="${f.alias}"`).join(' ')}`);
@@ -3053,6 +3067,15 @@ async function probeLayer(args = []) {
     } catch (err) {
       record.error = err.message.split('\n')[0];
       console.log(`  metadata FAILED: ${record.error.slice(0, 100)}`);
+      continue;
+    }
+
+    // A catalogue and a group layer have no rows to count, and asking anyway spends a
+    // request to be told so. Skipped rather than tried-and-caught, because the failure
+    // it prints reads like a broken endpoint when nothing is broken.
+    if (record.folders || record.services || (record.layers && !record.fields.length)) {
+      console.log('  (catalogue or group layer - no rows of its own; inspect a child)');
+      writeDocument(outName, out);
       continue;
     }
 
