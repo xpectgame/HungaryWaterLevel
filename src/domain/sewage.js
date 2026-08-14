@@ -79,8 +79,41 @@ function buildSewage({ limit = 0, document } = {}) {
     volumeMissingLargest: doc.volumeMissingLargest,
     receivingWaterCount: doc.receivingWaterCount,
     byReceivingWater: byReceivingWater(doc.plants),
-    plants,
+    plants: plants.map((p) => ({ ...p, loadRatio: loadRatio(p), strain: strainOf(loadRatio(p)) })),
   };
+}
+
+/**
+ * How hard the works is being pushed: the load arriving over the load it was built for.
+ *
+ * THE ONLY "HOW BAD IS IT" FIGURE THIS REGISTER SUPPORTS. The compliance columns exist
+ * and are empty - one plant of 738 reports a non-compliant load - so anything claiming
+ * to rank plants by how dirty their effluent is would be invented. What IS reported, for
+ * 717 of them, is the design capacity and the organic load actually arriving, and 153
+ * are over their design.
+ *
+ * WHAT IT DOES NOT MEAN. A works over its design load is not automatically discharging
+ * out of spec: plants are built with margin and a permit is written on the effluent, not
+ * on the inlet. What it does mean is that the margin is gone, and that a works past its
+ * capacity has nothing left to absorb a wet day or a holiday weekend. That distinction is
+ * carried in the wording everywhere this is shown, because "over capacity" and "polluting"
+ * are different claims and only the first one is measured here.
+ */
+function loadRatio(plant) {
+  if (!plant || !plant.loadPe || !plant.capacityPe || plant.capacityPe <= 0) return null;
+  return round(plant.loadPe / plant.capacityPe, 3);
+}
+
+/**
+ * Four buckets, because a continuous ramp over a ratio that reaches 25 is a map where
+ * everything except one village is the same colour.
+ */
+function strainOf(ratio) {
+  if (ratio === null) return null;
+  if (ratio < 0.75) return 'ok';
+  if (ratio < 1) return 'near';
+  if (ratio < 1.5) return 'over';
+  return 'far-over';
 }
 
 /**
@@ -128,4 +161,4 @@ function round(v, digits) {
   return Math.round(v * f) / f;
 }
 
-module.exports = { buildSewage, loadSewage, byReceivingWater, shareOfFlow, DOCUMENT_PATH };
+module.exports = { buildSewage, loadSewage, byReceivingWater, shareOfFlow, loadRatio, strainOf, DOCUMENT_PATH };

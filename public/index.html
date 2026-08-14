@@ -212,7 +212,51 @@ svg.map text{user-select:none;-webkit-user-select:none}
    plants are flames, lakes are rounded basins and rain is a downward triangle. A
    fifth kind of dot would be read as a fifth kind of gauge. */
 .sw{fill:rgba(150,101,45,.62);stroke:#fff;stroke-width:calc(.5px * var(--mk,1));cursor:pointer}
+/* Coloured by how far past its design load the works is running - the only "how bad"
+   figure this register actually supports. It is NOT a measure of how dirty the effluent
+   is; the wording next to it says so, because those are different claims. */
+   A BROWN-TO-RED ramp, not green-to-red, and the reason is the well layer. Those dots
+   run green for a healthy water table, and a green square meaning "this works is within
+   its design load" next to a green dot meaning "there is water here" is two different
+   claims in one colour on one map. Wastewater keeps the brown this site has always given
+   it, and only the overloaded end goes red - which is also the direction asked for. */
+.sw.s-ok{fill:rgba(168,139,96,.62)}
+.sw.s-near{fill:rgba(190,131,52,.80)}
+.sw.s-over{fill:rgba(199,92,38,.88)}
+.sw.s-far-over{fill:rgba(158,36,20,.95)}
+.key.s-ok{background:#a88b60}.key.s-near{background:#be8334}
+.key.s-over{background:#c75c26}.key.s-far-over{background:#9e2414}
+.strain-ok{color:#6f5c3f}.strain-near{color:#8f6220}.strain-over{color:#b4551f}.strain-far-over{color:#8f2c19}
+/* A watercourse that receives treated sewage, while the works layer is on. */
+.water-line.receives{stroke:rgba(194,82,28,.55);stroke-width:calc(1.5px * var(--mk,1))}
+.water-line.receives.heavy{stroke:rgba(163,52,31,.85);stroke-width:calc(2.4px * var(--mk,1))}
 .sw:hover,.swnode:focus .sw{fill:var(--silt);stroke-width:calc(.9px * var(--mk,1))}
+
+/* --- the water table, as a field ----------------------------------------
+   687 measured wells, coloured by where each one stands in its OWN ten-year
+   record for this month. Not interpolated between them and not extended to the
+   streams: this is 687 measurements drawn where they were taken, and the pattern
+   they make is the reader's to see. Small and unstroked, so they read as a field
+   of colour rather than as 687 markers competing with the gauges. */
+.gwdot{stroke:none;pointer-events:none}
+.key.p-record-low{background:#7a1f10}.key.p-very-low{background:#a3341f}.key.p-low{background:#dfa53c}.key.p-normal{background:#5aa86e}
+.key.p-high{background:#2f7fb5}.key.p-very-high{background:#2b4f9e}
+/* record-low is the LARGEST band in a drought - 270 of 687 wells are deeper than any
+   reading of this month in their own ten-year record - and it was the one band with no
+   rule, so every one of those dots rendered as SVG's default black. Darkest red, plus
+   the ring below, because "off the bottom of the record" is the strongest statement in
+   this dataset and it should look like it. */
+.gwdot.p-record-low{fill:#7a1f10}
+.gwdot.p-record-high{fill:#1e3a80}
+.gwdot.p-very-low{fill:#a3341f}
+.gwdot.p-low{fill:#dfa53c}
+.gwdot.p-normal{fill:#5aa86e}
+.gwdot.p-high{fill:#2f7fb5}
+.gwdot.p-very-high{fill:#2b4f9e}
+/* Deeper than any reading of this month in the record. A ring, not another shade:
+   "off the bottom of the record" is a different KIND of statement from "low", and
+   a darker red would be read as merely more of the same. */
+.gwdot.record{stroke:#5c1109;stroke-width:calc(.7px * var(--mk,1))}
 .swnode:focus{outline:none}
 .swnode:focus .halo{stroke:var(--ink);stroke-width:calc(1.2px * var(--mk,1));fill:none}
 
@@ -796,6 +840,24 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .method details[open] summary::before{content:'−'}
 .method p{font-size:13.5px;color:var(--ink-soft);margin:8px 0 0 16px}
 
+/* --- plain-language explainers -------------------------------------------
+   Same disclosure pattern as the methodology block, but sitting inside a section
+   rather than at the bottom of the page, and with the first one open. A reader who
+   does not know what a lakosegyenérték is cannot use anything below it, and making
+   them scroll to the methodology to find out is how a page loses them. */
+.explain{border:1px solid var(--line);border-radius:12px;background:var(--sunk);
+  padding:4px 14px;margin:12px 0 14px}
+.explain details{border-top:1px solid var(--line);padding:10px 0}
+.explain details:first-child{border-top:none}
+.explain summary{cursor:pointer;font-weight:600;font-size:13.5px;list-style:none;color:var(--ink)}
+.explain summary::-webkit-details-marker{display:none}
+.explain summary::before{content:'+';display:inline-block;width:16px;color:var(--flow);font-weight:700}
+.explain details[open] summary::before{content:'−'}
+.explain p{font-size:13.5px;color:var(--ink-soft);margin:8px 0 0 16px;line-height:1.55}
+.explain b{color:var(--ink)}
+.warnbox{border-left:3px solid var(--ember);background:#fff;border-radius:0 8px 8px 0;
+  padding:9px 12px;margin-left:16px !important}
+
 /* --- station detail --- */
 .det-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
 .det-val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:30px;font-weight:600;color:var(--flow)}
@@ -912,6 +974,9 @@ footer a{color:var(--ink-soft)}
     </defs>
     <g id="layer-abroad"></g>
     <g id="layer-country"></g>
+    <!-- Under the rain and the water: 687 well readings drawn as a field of colour,
+         so "where is it dry" is answered by measurements rather than by a model. -->
+    <g id="layer-gw"></g>
     <g id="layer-rain"></g>
     <!-- Under the named rivers, deliberately. These are the sixteen thousand creeks and
          canals; the Danube and the Tisza are drawn over them with their own weight, so
@@ -936,8 +1001,18 @@ footer a{color:var(--ink-soft)}
   </div>
   <div class="legend">
     <label class="toggle"><input type="checkbox" id="rain-layer" checked><i class="tri"></i> csapadék az elmúlt 30 napban</label>
+    <label class="toggle"><input type="checkbox" id="gw-layer"> talajvízszint — 687 mért kút</label>
+    <span class="ramp" title="mindegyik kút a SAJÁT tízéves augusztusi rekordjához mérve">
+      <i class="key p-record-low"></i><i class="key p-very-low"></i><i class="key p-low"></i><i class="key p-normal"></i><i
+        class="key p-high"></i><i class="key p-very-high"></i>
+      mélyebb, mint valaha ilyenkor → a saját rekordjához képest nedvesebb
+    </span>
     <label class="toggle"><input type="checkbox" id="waters-layer"> minden vízfolyás (15 566 patak, ér, csatorna)</label>
     <label class="toggle"><input type="checkbox" id="sewage-layer"> szennyvíztisztító telepek</label>
+    <span class="ramp" title="a telepre érkező terhelés a tervezett kapacitásához mérve — nem a kiengedett víz minősége">
+      <i class="key s-ok"></i><i class="key s-near"></i><i class="key s-over"></i><i class="key s-far-over"></i>
+      a kapacitása alatt → jóval a kapacitása fölött üzemel
+    </span>
     <span class="ramp" title="a sokéves átlaghoz mérve">
       <i class="key b-extreme-deficit"></i><i class="key b-severe-deficit"></i><i class="key b-deficit"></i><i
         class="key b-near-normal"></i><i class="key b-surplus"></i><i class="key b-extreme-surplus"></i>
@@ -1057,14 +1132,69 @@ footer a{color:var(--ink-soft)}
 <section class="card" id="s-szennyviz" style="margin-bottom:18px">
   <h3>Ahol a víz visszatér</h3>
   <p class="lead" style="margin-bottom:6px">
-    Amit elhasználunk, nem tűnik el: megtisztítva visszakerül egy folyóba vagy egy patakba,
-    néhány kilométerrel lejjebb. Ez a <b>szennyvíztisztító telepek</b> hálózata — hol áll,
-    mekkora, és mibe engedi a vizet.
+    Amit elhasználunk, nem tűnik el. Lemegy a lefolyón, elmegy a csatornán a
+    szennyvíztisztító telepre, ott megtisztítják — és <b>visszaengedik egy patakba vagy
+    egy folyóba</b>, általában néhány kilométerrel a település alatt. Ezért van az, hogy
+    egy alföldi csatornában augusztusban jóformán csak ez a víz folyik.
   </p>
+
+  <div class="explain">
+    <details open>
+      <summary>Mi az a „lakosegyenérték” (LE), amit mindenhol látni?</summary>
+      <p>
+        Egy szennyvíztisztító telep méretét nem literben szokás megadni, hanem abban, hogy
+        <b>hány ember szennyvizét bírja el</b>. Ez a lakosegyenérték: <b>1 LE = egy ember
+        egy napi szennyeződése</b>. Pontosabban 60 gramm oldott szerves anyag naponta — de
+        a lényeg, hogy „ennyi emberrel egyenértékű”.
+      </p>
+      <p>
+        Azért nem emberben mérik, mert nem csak emberek használják. Egy tejüzem, egy vágóhíd
+        vagy egy konzervgyár szennyvize sokkal töményebb a háztartásinál, így egyetlen üzem
+        lehet tízezer LE, miközben ott dolgozik kétszáz ember. A csepeli telep 1,6 millió LE:
+        ennyi ember napi szennyvizét bírja — nagyjából Budapest.
+      </p>
+    </details>
+
+    <details>
+      <summary>Mit csinál a tisztított szennyvíz a patakkal?</summary>
+      <p>
+        A tisztítás a szennyeződés nagy részét kiszedi, de <b>nem tesz desztillált vizet a
+        patakba</b>. Ami bent marad, az főleg <b>nitrogén és foszfor</b> — ugyanaz, amitől a
+        műtrágya műtrágya. A vízben ez ugyanúgy hat: <b>felpörgeti az algákat</b>.
+      </p>
+      <p>
+        Az alga aztán elpusztul, a lebomlása pedig <b>oxigént von el a vízből</b>. Nyáron,
+        amikor a meleg víz eleve kevesebb oxigént tud megkötni és a patakban amúgy is alig
+        van víz, ez az, ami halpusztuláshoz vezet. Nem a szennyvíz „mérgezi meg” a patakot,
+        hanem az élet felpörgetésével fojtja meg.
+      </p>
+      <p>
+        Ezért számít, hogy <b>mibe</b> engedik. Ugyanaz a fél köbméter másodpercenként a
+        Dunában észrevehetetlen, egy nyári csatornában viszont maga a csatorna.
+      </p>
+    </details>
+
+    <details>
+      <summary>Mit jelent a piros szín a térképen?</summary>
+      <p>
+        Azt, hogy a telepre <b>több szennyvíz érkezik, mint amennyire tervezték</b>. Ezt a
+        nyilvántartás telepenként közli: mekkora a kapacitása, és mekkora terhelés jön rá.
+        717 telepből <b>153 a saját kapacitása fölött üzemel</b>.
+      </p>
+      <p class="warnbox">
+        Fontos, és nem szépítés: a kapacitás fölötti üzem <b>nem jelenti automatikusan</b>,
+        hogy a kiengedett víz rossz. A telepeket tartalékkal építik, és az engedély a
+        kimenő vízre szól, nem a bejövőre. Azt jelenti, hogy <b>elfogyott a tartalék</b> —
+        egy nagy esőt vagy egy hosszú hétvégét már nincs mivel kifogni. Hogy a kiengedett
+        víz ténylegesen milyen, arra ez a nyilvántartás nem közöl adatot, és nem is
+        találunk ki hozzá egyet.
+      </p>
+    </details>
+  </div>
+
   <p class="fineprint" style="margin:0 0 14px">
-    Országos szinten ez kevés víz. Egy patak mellett viszont ez maga a patak, augusztusra
-    pedig sokszor szinte az egész — ezért itt minden szám telepenként és befogadónként áll,
-    nem összegben.
+    Országos szinten ez kevés víz. Egy patak mellett viszont ez maga a patak — ezért itt
+    minden szám telepenként és befogadónként áll, nem összegben.
   </p>
   <div id="sw-head" class="gw-head"></div>
   <div id="sw-body"></div>
@@ -1389,7 +1519,7 @@ function clampPan(){
 }
 
 function applyView({ redraw = true } = {}){
-  if(redraw && geo){ drawBase(); drawNodes(); drawRainNodes(); drawWaters(); drawSewage(); }
+  if(redraw && geo){ drawBase(); drawNodes(); drawRainNodes(); drawGwField(); drawWaters(); drawSewage(); }
   clampPan();
   const w = W / zoom, h = H / zoom;
   // After the redraw, not before: drawBase re-establishes the projection and can change
@@ -3292,6 +3422,12 @@ function drawWaters(){
   if(!geo || !showWaters || !waters || !waters.features) return;
 
   const minKm = minKmForZoom(zoom);
+  // Which watercourses receive treated sewage, and roughly how much. Only drawn when the
+  // works layer is on, so the map does not shout about it unasked - and keyed on the name
+  // the register itself uses, never on proximity.
+  const receiving = (showSewage && sewage && sewage.byReceivingWater)
+    ? new Map(sewage.byReceivingWater.map(g => [g.water, g]))
+    : null;
   // The visible window in viewBox units, with a margin so a line entering from just
   // outside is not clipped at the edge mid-stroke.
   const w = W / zoom, h = H / zoom;
@@ -3318,15 +3454,65 @@ function drawWaters(){
 
     let d = '';
     for(let i=0;i<proj.length;i++) d += (i?'L':'M') + proj[i][0].toFixed(1) + ' ' + proj[i][1].toFixed(1);
-    const el = svgEl('path',{ d, class:'water-line' });
+    const g = receiving && f.n ? receiving.get(f.n) : null;
+    // "Heavy" is a quarter of a cubic metre a second entering one watercourse, which on
+    // anything that is not the Danube is a large fraction of it.
+    const cls = 'water-line' + (g ? ' receives' + (g.m3s >= 0.25 ? ' heavy' : '') : '');
+    const el = svgEl('path',{ d, class: cls });
     // Native tooltip rather than the shared tip panel: there are thousands of these and
     // binding a handler to each would cost more than drawing them.
     const t = svgEl('title');
     t.textContent = (f.n || 'névtelen vízfolyás') + (f.km ? ` — ${fmt(f.km,1)} km` : '')
-      + (f.b ? `, ${f.b}ba/be folyik` : '');
+      + (f.b ? `, ${f.b}ba/be folyik` : '')
+      + (g ? ` · ${g.plants} szennyvíztisztító telep engedi ide a tisztított vizet, együtt ${fmt(g.m3s,3)} m³/s` : '');
     el.appendChild(t);
     layer.appendChild(el);
     drawn++;
+  }
+}
+
+/* --- the water table, as a field ------------------------------------------ */
+
+/**
+ * 687 wells, each coloured by where it stands in its own ten-year record.
+ *
+ * This is the layer that answers "where is it dry" by pointing at measurements rather
+ * than at a model. Nothing is interpolated between the wells and nothing is extended to
+ * the streams: every dot is a well that was read, drawn where it stands, and the pattern
+ * they make is the reader's to see. Six hundred and eighty-seven of them across the
+ * country is dense enough that the pattern is unmistakable, which is the whole reason
+ * this works without inventing a surface.
+ *
+ * Each is ranked against ITSELF, never against its neighbours. The wells sit at wildly
+ * different depths - a karst well under the Buda hills is eighty metres down and one
+ * beside the Tisza is at the surface - so a national colour scale over raw depth would
+ * be a map of geology, not of drought.
+ */
+let droughtData = null, droughtLoading = false, showDrought = false;
+
+function loadDrought(){
+  if(droughtData || droughtLoading) return Promise.resolve(droughtData);
+  droughtLoading = true;
+  return fetch('/api/v1/drought', { cache:'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { droughtData = j; droughtLoading = false; return j; })
+    .catch(() => { droughtLoading = false; return null; });
+}
+
+function drawGwField(){
+  const layer = $('layer-gw');
+  if(!layer) return;
+  layer.textContent = '';
+  if(!geo || !showDrought || !droughtData || !droughtData.stations) return;
+
+  const r = 2.6 / zoom;
+  for(const s of droughtData.stations){
+    if(!s.rank || s.rank.percentile == null || !s.lat || !s.lon) continue;
+    const [x,y] = px(s.lon, s.lat);
+    layer.appendChild(svgEl('circle',{
+      class: 'gwdot p-' + s.rank.band + (s.rank.belowRecord ? ' record' : ''),
+      cx: x.toFixed(1), cy: y.toFixed(1), r: r.toFixed(2),
+    }));
   }
 }
 
@@ -3370,7 +3556,7 @@ function drawSewage(){
     const s = sizeOf(p.capacityPe) * k;
     const node = svgEl('g',{ class:'swnode' });
     node.appendChild(svgEl('rect',{
-      class:'sw', x:(x-s).toFixed(2), y:(y-s).toFixed(2),
+      class:'sw' + (p.strain ? ' s-'+p.strain : ''), x:(x-s).toFixed(2), y:(y-s).toFixed(2),
       width:(s*2).toFixed(2), height:(s*2).toFixed(2), rx:(s*0.28).toFixed(2),
     }));
     node.appendChild(svgEl('circle',{ class:'hit', cx:x.toFixed(1), cy:y.toFixed(1),
@@ -3409,9 +3595,10 @@ function renderSewage(d){
   // short enough to read; the rest are on the map.
   const top = d.plants.slice(0, 20).map((p) => {
     const vol = p.m3s!=null ? `<b>${fmt(p.m3s,3)}</b> m³/s` : '<span style="color:var(--ink-faint)">nincs adat</span>';
-    const load = p.loadPe!=null && p.capacityPe
-      ? `${fmt(100*p.loadPe/p.capacityPe,0)}%-on`
-      : '<span style="color:var(--ink-faint)">–</span>';
+    // Coloured on the same four buckets as the map, so the table and the markers agree.
+    const load = p.loadRatio!=null
+      ? `<b class="strain-${p.strain}">${fmt(p.loadRatio*100,0)}%</b>`
+      : '<span style="color:var(--ink-faint)">nincs adat</span>';
     return `<tr><td>${p.name}${p.county?`<small style="color:var(--ink-faint)"> · ${p.county}</small>`:''}</td>`+
       `<td class="num">${fmt(p.capacityPe,0)}</td><td class="num">${load}</td>`+
       `<td class="num">${vol}</td><td>${p.receivingWater || '<span style="color:var(--ink-faint)">nincs megnevezve</span>'}</td></tr>`;
@@ -4593,13 +4780,19 @@ function tick(){
   // data is already in hand, so calling only the loader left the first toggle doing
   // nothing at all on any visit where the data had arrived by another route - which for
   // the works is every visit, because the section fetches them at boot.
+  $('gw-layer').addEventListener('change', (e) => {
+    showDrought = e.target.checked;
+    Promise.resolve(showDrought ? loadDrought() : null).then(drawGwField);
+  });
   $('waters-layer').addEventListener('change', (e) => {
     showWaters = e.target.checked;
     Promise.resolve(showWaters ? loadWaters() : null).then(drawWaters);
   });
   $('sewage-layer').addEventListener('change', (e) => {
     showSewage = e.target.checked;
-    Promise.resolve(showSewage ? loadSewage() : null).then(drawSewage);
+    // Redraws the watercourses too: which of them are tinted as receiving depends on
+    // whether this layer is on.
+    Promise.resolve(showSewage ? loadSewage() : null).then(() => { drawSewage(); drawWaters(); });
   });
   $('rain-more').addEventListener('click', () => {
     rainExpanded = !rainExpanded;
