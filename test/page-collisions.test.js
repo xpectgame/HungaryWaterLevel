@@ -78,6 +78,28 @@ test('no CSS class rule is written twice with different declarations', () => {
   assert.deepStrictEqual(clashing, [], `defined more than once: ${clashing.join(', ')}`);
 });
 
+test('no CSS comment closes early and turns prose into a selector', () => {
+  // The eighth collision, and a new kind. A long explanatory comment above the wastewater
+  // colours had a stray `*/` two thirds of the way through it: the comment ended there,
+  // the remaining five lines of English became CSS, and the parser - looking for the `{`
+  // that would end a selector - swallowed the next real rule along with them. `.sw.s-ok`
+  // simply stopped existing, and since it differs from the base colour by a shade nobody
+  // could see it. Nothing errors; a rule is just gone.
+  const css = (html.match(/<style>([\s\S]*?)<\/style>/) || [, ''])[1];
+  const stray = [];
+  let inComment = false;
+  for (let i = 0; i < css.length - 1; i += 1) {
+    if (!inComment && css[i] === '/' && css[i + 1] === '*') { inComment = true; i += 1; continue; }
+    if (inComment && css[i] === '*' && css[i + 1] === '/') { inComment = false; i += 1; continue; }
+    if (!inComment && css[i] === '*' && css[i + 1] === '/') {
+      stray.push(`line ${css.slice(0, i).split('\n').length}`);
+      i += 1;
+    }
+  }
+  assert.deepStrictEqual(stray, [], `*/ outside a comment - the rule after it is dead: ${stray.join(', ')}`);
+  assert.equal(inComment, false, 'a CSS comment is left open at the end of the stylesheet');
+});
+
 test('every element the script reaches for by id exists in the markup', () => {
   // $('layer-gw') against a layer that has been removed returns null and the draw
   // silently does nothing - which is exactly how the drought layers behaved after they
