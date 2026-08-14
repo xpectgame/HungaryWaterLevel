@@ -85,6 +85,18 @@ test('the map documents are cached, and the API is not cached the same way', () 
   const cache = statics.headers.find((x) => x.key === 'Cache-Control').value;
   assert.match(cache, /max-age=\d{3,}/, 'and it is a long one');
 
+  // Every document the map fetches by name must be in that rule. A new layer shipped
+  // without being added here is served uncached - which is invisible in every test and
+  // shows up only as a several-megabyte download on every page view.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const fetched = new Set([...page.matchAll(/fetch\('\/([\w-]+)\.json'/g)].map((m) => m[1]));
+  for (const name of fetched) {
+    assert.match(statics.source, new RegExp(`\\b${name}\\b`),
+      `${name}.json is fetched by the page but has no long cache rule`);
+  }
+
   const api = rules.find((h) => h.source.startsWith('/api/v1'));
   assert.match(api.headers.find((x) => x.key === 'Cache-Control').value, /max-age=0/,
     'while the API is revalidated every time');
