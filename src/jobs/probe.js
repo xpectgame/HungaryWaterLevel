@@ -2968,7 +2968,16 @@ async function probeLayer(args = []) {
   const fetchAll = args.includes('--fetch');
   const outName = arg('out') || 'layer';
   const geometry = !args.includes('--no-geometry');
-  const REQ = { timeoutMs: 30000, retries: 0 };
+  // Overridable, because this geoportal is intermittently slow rather than reliably
+  // slow: the same two layers answered a metadata request in under a second, and timed
+  // out on both attempts forty minutes later. The enumeration probe must not retry - it
+  // asks hundreds of questions and a retry doubles the cost of exactly the slow ones -
+  // but this one asks two, and giving up on a flaky host after 30 seconds means never
+  // getting the answer.
+  const REQ = {
+    timeoutMs: Number(arg('timeout')) || 30000,
+    retries: Number(arg('retries')) || 0,
+  };
   const out = {};
 
   for (const url of layers) {
