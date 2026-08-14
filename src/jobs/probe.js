@@ -574,6 +574,14 @@ async function probeSite(baseUrl) {
   console.log(`\n  provider      ${meta.provider}`);
   console.log(`  synthetic     ${meta.synthetic}${meta.synthetic ? '   <-- NOT live data' : ''}`);
   console.log(`  last poll     ${meta.lastPollAt || '(never)'}  ok=${meta.lastPollOk}`);
+  // ok=false has been the steady state, so the count is the part worth reading. One or
+  // two is a quiet gauge; twenty is the upstream being down, and the flag alone cannot
+  // tell those apart.
+  if (meta.lastPollErrors) {
+    console.log(`  poll errors   ${meta.lastPollErrors.count}` +
+      (meta.lastPollErrors.count ? `   ${meta.lastPollErrors.first
+        .map((e) => String(e && e.station || e).slice(0, 40)).join(' | ')}` : ''));
+  }
 
   if (meta.lastPollAt) {
     const ageMin = Math.round((Date.now() - Date.parse(meta.lastPollAt)) / 60000);

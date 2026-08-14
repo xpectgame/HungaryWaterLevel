@@ -132,6 +132,14 @@ async function withMeta(payload, ctx) {
       synthetic: ctx.config.provider === 'fixture',
       lastPollAt: lastPoll ? lastPoll.timestamp : null,
       lastPollOk: lastPoll ? lastPoll.ok : null,
+      // `ok` is false if ANY station failed, which on a 30-gauge network is most of the
+      // time - two border gauges have been quiet for days, so the flag has been reading
+      // false continuously and a genuine upstream outage would look exactly the same.
+      // The count and the first few messages are what separate "two gauges are quiet"
+      // from "the service is down", and without them the flag is not worth having.
+      lastPollErrors: lastPoll && lastPoll.detail && Array.isArray(lastPoll.detail.errors)
+        ? { count: lastPoll.detail.errors.length, first: lastPoll.detail.errors.slice(0, 3) }
+        : null,
       apiVersion: 'v1',
     },
   };
