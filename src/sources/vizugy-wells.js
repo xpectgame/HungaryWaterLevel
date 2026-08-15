@@ -98,6 +98,23 @@ async function fetchWells({ days = DEFAULT_DAYS, now = new Date(), env = process
 }
 
 /**
+ * Soil moisture, from the meteorological network.
+ *
+ * The same request shape a third time, which is the point of fetchNetwork: this is not a
+ * well and it is not a water level, it is a percentage from a probe in the ground - but
+ * "ask this (network, kind, type) triple for the latest sample per station" is exactly
+ * the same operation, and giving it its own copy of the request builder would be three
+ * places to fix the next time the portal changes its mind about a header.
+ *
+ * Three days, not forty: these stations report hourly, and a reading three days old from
+ * one of them means the station is down, not that the round has not come past yet.
+ */
+async function fetchSoilMoisture({ days = 3, now = new Date(), env = process.env } = {}) {
+  const registry = require('../config/soil-stations.json');
+  return fetchNetwork(registry.stations, registry.kind, { days, now, env });
+}
+
+/**
  * Fetch the current level for every station in a network.
  *
  * A station that returns nothing is recorded as an error against it rather than dropped,
@@ -128,7 +145,10 @@ async function fetchNetwork(wells, kind, { days, now, env }) {
   wells.forEach((well, index) => {
     const sample = latestSample(byItemId.get(index));
     if (!sample) {
-      errors.push({ wellId: well.id, error: 'no groundwater samples in the requested window' });
+      // Named for the kind rather than hard-coded to "groundwater": this function
+      // serves three networks now, and a soil-moisture station reporting nothing should
+      // not file itself under a word that has never applied to it.
+      errors.push({ wellId: well.id, error: `no ${kind.label} samples in the requested window` });
       return;
     }
     byWell[well.id] = sample;
@@ -144,4 +164,6 @@ async function fetchNetwork(wells, kind, { days, now, env }) {
   };
 }
 
-module.exports = { fetchWells, fetchShallowWells, buildWellRequest, latestSample, DEFAULT_DAYS };
+module.exports = {
+  fetchWells, fetchShallowWells, fetchSoilMoisture, buildWellRequest, latestSample, DEFAULT_DAYS,
+};

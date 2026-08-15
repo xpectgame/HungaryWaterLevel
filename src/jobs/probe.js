@@ -1396,11 +1396,21 @@ async function probeSoilHistory(args = []) {
         if (Number.isNaN(t.getTime())) continue;
         const day = t.toISOString().slice(0, 10);
         const list = byDay.get(day) || [];
-        list.push(item.Ertek);
+        // `Adat`, not `Ertek`. The first run of this bake read a field that does not
+        // exist: every timestamp parsed, so the day and month counts came out perfectly
+        // sensible - 276 months, 32 days each - and every percentile, min and max in the
+        // document was null. A shape that looks right with no numbers in it is the
+        // easiest kind of bad bake to ship, which is why emit() below now refuses to.
+        list.push(Number(item.Adat));
         byDay.set(day, list);
       }
       for (const [day, values] of byDay) {
-        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+        // A day whose samples are all unreadable is skipped rather than averaged into
+        // NaN. Without this the day COUNT still rises, which is how the first bake
+        // reported 32 days a month and no numbers.
+        const real = values.filter(Number.isFinite);
+        if (!real.length) continue;
+        const mean = real.reduce((a, b) => a + b, 0) / real.length;
         const month = Number(day.slice(5, 7)) - 1;
         perMonth.get(station.id)[month].push(round2(mean));
         yearsIn.get(station.id)[month].add(day.slice(0, 4));
@@ -1435,6 +1445,19 @@ async function probeSoilHistory(args = []) {
   const covered = Object.values(document.stations)
     .filter((s) => s.months.some(Boolean)).length;
   console.log(`\n${covered}/${stations.length} stations have at least one usable month`);
+
+  // Refuses to emit a document whose shape is right and whose numbers are all missing.
+  // The first run of this bake produced exactly that - 23 stations, 276 months, sensible
+  // day counts, and a null in every percentile - because it read a field name that does
+  // not exist. Nothing about the output looked wrong until someone opened it.
+  const withNumbers = Object.values(document.stations).filter(
+    (s) => (s.months || []).some((m) => m && m.p.every(Number.isFinite)),
+  ).length;
+  if (!withNumbers) {
+    console.log('\nEVERY percentile is missing. Not writing a document that has a shape and no data.');
+    return;
+  }
+  console.log(`${withNumbers}/${stations.length} stations have real percentiles`);
   emitDocument('soil-history', document, 'src/config/soil-history.json');
 }
 
