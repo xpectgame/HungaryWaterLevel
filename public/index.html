@@ -1088,8 +1088,11 @@ footer a{color:var(--ink-soft)}
 <div class="banner ok" id="flood">&nbsp;</div>
 <div class="banner ok" id="drought">&nbsp;</div>
 
-<!-- the whole story in three numbers -->
-<section class="headline">
+<!-- the whole story in three numbers. On the front tab only: the question it answers is
+     in the header and stays on every tab, but 215 pixels of border balance above the
+     sewage section pushes the sewage section off the screen, and a reader who came for
+     the balance is one click away from it. -->
+<section class="headline" data-tab="most">
   <div class="side in">
     <div class="label">Beérkezik</div>
     <div class="big"><span id="inflow">–</span><span class="unit">m³/s</span></div>
