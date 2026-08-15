@@ -100,6 +100,32 @@ test('no CSS comment closes early and turns prose into a selector', () => {
   assert.equal(inComment, false, 'a CSS comment is left open at the end of the stylesheet');
 });
 
+test('every section belongs to a tab that has a button, and every button has sections', () => {
+  // The tabs hide sections with the `hidden` attribute. A section carrying a tab name
+  // that no button opens is not merely misfiled - it can never be shown again, and the
+  // page looks completely fine because the tabs that do exist all work.
+  const sectionTabs = new Set(
+    [...html.matchAll(/<section\b[^>]*\bdata-tab="([\w-]+)"/g)].map((m) => m[1]),
+  );
+  const buttonTabs = new Set(
+    [...html.matchAll(/<button\b[^>]*\bclass="navlabel"[^>]*\bdata-tab="([\w-]+)"/g)].map((m) => m[1]),
+  );
+  assert.ok(sectionTabs.size > 0, 'sections should be assigned to tabs');
+  const orphanSections = [...sectionTabs].filter((t) => !buttonTabs.has(t));
+  assert.deepStrictEqual(orphanSections, [],
+    `sections in a tab with no button - unreachable: ${orphanSections.join(', ')}`);
+  const emptyTabs = [...buttonTabs].filter((t) => !sectionTabs.has(t));
+  assert.deepStrictEqual(emptyTabs, [], `tab buttons that open nothing: ${emptyTabs.join(', ')}`);
+});
+
+test('every nav link points at a section that is inside some tab', () => {
+  // A link to a section that no tab owns would scroll to something permanently hidden.
+  const ids = new Set([...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"[^>]*\bdata-tab=/g)].map((m) => m[1]));
+  const linked = [...html.matchAll(/<a href="#(s-[\w-]+)"/g)].map((m) => m[1]);
+  const dangling = [...new Set(linked)].filter((id) => !ids.has(id));
+  assert.deepStrictEqual(dangling, [], `nav links to sections outside every tab: ${dangling.join(', ')}`);
+});
+
 test('every element the script reaches for by id exists in the markup', () => {
   // $('layer-gw') against a layer that has been removed returns null and the draw
   // silently does nothing - which is exactly how the drought layers behaved after they
