@@ -34,6 +34,7 @@ ki valósként. Az éles bekötéshez lásd: [Éles üzem előtt](#éles-üzem-e
 | `GET /api/v1/lakes` | Balaton, Velencei-tó, Fertő — vízszint a saját rekordtartományában |
 | `GET /api/v1/rainfall` | Csapadék 47 állomáson, mindegyik a **saját sokéves átlagához** mérve |
 | `GET /api/v1/rainfall/:id` | Egy csapadékmérő napi bontásban |
+| `GET /api/v1/talajnedvesseg` | **23 talajnedvesség-állomás** óránként — mindegyik a saját eddigi méréseihez mérve |
 | `GET /api/v1/vizhiany` | **Elrendelt vízhiány-fokozat** 85 körzetre — a hatóság saját kihirdetése |
 | `GET /api/v1/szennyviz` | 732 szennyvíztisztító telep — kapacitás, kibocsátás, befogadó vízfolyás |
 | `GET /api/v1/ipari` | 424 ipari és egyéb bevezetés ágazatonként — hely és befogadó, **mennyiség nélkül** |
@@ -250,6 +251,7 @@ megismétli.
 | Amit szeretnénk | Mit ad a szolgáltatás |
 |---|---|
 | **Előrejelzés** | `AdatTipusKod 5` („előrejelzett") **HTTP 500** minden állomásra, vízállásra és vízhozamra is, egyesével kérve is. A 6 („számított") és 15 („becsült") üres. Nincs mit lekérni. |
+| ~~**Talajnedvesség**~~ | **Ez a sor is tévedés volt.** Évekig az állt itt, hogy talajnedvességet mérő adat nincs, és az aszályt ezért kútvízszinttel közelítjük. Van: `AdatFajtaKod 299` a meteorológiai hálózaton, **23 állomás, óránként**, körülbelül egy év archívummal. Azért nem láttuk, mert a katalógust listázó probe 60 tételnél elvágta a kiírást, a katalógus 68 hosszú és ábécérendes, a `Talajnedvesség` pedig a 65. A tanulság ugyanaz, mint egy sorral lejjebb, más okból: **egy negatív eredmény csak arra vonatkozik, amit ténylegesen megnéztünk.** |
 | ~~**Talajvíz**~~ | **Ez a sor tévedés volt, és megdőlt.** `AdatFajtaKod 69` valóban 0 találatot ad az 524 rétegvízkútra — de azért, mert *rossz hálózatot kérdeztünk*. A talajvíz a `vmoType 12` hálózaton van, **2030 állomással**, és most 770-ből épül az aszályszekció. A tanulság megmaradt a kódban: egy negatív eredmény csak arra a kérdésre vonatkozik, amit ténylegesen feltettünk. |
 | **Rétegvíz** | `AdatFajtaKod 70` működik, de 131 kút adott bármit 60 napra, és mindössze **12 jelentett egy héten belül** — abból 10 egyetlen igazgatóság területén. Ez nem országos kép. Ráadásul a rétegvíz a mély, zárt vízadó nyomásszintje: **nem azonos a talajvízzel**, és annak nevezni a legfélrevezetőbb dolog lenne, amit ez a projekt tehet. |
 | **Belvíz** | Nincs rá mérőkód. A belvizet elöntött területként (hektár) jelentik, nem idősorként. |

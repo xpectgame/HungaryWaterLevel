@@ -94,7 +94,7 @@ function build(source) {
     hasSoilType: false,
     hasWiltingPoint: false,
     // Not a national network. Stated in the document so a map cannot imply otherwise.
-    coverage: 'Csongrád-Csanád, Békés és Bács-Kiskun megye - az ország délkeleti sarka, nem országos hálózat',
+    coverage: 'A mérőállomások Csongrád-Csanád, Békés és Bács-Kiskun megyében állnak — az ország délkeleti sarkában. Ez nem országos hálózat.',
     stations,
   };
 }

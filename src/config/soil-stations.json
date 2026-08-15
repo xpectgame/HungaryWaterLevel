@@ -13,7 +13,7 @@
  "hasSensorDepth": false,
  "hasSoilType": false,
  "hasWiltingPoint": false,
- "coverage": "Csongrád-Csanád, Békés és Bács-Kiskun megye - az ország délkeleti sarka, nem országos hálózat",
+ "coverage": "A mérőállomások Csongrád-Csanád, Békés és Bács-Kiskun megyében állnak — az ország délkeleti sarkában. Ez nem országos hálózat.",
  "stations": [
   {
    "id": "talaj-1493",

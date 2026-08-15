@@ -262,6 +262,29 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .water-line.receives.heavy{stroke:rgba(163,52,31,.85);stroke-width:calc(2.4px * var(--mk,1))}
 .sw:hover,.swnode:focus .sw{fill:var(--silt);stroke-width:calc(.9px * var(--mk,1))}
 
+/* --- soil moisture ---------------------------------------------------------
+   Squares, not dots. A well level and a soil percentage are different measurements of
+   different water, and drawing 23 of one as dots beside 687 of the other would invite
+   exactly the comparison this data cannot support. The ramp is the same brown-to-green
+   the wells use, so "dry" looks the same on both layers even though the shapes differ. */
+.soilsq{stroke:#fff;stroke-width:calc(.45px * var(--mk,1));fill:#8aa88a}
+.soilsq.s-record-low{fill:#7a3b17}
+.soilsq.s-very-low{fill:#b06a24}
+.soilsq.s-low{fill:#d3a55c}
+.soilsq.s-middle{fill:#9fb98f}
+.soilsq.s-high{fill:#4f9d78}
+.soilsq.s-record-high{fill:#2f7f68}
+.key.sq{border-radius:2px}
+.key.sq.s-record-low{background:#7a3b17}.key.sq.s-very-low{background:#b06a24}
+.key.sq.s-low{background:#d3a55c}.key.sq.s-middle{background:#9fb98f}
+.key.sq.s-high{background:#4f9d78}.key.sq.s-record-high{background:#2f7f68}
+/* The same words in the table as on the map, so a reader who looks up a station finds
+   the colour they just clicked. */
+.soil-band{font-size:12px;font-weight:600;white-space:nowrap}
+.soil-band.s-record-low{color:#7a3b17}.soil-band.s-very-low{color:#b06a24}
+.soil-band.s-low{color:#a9782f}.soil-band.s-middle{color:var(--ink-soft)}
+.soil-band.s-high{color:#3f8a68}.soil-band.s-record-high{color:#2f7f68}
+
 /* --- industrial outfalls -------------------------------------------------
    A DIAMOND, and the sixth shape on this map, because it is a sixth kind of thing:
    not a gauge, not a works, not a power station. Deliberately not coloured by sector -
@@ -1065,6 +1088,7 @@ footer a{color:var(--ink-soft)}
       <span class="navlabel">Szárazság</span>
       <a href="#s-vizhiany">Vízhiány</a>
       <a href="#s-csapadek">Csapadék</a>
+      <a href="#s-talajnedvesseg">Talajnedvesség</a>
       <a href="#s-aszaly">Talajvíz</a>
       <a href="#s-retegviz">Rétegvíz</a>
     </div>
@@ -1349,12 +1373,16 @@ footer a{color:var(--ink-soft)}
       <g id="dm-country"></g>
       <g id="dm-vh"></g>
       <g id="dm-gw"></g>
+      <!-- Over the wells. There are 23 of these against 687 of those, and the small
+           layer is the one that disappears when it goes underneath. -->
+      <g id="dm-soil"></g>
       <g id="dm-rain"></g>
     </svg>
     <figcaption class="dmapkey">
       <div class="dmaptoggles">
         <label class="toggle"><input type="checkbox" id="dm-vh-on" checked> kihirdetett vízhiány-fokozat</label>
         <label class="toggle"><input type="checkbox" id="dm-gw-on" checked> talajvízkutak</label>
+        <label class="toggle"><input type="checkbox" id="dm-soil-on" checked> talajnedvesség (23 állomás)</label>
         <label class="toggle"><input type="checkbox" id="dm-rain-on"> csapadék</label>
       </div>
       <span><b>A körzet színe</b> — a vízügyi igazgatóság által <b>kihirdetett</b> fokozat:
@@ -1368,6 +1396,13 @@ footer a{color:var(--ink-soft)}
         <i class="key dot p-very-low"></i><i class="key dot p-low"></i> szárazabb a szokásosnál
         <i class="key dot p-normal"></i> szokásos
         <i class="key dot p-high"></i><i class="key dot p-very-high"></i> nedvesebb</span>
+      <span><b>A négyzetek</b> — 23 állomás, ami <b>közvetlenül a talaj nedvességét</b> méri
+        százalékban, óránként. Csak az ország délkeleti sarkában van ilyen. Mindegyik a
+        <b>saját</b> eddigi méréseihez mérve, és az eddigi mindössze <b>egy év</b>:
+        <i class="key sq s-record-low"></i> a mért rekordja alatt
+        <i class="key sq s-very-low"></i><i class="key sq s-low"></i> az eddigi alsó negyedében
+        <i class="key sq s-middle"></i> a tartomány közepén
+        <i class="key sq s-high"></i><i class="key sq s-record-high"></i> a felső negyedében vagy fölötte</span>
       <span><b>A lefelé mutató háromszögek</b> — csapadék az elmúlt 30 napban, mindegyik mérce
         a saját sokéves átlagához mérve:
         <i class="key tri b-extreme-deficit"></i><i class="key tri b-severe-deficit"></i><i class="key tri b-deficit"></i>
@@ -1396,6 +1431,21 @@ footer a{color:var(--ink-soft)}
   <p style="margin:12px 0 0"><button type="button" class="linkish" id="rain-more"></button></p>
   <p class="fineprint" id="rain-coverage"></p>
   <p class="fineprint" id="rain-baseline"></p>
+</section>
+
+<!-- Above the water table, because that is the order the water is in: rain lands on
+     the soil, what the soil does not hold reaches the shallow table, and what that does
+     not hold reaches the deep one. -->
+<section class="card" id="s-talajnedvesseg" style="margin-bottom:18px">
+  <h3>Mennyi víz van a talajban</h3>
+  <p class="lead" style="margin-bottom:10px">
+    Ez az egyetlen szám ezen az oldalon, ami <b>közvetlenül a földben lévő vizet</b> méri —
+    nem a kutakét alatta, nem az esőét fölötte. Huszonhárom állomás, óránként.
+    Mindegyik az ország <b>délkeleti sarkában</b>, tehát ez nem országos kép; viszont épp
+    az a vidék, ahol a szárazság a legsúlyosabb.
+  </p>
+  <div id="soil-head" class="gw-head"></div>
+  <div id="soil-body"></div>
 </section>
 
 <section class="card" id="s-aszaly" style="margin-bottom:18px">
@@ -4102,7 +4152,7 @@ let vhGeo = null, vhGrades = null, vhLoading = false;
 // Which of the drought map's three layers are shown. Rain is off by default: it is the
 // one that is about the sky rather than the ground, and with all three on at once the
 // 687 dots and 47 triangles compete for the same space.
-const dmOn = { vh: true, gw: true, rain: false };
+const dmOn = { vh: true, gw: true, soil: true, rain: false };
 
 function loadVizhiany(){
   if(vhLoading) return Promise.resolve();
@@ -4165,8 +4215,9 @@ function renderVizhiany(v){
 function drawDroughtMap(){
   const abroad = $('dm-abroad'), country = $('dm-country');
   const vh = $('dm-vh'), gw = $('dm-gw'), rain = $('dm-rain');
+  const soilLayer = $('dm-soil');
   if(!abroad || !geo) return;
-  for(const l of [abroad, country, vh, gw, rain]) l.textContent = '';
+  for(const l of [abroad, country, vh, gw, soilLayer, rain]) l.textContent = '';
 
   for(const c of geo.neighbours) for(const ring of c.shapes)
     abroad.appendChild(svgEl('path',{ d: path(ring)+' Z', class:'dm-abroad' }));
@@ -4200,6 +4251,25 @@ function drawDroughtMap(){
         + (st.rank.belowRecord ? ' — mélyebb, mint bármelyik ilyenkori nap az elmúlt tíz évben' : '');
       dot.appendChild(t);
       gw.appendChild(dot);
+    }
+  }
+
+  // Soil moisture, as squares. A different shape from the wells on purpose: a well level
+  // and a soil percentage are different measurements of different water, and drawing both
+  // as dots would invite a reader to compare 23 of one with 687 of the other.
+  if(dmOn.soil && soil && soil.stations){
+    for(const st of soil.stations){
+      if(!st.current || !st.current.history || !st.location) continue;
+      const [x,y] = px(st.location.lon, st.location.lat);
+      const h = st.current.history;
+      const r = 3.4;
+      const sq = svgEl('rect',{ class:'soilsq s-'+h.band,
+        x:(x-r).toFixed(1), y:(y-r).toFixed(1), width:(r*2).toFixed(1), height:(r*2).toFixed(1), rx:'1' });
+      const t = svgEl('title');
+      t.textContent = `${st.name}: ${fmt(st.current.percent,1)}% — ${h.bandHu}`
+        + ` (eddig mért tartomány: ${fmt(h.min,1)}–${fmt(h.max,1)}%, ${h.years} év adatából)`;
+      sq.appendChild(t);
+      soilLayer.appendChild(sq);
     }
   }
 
@@ -4358,6 +4428,81 @@ function renderSewage(d){
     `<b>nem</b> váltjuk át vízmennyiséggé: az egy feltételezés a napi fejenkénti literről, `+
     `nem mérés. ${missing?`A kapacitás ${fmt((1-d.volumeCapacityShare)*100,0)}%-ára nincs `+
     `mennyiségi adat — köztük ${missing} —, így a fenti m³/s alulbecslés.`:''}</p>`;
+}
+
+/* --- soil moisture --------------------------------------------------------- */
+
+let soil = null, soilLoading = false;
+
+function loadSoil(){
+  if(soil || soilLoading) return Promise.resolve(soil);
+  soilLoading = true;
+  return api('/api/v1/talajnedvesseg', { cache:'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { soil = j; soilLoading = false; renderSoil(j); drawDroughtMap(); return j; })
+    .catch(() => { soilLoading = false; renderSoil(null); return null; });
+}
+
+/**
+ * The soil-moisture section.
+ *
+ * Written around the one thing that makes these 23 numbers hard to read: a percentage
+ * from a probe of unknown depth in a soil of unknown type is not comparable with the
+ * probe in the next county. Csongrád sits between 5 and 6 per cent all year and
+ * Hódmezővásárhely between 25 and 29, and neither is wetter than the other - they are
+ * different soils. So the section leads with that, and every figure in it is a station
+ * against itself.
+ */
+function renderSoil(d){
+  const head = $('soil-head'), body = $('soil-body');
+  if(!head || !body) return;
+  if(!d || !d.available){
+    head.innerHTML = '';
+    body.innerHTML = `<p class="fineprint">A talajnedvesség-mérések most nem érhetők el. `+
+      `Ez nem azt jelenti, hogy nedves a talaj — csak azt, hogy most nem tudjuk lekérdezni.</p>`;
+    return;
+  }
+
+  const stat = (n, unit, lbl, cls='') =>
+    `<div class="gw-stat ${cls}"><div class="n">${n}${unit?`<small> ${unit}</small>`:''}</div>`+
+    `<div class="lbl">${lbl}</div></div>`;
+
+  head.innerHTML =
+    stat(fmt(d.measuredCount,0), `/ ${fmt(d.count,0)}`, 'állomás jelentett az elmúlt órákban')+
+    stat(fmt(d.dryCount,0), 'állomás', 'áll a saját eddigi méréseinek alsó negyedében',
+      d.dryCount > d.rankedCount/2 ? 'alarm' : '')+
+    stat(fmt(d.recordLowCount,0), 'állomás', 'mér most kevesebbet, mint bármikor eddig ilyenkor');
+
+  const rows = d.stations
+    .filter(s => s.current)
+    .sort((a,b) => (a.current.history?.bandOrder ?? 9) - (b.current.history?.bandOrder ?? 9)
+                || a.name.localeCompare(b.name,'hu'))
+    .map(s => {
+      const h = s.current.history;
+      return `<tr><td>${esc(s.name)}</td>`+
+        `<td class="num">${fmt(s.current.percent,1)}%</td>`+
+        `<td class="num">${h ? fmt(h.min,1)+'–'+fmt(h.max,1)+'%' : '–'}</td>`+
+        `<td>${h ? `<span class="soil-band s-${h.band}">${esc(h.bandHu)}</span>` : '–'}</td>`+
+        `<td class="num">${s.current.ageMinutes!=null ? fmt(s.current.ageMinutes,0)+' perce' : '–'}</td></tr>`;
+    }).join('');
+
+  body.innerHTML =
+    `<div class="warnbox"><b>Egy százalék itt nem azt jelenti, amit gondolnál.</b> `+
+    `A nyilvántartás nem közli, milyen mélyen van a szonda és milyen a talaj — pedig `+
+    `homokban és agyagban ugyanaz a szám <b>egészen más mennyiségű vizet</b> jelent, `+
+    `amihez a növény hozzáfér. Csongrád egész évben 5 és 6% között áll, `+
+    `Hódmezővásárhely 25 és 29 között, és <b>egyik sem nedvesebb a másiknál</b>: más a talaj. `+
+    `Ezért itt minden állomás <b>önmagához</b> van mérve, és nincs országos átlag.</div>`+
+
+    `<p class="fineprint" style="margin:12px 0 8px">Az összehasonlítás alapja `+
+    `<b>egy év</b> mérés — nem sokéves átlag. Azt tudjuk megmondani, hogy a mai érték hol `+
+    `áll ahhoz képest, amit ez az állomás eddig mért, azt nem, hogy mi számít itt `+
+    `szokásosnak.</p>`+
+    `<p class="fineprint" style="margin:0 0 12px">${esc(d.coverage || '')}</p>`+
+
+    `<div class="tablewrap"><table class="tbl"><thead><tr>`+
+    `<th>Állomás</th><th class="num">Most</th><th class="num">Eddig mért tartomány</th>`+
+    `<th>Hol áll ebben</th><th class="num">Mérés kora</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 /* --- industrial and other non-municipal outfalls --------------------------- */
@@ -4533,7 +4678,11 @@ const SOURCES = [
   { keys:['drought'], live:true,
     name:'Talajvízkutak (aszálymonitoring) — OVF',
     what:'770 sekély kút vízszintje, mindegyik a saját tízéves rekordjához mérve',
-    cant:'Talajnedvességet mérő szondák adatai nincsenek benne, csak a kutak vízszintje.' },
+    cant:'A kutak a talaj alatti víz szintjét mérik, nem a talajét — arra külön hálózat van, lásd alább.' },
+  { keys:['talajnedvesseg'], live:true,
+    name:'Talajnedvesség-szondák — OVF',
+    what:'23 állomás óránként, közvetlenül a talaj nedvességtartalma százalékban',
+    cant:'Csak az ország délkeleti sarkában van ilyen állomás, és a szonda mélysége, a talaj típusa nincs közölve — ezért az érték önmagához mérhető, egymáshoz csak nagyjából.' },
   { keys:['groundwater'], live:true,
     name:'Rétegvízkutak — OVF',
     what:'106 mély kút nyomásszintje',
@@ -5621,6 +5770,7 @@ async function refresh(){
     // for. Its sector table is also the map's filter, so it has to exist before anyone
     // can click one.
     loadIndustry();
+    loadSoil();
     // loadDrought() is called on its own further down and now feeds the map as well.
     loadVizhiany();
     if(ev){ renderRegions(ev.regions); renderFeed(ev); renderArrivals(ev.arrivals); }
@@ -5756,7 +5906,7 @@ function tick(){
   // data is already in hand, so calling only the loader left the first toggle doing
   // nothing at all on any visit where the data had arrived by another route - which for
   // the works is every visit, because the section fetches them at boot.
-  for(const [id, key] of [['dm-vh-on','vh'], ['dm-gw-on','gw'], ['dm-rain-on','rain']]){
+  for(const [id, key] of [['dm-vh-on','vh'], ['dm-gw-on','gw'], ['dm-soil-on','soil'], ['dm-rain-on','rain']]){
     const box = $(id);
     if(!box) continue;
     box.checked = dmOn[key];
