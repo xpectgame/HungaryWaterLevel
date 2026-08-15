@@ -1431,7 +1431,12 @@ async function probeSoilHistory(args = []) {
       // record - which for a one-year network is a large share of it.
       if (values.length < 10) { months.push(null); continue; }
       months.push({
-        p: QUANTILES.map((q) => round2(percentileOf(values, q / 100))),
+        // `q`, not `q / 100`. percentileOf takes a PERCENTAGE and divides internally -
+        // every other caller in this file passes 5, 25, 50. Passing 0.05 made
+        // `(0.05/100) * (n-1)` round to index 0, so all five percentiles came back
+        // equal to the minimum: 275 of 276 station-months had p95 - p5 under half a
+        // point while their min and max were four points apart.
+        p: QUANTILES.map((q) => round2(percentileOf(values, q))),
         min: values[0],
         max: values[values.length - 1],
         days: values.length,
@@ -1458,6 +1463,19 @@ async function probeSoilHistory(args = []) {
     return;
   }
   console.log(`${withNumbers}/${stations.length} stations have real percentiles`);
+
+  // And a spread, which is a separate question. The first numeric bake produced five
+  // percentiles that were all the minimum, because percentileOf was handed a fraction
+  // where it wanted a percentage - a document full of real numbers that described no
+  // distribution at all. A band with no width cannot rank anything.
+  const months = Object.values(document.stations).flatMap((s) => (s.months || []).filter(Boolean));
+  const withSpread = months.filter((m) => m.p[4] > m.p[0]).length;
+  console.log(`${withSpread}/${months.length} months have p95 above p5`);
+  if (!withSpread) {
+    console.log('\nNo month has any spread between its percentiles. Not writing it.');
+    return;
+  }
+
   emitDocument('soil-history', document, 'src/config/soil-history.json');
 }
 

@@ -417,6 +417,51 @@ function round(v, digits) {
  * ignores the grade entirely pass every test. The spread here is arbitrary but fixed, so
  * the same district gets the same grade on every run.
  */
+/**
+ * Synthetic soil moisture, drawn from each station's own baked record.
+ *
+ * Same reasoning as the wells: a number invented out of thin air would not be
+ * commensurable with the station's record, so the ranking branch - the whole point of the
+ * section - would never run in CI and would first be exercised in production. Biased
+ * toward the dry end for the same reason, and clamped to 0-100 because a percentage that
+ * left its own range would be a fixture bug wearing a data bug's clothes.
+ */
+async function fetchSoilMoisture({ days = 3, now = new Date() } = {}) {
+  const registry = require('../config/soil-stations.json');
+  const { loadSoilHistory } = require('../domain/soil');
+  const history = (loadSoilHistory() || {}).stations || {};
+  const month = now.getUTCMonth();
+  const wells = {};
+  const errors = [];
+
+  for (const station of registry.stations) {
+    const entry = history[station.id];
+    const record = entry && entry.months && entry.months[month];
+    if (!record) {
+      errors.push({ wellId: station.id, error: 'no talajnedvesség samples in the requested window' });
+      continue;
+    }
+    const seed = seedFor(station.id);
+    const span = Math.max(record.max - record.min, 1);
+    const offset = (noise(seed + Math.floor(now.getTime() / DAY_MS)) - 0.55) * span * 0.7;
+    wells[station.id] = {
+      value: round(Math.min(100, Math.max(0, record.p[2] + offset)), 2),
+      at: new Date(now.getTime() - (Math.abs(seed) % 3) * 3600 * 1000).toISOString(),
+      samples: 72,
+      firstAt: new Date(now.getTime() - days * DAY_MS).toISOString(),
+    };
+  }
+
+  return {
+    source: 'fixture',
+    kind: registry.kind.label,
+    fetchedAt: now.toISOString(),
+    windowDays: days,
+    wells,
+    errors,
+  };
+}
+
 async function fetchVizhiany({ now = new Date() } = {}) {
   let districts = [];
   try {
@@ -453,4 +498,7 @@ async function fetchVizhiany({ now = new Date() } = {}) {
   };
 }
 
-module.exports = { fetchAll, fetchVizhiany, fetchGeneration, fetchRainfall, fetchWells, fetchShallowWells, fetchAvailability, stationFlow, seasonalFactor };
+module.exports = {
+  fetchAll, fetchVizhiany, fetchGeneration, fetchRainfall, fetchWells, fetchShallowWells,
+  fetchSoilMoisture, fetchAvailability, stationFlow, seasonalFactor,
+};
