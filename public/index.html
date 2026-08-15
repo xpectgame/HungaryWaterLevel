@@ -690,6 +690,15 @@ svg.map text{user-select:none;-webkit-user-select:none}
 /* A table row that filters the map. Given a pointer and a focus ring because it is a
    button wearing a row's clothes, and a reader who cannot see the cursor change has no
    other way to find out. */
+/* The data-source panel. Deliberately not a red/green dashboard: "nem jött meg" is a
+   fact about one request, not an incident, and colouring it like an alarm would make an
+   unreachable third-party server look like this site falling over. */
+.src-what{font-size:12px;color:var(--ink-faint);margin-top:2px;line-height:1.45}
+.src-cant{font-size:12px;color:var(--ink-soft);margin-top:4px;line-height:1.45}
+.src-state{white-space:nowrap;vertical-align:top}
+.src-ok{color:#2b7a4b;font-weight:600}
+.src-fail{color:var(--ember);font-weight:600}
+.src-wait{color:var(--ink-faint)}
 .tbl tbody tr.ind-row{cursor:pointer}
 .tbl tbody tr.ind-row:focus-visible{outline:2px solid var(--flow);outline-offset:-2px}
 .tbl tbody tr.ind-row.on{background:rgba(112,74,140,.12)}
@@ -1564,6 +1573,19 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
+<!-- Above the methodology, not below it: "mit számolunk" is worth nothing if the reader
+     cannot tell whether the thing they just looked at had any data behind it. -->
+<section class="card" id="s-forrasok" style="margin-bottom:18px" data-tab="modszertan">
+  <h3>Mi felelt most, és mi nem</h3>
+  <p class="lead" style="margin-bottom:10px">
+    Az oldal minden szekciója <b>külön adatforrásból</b> dolgozik, és külön-külön el is tud
+    romlani — olyankor az a szekció megmondja magáról, hogy nincs adata, a többi meg úgy
+    néz ki, mintha semmi baj nem lenne. Ez a lista arról szól, hogy <b>a te böngésződ</b>
+    épp mit kapott meg, és mit nem.
+  </p>
+  <div id="src-body"></div>
+</section>
+
 <section class="card" id="s-modszertan" style="margin-bottom:18px" data-tab="modszertan">
   <h3>Módszertan — mit számolunk, és mit nem</h3>
   <div class="method">
@@ -1854,6 +1876,43 @@ const svgEl = (n,a={}) => { const e=document.createElementNS('http://www.w3.org/
 
 const fmt = (v,d=0) => v==null || !isFinite(v) ? '–'
   : new Intl.NumberFormat('hu-HU',{minimumFractionDigits:d,maximumFractionDigits:d}).format(v);
+
+/* --- what actually answered ----------------------------------------------
+
+   Every section on this page can fail independently, because each one has a different
+   upstream behind it - and when one does, the section says so in its own words and the
+   rest of the page looks perfectly healthy. That is correct behaviour and it is also
+   how the water-shortage endpoint spent a day returning HTTP 500 to readers with
+   nothing anywhere saying which part of the site was dark.
+
+   So the page records what its OWN requests did, and shows it. Not a status page
+   written from the server's point of view - the reader's browser is the only vantage
+   point that knows what the reader got.
+-------------------------------------------------------------------------- */
+
+const feeds = {};
+
+function noteFeed(name, state, detail){
+  feeds[name] = { state, detail, at: Date.now() };
+  if(typeof renderSources === 'function') renderSources();
+}
+
+/**
+ * fetch, with the outcome remembered.
+ *
+ * A wrapper rather than a patched global: there are fourteen call sites, all of them in
+ * this file, and a page that quietly redefines window.fetch is a page nobody can debug.
+ */
+function api(path, opts){
+  const key = (/\/api\/v1\/([\w-]+)/.exec(path) || [, path])[1];
+  return fetch(path, opts).then((r) => {
+    noteFeed(key, r.ok ? 'ok' : 'fail', r.ok ? null : `HTTP ${r.status}`);
+    return r;
+  }).catch((err) => {
+    noteFeed(key, 'fail', 'nem érhető el');
+    throw err;
+  });
+}
 
 /* Text going into innerHTML or into an attribute. Every string this page interpolates
    comes from its own API, but a register field ends up inside data-sector="..." and one
@@ -3420,7 +3479,7 @@ function renderRainRegions(regions){
 
 async function loadRain(){
   try{
-    const data = await fetch('/api/v1/rainfall?days='+rainDays,{cache:'no-store'}).then(r=>r.json());
+    const data = await api('/api/v1/rainfall?days='+rainDays,{cache:'no-store'}).then(r=>r.json());
     if(data.unavailable){
       $('rain-headline').textContent = data.error || 'A csapadékadat most nem érhető el.';
       $('rain-regions').innerHTML=''; $('rain-gauges').innerHTML='';
@@ -3623,7 +3682,7 @@ function renderDrought(data){
 
 async function loadDrought(){
   try{
-    const data = await fetch('/api/v1/drought',{cache:'no-store'}).then(r=>r.json());
+    const data = await api('/api/v1/drought',{cache:'no-store'}).then(r=>r.json());
     renderDrought(data);
     // The same payload drives the 687 dots on the drought map.
     droughtData = data;
@@ -3640,7 +3699,7 @@ async function loadDrought(){
 
 async function loadGroundwater(){
   try{
-    const data = await fetch('/api/v1/groundwater',{cache:'no-store'}).then(r=>r.json());
+    const data = await api('/api/v1/groundwater',{cache:'no-store'}).then(r=>r.json());
     renderGroundwater(data);
   }catch(err){
     $('gw-head').innerHTML = '<p class="lead" style="margin:0">A rétegvíz-adat most nem érhető el.</p>';
@@ -4140,7 +4199,7 @@ function loadVizhiany(){
   vhLoading = true;
   return Promise.all([
     vhGeo ? vhGeo : fetch('/vizhiany.json', { cache:'force-cache' }).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch('/api/v1/vizhiany', { cache:'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
+    api('/api/v1/vizhiany', { cache:'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
   ]).then(([g, v]) => {
     vhGeo = g; vhGrades = v;
     vhLoading = false;
@@ -4277,7 +4336,7 @@ let sewage = null, sewageLoading = false, showSewage = false;
 function loadSewage(){
   if(sewage || sewageLoading) return Promise.resolve(sewage);
   sewageLoading = true;
-  return fetch('/api/v1/szennyviz', { cache:'no-store' })
+  return api('/api/v1/szennyviz', { cache:'no-store' })
     .then(r => r.ok ? r.json() : null)
     .then(j => { sewage = j; sewageLoading = false; drawSewage(); renderSewage(j); return j; })
     .catch(() => { sewageLoading = false; return null; });
@@ -4397,7 +4456,7 @@ let industry = null, industryLoading = false, showIndustry = false, indSector = 
 function loadIndustry(){
   if(industry || industryLoading) return Promise.resolve(industry);
   industryLoading = true;
-  return fetch('/api/v1/ipari', { cache:'no-store' })
+  return api('/api/v1/ipari', { cache:'no-store' })
     .then(r => r.ok ? r.json() : null)
     .then(j => { industry = j; industryLoading = false; drawIndustry(); renderIndustry(j); return j; })
     .catch(() => { industryLoading = false; return null; });
@@ -4535,6 +4594,101 @@ function renderIndustry(d){
       if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); pick(); }
     });
   }
+}
+
+/* --- the data-source panel ------------------------------------------------ */
+
+/**
+ * One row per upstream, not one per endpoint.
+ *
+ * Five of the endpoints on this page come out of the same measuring network, and listing
+ * them separately would report one outage five times. `keys` is the endpoints that stand
+ * for the source; the row is as bad as its worst key.
+ *
+ * `cant` is the standing limitation - what this source does not publish at all. It is
+ * static, it is the same sentence the methodology gives, and it belongs next to the live
+ * state because "no data right now" and "no such data, ever" are different answers and a
+ * reader has no way to tell them apart otherwise.
+ */
+const SOURCES = [
+  { keys:['snapshot','balance','stations','lakes','events'], live:true,
+    name:'Vízrajzi mérőhálózat — OVF',
+    what:'vízhozam, vízállás és vízhőmérséklet 30 határszelvényen, plusz a tavak szintje',
+    cant:'Előrejelzést nem ad: a szolgálat előrejelzett adattípusa minden szelvényre hibát válaszol.' },
+  { keys:['rainfall'], live:true,
+    name:'Csapadékmérők — OVF',
+    what:'47 mérce napi csapadéka, mindegyik a saját sokéves átlagához mérve',
+    cant:'A meteorológiai szolgálat hálózata nem ez; ezek a vízügy saját mércéi.' },
+  { keys:['drought'], live:true,
+    name:'Talajvízkutak (aszálymonitoring) — OVF',
+    what:'770 sekély kút vízszintje, mindegyik a saját tízéves rekordjához mérve',
+    cant:'Talajnedvességet mérő szondák adatai nincsenek benne, csak a kutak vízszintje.' },
+  { keys:['groundwater'], live:true,
+    name:'Rétegvízkutak — OVF',
+    what:'106 mély kút nyomásszintje',
+    cant:'A rétegvíz nem azonos a talajvízzel: mély, zárt vízadó, más kérdésre válaszol.' },
+  { keys:['vizhiany'], live:true,
+    name:'Elrendelt vízhiány — vízügyi geoportál',
+    what:'85 körzetre a hatóság által kihirdetett fokozat, a kihirdetés dátumával',
+    cant:'Ez az egyetlen szekció, ami minden oldalletöltéskor egy harmadik szervert kérdez meg — ha az nem válaszol, itt nincs mit mutatni.' },
+  { keys:['szennyviz'], live:false,
+    name:'Szennyvíztisztító telepek — vízügyi geoportál',
+    what:'732 telep kapacitása, kibocsátása és befogadó vízfolyása',
+    cant:'Beégetett nyilvántartás, nem élő lekérdezés. 133 telepnél van megnevezve a befogadó, a többinél nincs.' },
+  { keys:['ipari'], live:false,
+    name:'Ipari bevezetések — vízügyi geoportál',
+    what:'424 pont ágazattal és befogadóval',
+    cant:'Mennyiség, terhelés és cégnév egyik soron sincs, és a felmérés 2009 körüli.' },
+  { keys:['powerplants'], live:true,
+    name:'Erőművi termelés — MAVIR és ENTSO-E',
+    what:'blokkonkénti termelés, ebből számolt hűtővíz-igény',
+    cant:'A hűtővíz nem mérés, hanem a termelésből számolt becslés.' },
+];
+
+function renderSources(){
+  const body = $('src-body');
+  if(!body) return;
+
+  const worst = (keys) => {
+    let seen = null;
+    for(const k of keys){
+      const f = feeds[k];
+      if(!f) continue;
+      if(f.state === 'fail') return f;
+      seen = seen || f;
+    }
+    return seen;
+  };
+
+  const meta = snapshot && snapshot._meta;
+  const rows = SOURCES.map((s) => {
+    const f = worst(s.keys);
+    const state = f ? f.state : 'pending';
+    const label = state === 'ok' ? 'megjött' : state === 'fail' ? 'nem jött meg' : 'töltés…';
+    const cls = state === 'ok' ? 'src-ok' : state === 'fail' ? 'src-fail' : 'src-wait';
+    // The freshness of the measuring network is a property of the poll, not of the
+    // request - the API answers instantly with data that may be hours old, and that is
+    // the number worth showing next to it.
+    let extra = f && f.detail ? ` — ${esc(f.detail)}` : '';
+    if(s.keys.includes('snapshot') && meta && meta.lastPollAt){
+      const min = Math.round((Date.now() - Date.parse(meta.lastPollAt)) / 60000);
+      extra += ` — utolsó lekérdezés ${min} perce`;
+      if(meta.lastPollErrors && meta.lastPollErrors.count){
+        extra += `, ${meta.lastPollErrors.count} szelvény nem válaszolt`;
+      }
+    }
+    if(!s.live && state === 'ok') extra += ' — beégetett nyilvántartás, nem élő lekérdezés';
+    return `<tr><td><b>${esc(s.name)}</b><div class="src-what">${esc(s.what)}</div>`+
+      `<div class="src-cant">${esc(s.cant)}</div></td>`+
+      `<td class="src-state"><span class="${cls}">${label}</span>`+
+      `<div class="src-what">${extra.replace(/^ — /, '')}</div></td></tr>`;
+  }).join('');
+
+  body.innerHTML =
+    `<div class="tablewrap"><table class="tbl"><thead><tr>`+
+    `<th>Forrás</th><th>Most</th></tr></thead><tbody>${rows}</tbody></table></div>`+
+    `<p class="fineprint">Ez nem szerveroldali státuszlap: azt mutatja, amit ez a böngésző `+
+    `kapott, amikor az oldal betöltött. Frissítsd az oldalt, ha újra akarod próbálni.</p>`;
 }
 
 function renderSewageTip(p){
@@ -5522,7 +5676,7 @@ function renderExplainer(s){
 // because `current.stage` on them is live.
 async function loadStatic(){
   const [pl, g] = await Promise.all([
-    fetch('/api/v1/powerplants').then(r=>r.json()).catch(()=>({plants:[]})),
+    api('/api/v1/powerplants').then(r=>r.json()).catch(()=>({plants:[]})),
     // Same origin, built at deploy time. If it is missing the page still works: the
     // numbers are the product and the map is how they are read, not the other way round.
     fetch('/geo.json').then(r=>r.ok?r.json():null).catch(()=>null),
@@ -5540,10 +5694,10 @@ async function refresh(){
     // but `current` carries the live stage, and a tab left open all afternoon would
     // otherwise show this morning's water level under a clock ticking in real time.
     const [s, st, lk, ev] = await Promise.all([
-      fetch('/api/v1/snapshot',{cache:'no-store'}).then(r=>r.json()),
-      fetch('/api/v1/stations',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
-      fetch('/api/v1/lakes',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
-      fetch('/api/v1/events',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+      api('/api/v1/snapshot',{cache:'no-store'}).then(r=>r.json()),
+      api('/api/v1/stations',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+      api('/api/v1/lakes',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+      api('/api/v1/events',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
     ]);
     snapshot = s;
     if(st && st.stations) stations = st.stations;
@@ -5607,7 +5761,7 @@ let lastHistory = null;
 
 async function refreshHistory(){
   try{
-    const h = await fetch('/api/v1/balance/history?days=2&limit=300').then(r=>r.json());
+    const h = await api('/api/v1/balance/history?days=2&limit=300').then(r=>r.json());
     lastHistory = h.series||h.history||[];
     renderSpark(lastHistory);
   }catch{ /* history is optional garnish, not the page */ }
@@ -5632,6 +5786,10 @@ function tick(){
 (async function start(){
   tick(); setInterval(tick,1000);
   initTabs();
+  // Rendered once up front so the panel exists before any request has finished - it is
+  // the place a reader goes when a section is empty, and an empty panel would be the
+  // same failure one level up.
+  renderSources();
   initNav();
   initMapKeys();
   initMapZoom();

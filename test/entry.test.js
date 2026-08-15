@@ -326,7 +326,10 @@ test('the frontend is served from the app root', async () => {
     assert.match(html, /body\.what-if/, 'the hypothetical must be visually marked');
     assert.match(
       html,
-      /fetch\('\/api\/v1\/stations',\{cache:'no-store'\}\)/,
+      // `api(...)`, not `fetch(...)`: the page's API calls go through a wrapper that
+      // records what each upstream answered, so the data-source panel can say which
+      // section is dark and why. The assertion that matters is unchanged - no-store.
+      /api\('\/api\/v1\/stations',\{cache:'no-store'\}\)/,
       'stations must be refetched uncached on every cycle, not only at load',
     );
 
