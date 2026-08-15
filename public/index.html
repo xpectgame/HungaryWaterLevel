@@ -100,33 +100,37 @@ h1 em{font-style:normal;color:var(--flow)}
 /* Contained rather than full-bleed. The `margin:0 -100vw; padding:0 100vw` trick that
    stretches a background to the window edges also stretches the element, and on a phone
    that gave the whole page a horizontal scroll. */
-.nav{position:sticky;top:8px;z-index:40;margin-bottom:16px;border-radius:99px;
+/* 24px, not a full capsule: the bar is two lines tall on most widths now, and a 99px
+   radius on a 90px box bulges its ends into ovals. */
+.nav{position:sticky;top:8px;z-index:40;margin-bottom:16px;border-radius:24px;
   background:rgba(255,255,255,.9);backdrop-filter:blur(12px);
   border:1px solid var(--line);box-shadow:0 2px 10px rgba(10,44,55,.07)}
-/* Wraps rather than scrolls. Fourteen links in one scrolling row meant most of
-   them sat off-screen with nothing to indicate it - the row never looked broken,
-   it just quietly hid half the site. */
-.nav-inner{display:flex;align-items:center;gap:4px 10px;flex-wrap:wrap;padding:6px 9px}
+/* Wraps rather than scrolls, and this has now been decided twice. Fifteen links in one
+   sideways-scrolling row fit on one line by keeping half of them off the screen with
+   nothing to indicate it: the row never looks broken, it just quietly hides half the
+   site. Wrapping costs a second line and shows everything. */
+.nav-inner{display:flex;align-items:center;gap:2px 8px;flex-wrap:wrap;padding:6px 9px}
 .navgroup{display:flex;align-items:center;gap:3px;flex:0 0 auto}
 .navgroup + .navgroup{border-left:1px solid var(--line);padding-left:9px}
-/* The group label is the tab button now. Kept looking like a label rather than
-   restyled into a pill, because it is still the thing that names the group - it just
-   also opens it. The selected one gets the ink and the underline. */
 .navlabel{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-faint);font-weight:650;padding:6px 3px;white-space:nowrap;
-  background:none;border:0;font-family:inherit;cursor:pointer;
-  border-bottom:2px solid transparent;border-radius:0}
-.navlabel:hover{color:var(--ink-soft)}
-.navlabel[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--flow)}
-.navlabel:focus-visible{outline:2px solid var(--flow);outline-offset:2px}
-/* Only the open tab shows its section links; the others collapse to their name. That
-   is what keeps the bar on one row - it had been wrapping onto two. */
-.navgroup:not(.open) a{display:none}
+  color:var(--ink-faint);font-weight:650;padding-right:3px;white-space:nowrap}
 @media (max-width:640px){
+  /* And it stops being sticky. Fifteen links wrap to five lines on a phone, and 183
+     pixels of permanently-stuck chrome over a 700-pixel screen is a quarter of the page
+     that never shows any water. It sits at the top instead, where a contents list goes. */
+  .nav{position:static}
+  /* The group names go, the links stay. On a phone the labels cost four lines of a
+     sticky bar to say what the links already say, and a nav that eats a third of the
+     screen is worse than one that is merely ungrouped. */
+  .navlabel{display:none}
   .navgroup + .navgroup{border-left:none;padding-left:0}
+  /* A group wider than a phone cannot wrap while it is an unbreakable flex item, so
+     "Mi történik" and "Rétegvíz" were clipped off the right edge - visible in the DOM,
+     invisible on the screen, which is the failure this bar was supposed to stop having. */
+  .navgroup{flex-wrap:wrap;flex:0 1 auto}
 }
-/* Sections outside the open tab. !important because several of them set their own
-   display (the card grids are grids), and a plain [hidden] loses to that. */
+/* The search results list and a few other things hide themselves with the attribute,
+   and several of them set their own display, which a plain [hidden] loses to. */
 [hidden]{display:none !important}
 .nav a{flex:0 0 auto;font-size:12.5px;color:var(--ink-soft);text-decoration:none;
   padding:6px 11px;border-radius:99px;white-space:nowrap;transition:background .15s,color .15s}
@@ -1044,36 +1048,36 @@ footer a{color:var(--ink-soft)}
 
 <nav class="nav" aria-label="Szekciók">
   <div class="nav-inner">
-    <!-- Five tabs, not one 18-screen scroll. The groups were already here as labels;
-         they are buttons now, and only the open group shows its own links - which is
-         also what stopped the bar wrapping onto a second row. -->
-    <div class="navgroup" data-tab="most" role="group" aria-label="Mennyi víz van most">
-      <button type="button" class="navlabel" data-tab="most" aria-selected="true">Most</button>
+    <!-- One page, every link on it. The groups are labels again, not switches: they
+         separate the bar into readable runs without hiding anything behind a click.
+         The bar does not wrap - it scrolls sideways, and the scroll-spy keeps the
+         current section's chip in view, so a long list stays usable on a phone. -->
+    <div class="navgroup" role="group" aria-label="Mennyi víz van most">
+      <span class="navlabel">Most</span>
       <a href="#s-terkep">Térkép</a>
       <a href="#s-rendszerek">Folyók</a>
+      <a href="#s-vizallas">Vízállás</a>
+      <a href="#s-tavak">Tavak</a>
       <a href="#s-hirek">Mi történik</a>
       <a href="#s-elozmeny">48 óra</a>
     </div>
-    <div class="navgroup" data-tab="vizek" role="group" aria-label="Vízállás és tavak">
-      <button type="button" class="navlabel" data-tab="vizek" aria-selected="false">Vízállás, tavak</button>
-      <a href="#s-vizallas">Folyók</a>
-      <a href="#s-tavak">Tavak</a>
-    </div>
-    <div class="navgroup" data-tab="szarazsag" role="group" aria-label="Szárazság">
-      <button type="button" class="navlabel" data-tab="szarazsag" aria-selected="false">Szárazság</button>
+    <div class="navgroup" role="group" aria-label="Szárazság">
+      <span class="navlabel">Szárazság</span>
       <a href="#s-vizhiany">Vízhiány</a>
       <a href="#s-csapadek">Csapadék</a>
       <a href="#s-aszaly">Talajvíz</a>
       <a href="#s-retegviz">Rétegvíz</a>
     </div>
-    <div class="navgroup" data-tab="terheles" role="group" aria-label="Amit a vízzel csinálunk">
-      <button type="button" class="navlabel" data-tab="terheles" aria-selected="false">Terhelés</button>
+    <div class="navgroup" role="group" aria-label="Amit a vízzel csinálunk">
+      <span class="navlabel">Terhelés</span>
       <a href="#s-szennyviz">Szennyvíz</a>
       <a href="#s-ipari">Ipar</a>
       <a href="#s-eromuvek">Erőművek</a>
     </div>
-    <div class="navgroup" data-tab="modszertan">
-      <button type="button" class="navlabel" data-tab="modszertan" aria-selected="false">Módszertan</button>
+    <div class="navgroup" role="group" aria-label="Honnan van az adat">
+      <span class="navlabel">Adat</span>
+      <a href="#s-forrasok">Források</a>
+      <a href="#s-modszertan">Módszertan</a>
     </div>
     <span class="spacer"></span>
     <div class="scenario" role="group" aria-label="Mit mutasson az oldal">
@@ -1101,7 +1105,7 @@ footer a{color:var(--ink-soft)}
      in the header and stays on every tab, but 215 pixels of border balance above the
      sewage section pushes the sewage section off the screen, and a reader who came for
      the balance is one click away from it. -->
-<section class="headline" data-tab="most">
+<section class="headline">
   <div class="side in">
     <div class="label">Beérkezik</div>
     <div class="big"><span id="inflow">–</span><span class="unit">m³/s</span></div>
@@ -1118,7 +1122,7 @@ footer a{color:var(--ink-soft)}
   </div>
 </section>
 
-<section class="mapcard" id="s-terkep" data-tab="most">
+<section class="mapcard" id="s-terkep">
   <div class="maphead">
     <h2>A folyók most</h2>
     <div class="hint">A sodrás sebessége a tényleges vízhozamot követi.
@@ -1226,7 +1230,7 @@ footer a{color:var(--ink-soft)}
      had to scroll all the way back up to click the next one. A map you can only use
      once per trip down the page is not a map. Here the answer appears where the
      question was asked, and picking a second gauge costs nothing. -->
-<section class="card" style="margin-bottom:18px" id="detailcard" data-tab="most">
+<section class="card" style="margin-bottom:18px" id="detailcard">
   <div class="cardhead">
     <h3>Egy szelvény közelről</h3>
     <button type="button" id="det-close" class="det-close" hidden>bezár</button>
@@ -1235,9 +1239,9 @@ footer a{color:var(--ink-soft)}
     Kattints egy pontra a térképen vagy egy sorra a listákban.</p></div>
 </section>
 
-<section class="grid g3" id="cards" data-tab="most"></section>
+<section class="grid g3" id="cards"></section>
 
-<section class="grid" id="s-szelvenyek" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))" data-tab="most">
+<section class="grid" id="s-szelvenyek" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
   <div class="card">
     <div class="cardhead">
       <h3>Belépő szelvények — a saját átlagukhoz mérve</h3>
@@ -1257,7 +1261,7 @@ footer a{color:var(--ink-soft)}
   </div>
 </section>
 
-<section class="card" id="s-rendszerek" style="margin-bottom:18px" data-tab="most">
+<section class="card" id="s-rendszerek" style="margin-bottom:18px">
   <h3>Folyórendszerek</h3>
   <div id="systems" class="systems"></div>
   <p style="font-size:13px;color:var(--ink-soft);margin-top:12px">
@@ -1267,12 +1271,12 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
-<section class="card" id="s-mennyi" style="margin-bottom:18px" data-tab="most">
+<section class="card" id="s-mennyi" style="margin-bottom:18px">
   <h3>Mire elég ennyi víz?</h3>
   <div id="scale" class="scale"></div>
 </section>
 
-<section class="card" id="s-vizallas" style="margin-bottom:18px" data-tab="vizek">
+<section class="card" id="s-vizallas" style="margin-bottom:18px">
   <h3>Vízállás — hol tart a folyó a saját történetéhez képest</h3>
   <div id="levels" class="levels"></div>
   <div class="lvl-legend">
@@ -1290,7 +1294,7 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
-<section class="card" id="s-tavak" style="margin-bottom:18px" data-tab="vizek">
+<section class="card" id="s-tavak" style="margin-bottom:18px">
   <h3>Tavaink</h3>
   <p id="lakes-lead" style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">&nbsp;</p>
   <div id="lakes" class="lakes"></div>
@@ -1303,7 +1307,7 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
-<section class="card" id="s-hirek" style="margin-bottom:18px" data-tab="most">
+<section class="card" id="s-hirek" style="margin-bottom:18px">
   <h3>Mi történik, és miért</h3>
   <p style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">
     Honnan hiányzik a víz — a beáramlás a határon túli forrásvidék szerint bontva, aszerint
@@ -1325,13 +1329,13 @@ footer a{color:var(--ink-soft)}
   <p style="font-size:12.5px;color:var(--ink-faint);margin-top:14px" id="feed-note"></p>
 </section>
 
-<section class="card" id="s-elozmeny" style="margin-bottom:18px" data-tab="most">
+<section class="card" id="s-elozmeny" style="margin-bottom:18px">
   <h3>Az elmúlt 48 óra</h3>
   <svg class="spark" id="spark" viewBox="0 0 800 120" preserveAspectRatio="none"></svg>
   <p id="spark-note">&nbsp;</p>
 </section>
 
-<section class="card" id="s-vizhiany" style="margin-bottom:18px" data-tab="szarazsag">
+<section class="card" id="s-vizhiany" style="margin-bottom:18px">
   <h3>Elrendelt vízhiány — amit a hatóság mond</h3>
   <p class="lead" style="margin-bottom:6px">
     Az oldalon minden más szám a mi számításunk mások méréseiből. <b>Ez nem az.</b> Az
@@ -1377,7 +1381,7 @@ footer a{color:var(--ink-soft)}
   <div id="vh-body"></div>
 </section>
 
-<section class="card" id="s-csapadek" style="margin-bottom:18px" data-tab="szarazsag">
+<section class="card" id="s-csapadek" style="margin-bottom:18px">
   <div class="cardhead">
     <h3>Csapadék — mennyi esett, és mennyi szokott</h3>
     <div class="sortbar" role="group" aria-label="Időszak">
@@ -1394,7 +1398,7 @@ footer a{color:var(--ink-soft)}
   <p class="fineprint" id="rain-baseline"></p>
 </section>
 
-<section class="card" id="s-aszaly" style="margin-bottom:18px" data-tab="szarazsag">
+<section class="card" id="s-aszaly" style="margin-bottom:18px">
   <h3>Mennyire száraz a föld?</h3>
   <p class="lead" style="margin-bottom:6px">
     A csapadék azt mondja meg, mennyi víz <b>érkezett</b> — azt nem, hogy mennyi maradt.
@@ -1415,7 +1419,7 @@ footer a{color:var(--ink-soft)}
   <p class="fineprint" id="dr-not" style="margin-top:8px"></p>
 </section>
 
-<section class="card" id="s-retegviz" style="margin-bottom:18px" data-tab="szarazsag">
+<section class="card" id="s-retegviz" style="margin-bottom:18px">
   <h3>A víz, ami nem látszik</h3>
   <p class="lead" style="margin-bottom:6px">
     A folyó és a tó a felszínen van. Alattuk <b>rétegvíz</b>: a mélyebb, lezárt vízadó, amiből
@@ -1444,7 +1448,7 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
-<section class="card" id="s-szennyviz" style="margin-bottom:18px" data-tab="terheles">
+<section class="card" id="s-szennyviz" style="margin-bottom:18px">
   <h3>Ahol a víz visszatér</h3>
   <p class="lead" style="margin-bottom:6px">
     Amit elhasználunk, nem tűnik el. Lemegy a lefolyón, elmegy a csatornán a
@@ -1518,7 +1522,7 @@ footer a{color:var(--ink-soft)}
 <!-- Directly after the municipal works, because it is the same subject seen from the
      other side, and a reader who has just understood LE is the reader who should meet
      the 424 outfalls that have no LE at all. -->
-<section class="card" id="s-ipari" style="margin-bottom:18px" data-tab="terheles">
+<section class="card" id="s-ipari" style="margin-bottom:18px">
   <h3>Az ipar vize</h3>
   <p class="lead" style="margin-bottom:6px">
     A szennyvíztisztító telepek mellett van egy másik, sokkal kevésbé ismert lista is:
@@ -1558,13 +1562,13 @@ footer a{color:var(--ink-soft)}
   <div id="ind-body"></div>
 </section>
 
-<section class="card" id="s-aram" style="margin-bottom:18px" data-tab="terheles">
+<section class="card" id="s-aram" style="margin-bottom:18px">
   <h3>Honnan jön az áram most</h3>
   <div id="mix" class="mixbar"></div>
   <div id="mixlegend" class="mixlegend"></div>
 </section>
 
-<section class="card" id="s-eromuvek" style="margin-bottom:18px" data-tab="terheles">
+<section class="card" id="s-eromuvek" style="margin-bottom:18px">
   <h3>Erőművek és hűtővizük</h3>
   <div id="plantlist" class="bars"></div>
   <p style="font-size:13px;color:var(--ink-soft);margin-top:10px">
@@ -1575,7 +1579,7 @@ footer a{color:var(--ink-soft)}
 
 <!-- Above the methodology, not below it: "mit számolunk" is worth nothing if the reader
      cannot tell whether the thing they just looked at had any data behind it. -->
-<section class="card" id="s-forrasok" style="margin-bottom:18px" data-tab="modszertan">
+<section class="card" id="s-forrasok" style="margin-bottom:18px">
   <h3>Mi felelt most, és mi nem</h3>
   <p class="lead" style="margin-bottom:10px">
     Az oldal minden szekciója <b>külön adatforrásból</b> dolgozik, és külön-külön el is tud
@@ -1586,7 +1590,7 @@ footer a{color:var(--ink-soft)}
   <div id="src-body"></div>
 </section>
 
-<section class="card" id="s-modszertan" style="margin-bottom:18px" data-tab="modszertan">
+<section class="card" id="s-modszertan" style="margin-bottom:18px">
   <h3>Módszertan — mit számolunk, és mit nem</h3>
   <div class="method">
     <details open><summary>Mi a „mérleg”?</summary>
@@ -3064,94 +3068,6 @@ function renderHeadline(b){
 -------------------------------------------------------------------------- */
 const NAV_OFFSET = 70;
 
-/* --- tabs -----------------------------------------------------------------
-
-   The page was eighteen screens tall. Everything on it earns its place, so the
-   answer is not to cut it but to stop showing all of it at once: five tabs, split
-   the way the nav was already grouped, so nothing moved and nothing was lost.
-
-   Done with the `hidden` attribute rather than a class, for one reason that matters:
-   before this script runs, and for anything that does not run scripts at all, every
-   section is visible. A crawler, a reader with JavaScript off and a printed page all
-   still get the whole thing.
--------------------------------------------------------------------------- */
-
-let activeTab = 'most';
-
-/** Which tab a section belongs to, or null for the ones always on screen. */
-function tabOf(el){
-  return el && el.getAttribute ? el.getAttribute('data-tab') : null;
-}
-
-/**
- * Open a tab.
- *
- * `redraw` matters and is not optional housekeeping: an SVG drawn while its section is
- * display:none measures every label at zero width, so the drought map's collision
- * avoidance would put its labels on top of each other. Whatever became visible is drawn
- * again now that it has a size.
- */
-function showTab(name, { scroll = false } = {}){
-  if(!name) return;
-  activeTab = name;
-  for(const s of document.querySelectorAll('section[data-tab]')){
-    s.hidden = s.getAttribute('data-tab') !== name;
-  }
-  for(const g of document.querySelectorAll('.navgroup')){
-    const on = g.getAttribute('data-tab') === name;
-    g.classList.toggle('open', on);
-    const label = g.querySelector('.navlabel');
-    if(label) label.setAttribute('aria-selected', String(on));
-  }
-  if(name === 'most' && geo) applyView({ redraw:true });
-  if(name === 'szarazsag') drawDroughtMap();
-  if(scroll) scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-  // The scroll-spy's answer depends on which sections are on screen.
-  dispatchEvent(new Event('resize'));
-}
-
-/** The tab holding a section id, so a deep link and a map marker both land somewhere. */
-function tabForSection(id){
-  const el = $(id);
-  return el ? tabOf(el.closest('section[data-tab]') || el) : null;
-}
-
-/** The first section in a tab, so a tab has a shareable address. */
-function firstSectionOf(name){
-  const el = document.querySelector(`section[data-tab="${name}"][id]`);
-  return el ? el.id : null;
-}
-
-function initTabs(){
-  for(const b of document.querySelectorAll('.navlabel[data-tab]')){
-    b.addEventListener('click', () => {
-      const name = b.getAttribute('data-tab');
-      // Pushed, not replaced, so the browser's Back button undoes a tab change. It has
-      // to: clicking a marker on the map jumps the reader to a different tab entirely,
-      // and Back is what anyone would press to get back to the map.
-      const id = firstSectionOf(name);
-      if(id) history.pushState(null, '', '#' + id);
-      showTab(name, { scroll:true });
-    });
-  }
-  // A link into a closed tab opens it first - including one arriving in the URL.
-  const fromHash = location.hash.length > 1 && tabForSection(location.hash.slice(1));
-  showTab(fromHash || 'most');
-  if(fromHash){
-    const target = $(location.hash.slice(1));
-    if(target) requestAnimationFrame(() => scrollToSection(target));
-  }
-  addEventListener('hashchange', () => {
-    const t = location.hash.length > 1 && tabForSection(location.hash.slice(1));
-    if(t && t !== activeTab) showTab(t);
-  });
-  // Back and Forward. pushState does not raise hashchange, so this is the only place a
-  // history move is heard.
-  addEventListener('popstate', () => {
-    const t = (location.hash.length > 1 && tabForSection(location.hash.slice(1))) || 'most';
-    if(t !== activeTab) showTab(t);
-  });
-}
 
 function initNav(){
   const links = [...document.querySelectorAll('.nav a')];
@@ -3226,11 +3142,6 @@ function revealSection(target){
   // section it was trying to reveal never appeared.
   const el = typeof target === 'string' ? $(target) : target;
   if(!el) return;
-  // And it has to be on screen at all before it can be scrolled to: the section may sit
-  // in a tab that is closed, in which case its rectangle is zero and every measurement
-  // below is meaningless.
-  const tab = tabOf(el.closest && el.closest('section[data-tab]'));
-  if(tab && tab !== activeTab) showTab(tab);
   const box = el.getBoundingClientRect();
   const roomy = box.top >= 62 && box.top <= innerHeight - Math.min(240, innerHeight / 3);
   if (roomy) return;
@@ -5785,7 +5696,6 @@ function tick(){
 
 (async function start(){
   tick(); setInterval(tick,1000);
-  initTabs();
   // Rendered once up front so the panel exists before any request has finished - it is
   // the place a reader goes when a section is empty, and an empty panel would be the
   // same failure one level up.
