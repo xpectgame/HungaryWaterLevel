@@ -1298,6 +1298,57 @@ async function probeRainScan() {
  */
 const KIND_LABEL = { 68: 'vízállás', 69: 'talajvízállás', 70: 'rétegvízszint', 71: 'csapadék', 81: 'vízhőmérséklet' };
 
+/**
+ * Which measuring networks exist at all.
+ *
+ * This project has learned the same lesson twice and paid for it both times: a quantity
+ * that answers nowhere is usually being asked of the wrong NETWORK, not the wrong code.
+ * `AdatFajtaKod 69` came back empty across 524 wells and went into the documentation as
+ * "talajvíz is not published" - it is published, on vmoType 12, by 2030 stations. Today
+ * the in-situ water-quality codes (dissolved oxygen, nitrate, chlorophyll) answered
+ * nothing on vmoType 11, and the honest reading of that is "not on this network", not
+ * "not measured".
+ *
+ * The four vmoTypes this project knows about were each found by accident. So this asks
+ * the catalogue for a range of them and prints how many stations each returns, which is
+ * cheap - one request per type - and turns the next such question from a guess into a
+ * lookup.
+ */
+async function probeVmoScan(args = []) {
+  console.log('\n########## measuring networks (vmoType) ##########');
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
+  const from = Number(arg('from')) || 1;
+  const to = Number(arg('to')) || 24;
+  const out = {};
+
+  for (let vmo = from; vmo <= to; vmo += 1) {
+    try {
+      const { rows } = await fetchCatalogue(vmo, { internetOnly: true });
+      const list = Array.isArray(rows) ? rows : [];
+      const withCoords = list.filter((r) => r.Lat != null && r.Lon != null).length;
+      out[vmo] = { stations: list.length, withCoords };
+      // A name or two, because a count alone does not say what the network IS, and the
+      // station names are the only clue the catalogue gives.
+      const names = list.slice(0, 3).map((r) => r.Nev || r.Name || r.Tsz).filter(Boolean);
+      if (list.length) out[vmo].sample = names;
+      console.log(`  vmoType ${String(vmo).padStart(2)}: ${String(list.length).padStart(5)} station(s)` +
+        `${list.length ? `   e.g. ${names.join(', ')}` : ''}`);
+      if (list.length && !out[vmo].fields) {
+        out[vmo].fields = Object.keys(list[0]);
+      }
+    } catch (err) {
+      out[vmo] = { error: err.message.split('\n')[0] };
+      console.log(`  vmoType ${String(vmo).padStart(2)}: FAILED ${err.message.split('\n')[0].slice(0, 70)}`);
+    }
+    await sleep(300);
+  }
+
+  emitDocument('vmo-scan', out, 'reference - which station networks exist');
+}
+
 async function probeWellScan(args = []) {
   console.log('\n########## well scan ##########');
 
@@ -4008,6 +4059,11 @@ async function main() {
 
   if (args.includes('--rain-scan')) {
     await probeRainScan();
+    return;
+  }
+
+  if (args.includes('--vmo-scan')) {
+    await probeVmoScan(args);
     return;
   }
 
