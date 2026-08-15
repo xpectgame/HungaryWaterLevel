@@ -1314,6 +1314,130 @@ const KIND_LABEL = { 68: 'vízállás', 69: 'talajvízállás', 70: 'rétegvízs
  * cheap - one request per type - and turns the next such question from a guess into a
  * lookup.
  */
+/**
+ * Bakes what each soil-moisture station has actually measured, month by month.
+ *
+ * Separate from probeWellHistory, which will not do: that one gates on five years and
+ * ten, and these stations have ONE. A gate written for a decade-long record would return
+ * nothing here and the nothing would look like "no data" rather than "a young network".
+ *
+ * ---------------------------------------------------------------------------
+ * ONE YEAR IS NOT A NORMAL, AND THE DOCUMENT SAYS SO
+ * ---------------------------------------------------------------------------
+ * Every other history this project bakes covers ten years, and the whole point of those
+ * is the word "usually". This cannot say "usually" about anything. What it can say is
+ * exactly what this station measured in this calendar month of the one year it has, which
+ * makes "drier than 85% of the hours it recorded last August" a true and checkable
+ * sentence - and a different, weaker sentence than the river percentiles make.
+ *
+ * `years` is written into every month for that reason. A consumer that renders a
+ * one-year band with the same words as a ten-year band is making a claim the data does
+ * not support, and this is the field that stops it.
+ *
+ * Hourly samples are reduced to DAILY MEANS first, like every other history here: a
+ * station reporting hourly would otherwise outweigh one with a gap, and a percentile over
+ * raw samples measures reporting cadence as much as it measures soil.
+ */
+async function probeSoilHistory(args = []) {
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
+
+  const registry = require('../config/soil-stations.json');
+  const KIND = registry.kind;
+  console.log(`\n########## soil moisture history (kind ${KIND.adatFajtaKod} / type ${KIND.adatTipusKod}) ##########`);
+
+  const MONTHS_BACK = Number(arg('months')) || 14;
+  const stations = registry.stations;
+  console.log(`${stations.length} stations, ${MONTHS_BACK} months, one request per month\n`);
+
+  // station id -> calendar month -> [daily means]
+  const perMonth = new Map();
+  for (const s of stations) perMonth.set(s.id, Array.from({ length: 12 }, () => []));
+  // station id -> calendar month -> Set of years the month has data from
+  const yearsIn = new Map();
+  for (const s of stations) yearsIn.set(s.id, Array.from({ length: 12 }, () => new Set()));
+
+  const now = new Date();
+  for (let back = 0; back < MONTHS_BACK; back += 1) {
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back + 1, 1));
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
+    // Whole stations in one request - 23 of them is one call, and asking per station
+    // would be 23 times the traffic for the same answer.
+    let out;
+    try {
+      out = await askSeries(
+        stations.map((s, index) => ({
+          ItemId: index,
+          Torzsszam: Number(s.tsz),
+          AdatFajtaKod: KIND.adatFajtaKod,
+          AdatTipusKod: KIND.adatTipusKod,
+          StartTime: start.toISOString(),
+          EndTime: end.toISOString(),
+        })),
+        { timeoutMs: 90000 },
+      );
+    } catch (err) {
+      console.log(`  ${start.toISOString().slice(0, 7)}: FAILED ${err.message.split('\n')[0].slice(0, 70)}`);
+      continue;
+    }
+
+    const byItemId = require('../sources/vizugy').indexByItemId(Array.isArray(out) ? out : []);
+    let reached = 0;
+    for (const [index, station] of stations.entries()) {
+      const items = usable(byItemId.get(index));
+      if (!items.length) continue;
+      reached += 1;
+      // Daily means, keyed by date, before anything is bucketed by month.
+      const byDay = new Map();
+      for (const item of items) {
+        const t = new Date(item.UTCTime);
+        if (Number.isNaN(t.getTime())) continue;
+        const day = t.toISOString().slice(0, 10);
+        const list = byDay.get(day) || [];
+        list.push(item.Ertek);
+        byDay.set(day, list);
+      }
+      for (const [day, values] of byDay) {
+        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+        const month = Number(day.slice(5, 7)) - 1;
+        perMonth.get(station.id)[month].push(round2(mean));
+        yearsIn.get(station.id)[month].add(day.slice(0, 4));
+      }
+    }
+    console.log(`  ${start.toISOString().slice(0, 7)}: ${reached}/${stations.length} stations answered`);
+    await sleep(500);
+  }
+
+  const QUANTILES = [5, 25, 50, 75, 95];
+  const document = { unit: KIND.unit, quantiles: QUANTILES, stations: {} };
+  for (const station of stations) {
+    const months = [];
+    for (let m = 0; m < 12; m += 1) {
+      const values = perMonth.get(station.id)[m].slice().sort((a, b) => a - b);
+      // Ten days, not thirty: a month with a fortnight of hourly readings describes that
+      // month perfectly well, and demanding a full one throws away the edges of the
+      // record - which for a one-year network is a large share of it.
+      if (values.length < 10) { months.push(null); continue; }
+      months.push({
+        p: QUANTILES.map((q) => round2(percentileOf(values, q / 100))),
+        min: values[0],
+        max: values[values.length - 1],
+        days: values.length,
+        // ONE, on this network, and the reason this field is not optional. See the header.
+        years: yearsIn.get(station.id)[m].size,
+      });
+    }
+    document.stations[station.id] = { name: station.name, months };
+  }
+
+  const covered = Object.values(document.stations)
+    .filter((s) => s.months.some(Boolean)).length;
+  console.log(`\n${covered}/${stations.length} stations have at least one usable month`);
+  emitDocument('soil-history', document, 'src/config/soil-history.json');
+}
+
 async function probeVmoScan(args = []) {
   console.log('\n########## measuring networks (vmoType) ##########');
   const arg = (name) => {
@@ -4064,6 +4188,11 @@ async function main() {
 
   if (args.includes('--vmo-scan')) {
     await probeVmoScan(args);
+    return;
+  }
+
+  if (args.includes('--soil-history')) {
+    await probeSoilHistory(args);
     return;
   }
 

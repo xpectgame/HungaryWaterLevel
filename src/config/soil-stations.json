@@ -1,0 +1,249 @@
+{
+ "source": "vraquery vmoType 14, AdatFajtaKod 299 (Talajnedvesség), AdatTipusKod 100",
+ "generated": "2026-08-15",
+ "kind": {
+  "vmoType": 14,
+  "adatFajtaKod": 299,
+  "adatTipusKod": 100,
+  "unit": "%",
+  "label": "talajnedvesség"
+ },
+ "count": 23,
+ "droppedRows": 0,
+ "hasSensorDepth": false,
+ "hasSoilType": false,
+ "hasWiltingPoint": false,
+ "coverage": "Csongrád-Csanád, Békés és Bács-Kiskun megye - az ország délkeleti sarka, nem országos hálózat",
+ "stations": [
+  {
+   "id": "talaj-1493",
+   "tsz": 1493,
+   "name": "Battonya",
+   "settlement": "Battonya",
+   "lat": 46.29228,
+   "lon": 20.97764,
+   "vizig": 14,
+   "samplesSeen": 6492
+  },
+  {
+   "id": "talaj-6971",
+   "tsz": 6971,
+   "name": "Csanádpalota",
+   "settlement": "Csanádpalota",
+   "lat": 46.23225,
+   "lon": 20.72262,
+   "vizig": 14,
+   "samplesSeen": 8640
+  },
+  {
+   "id": "talaj-6976",
+   "tsz": 6976,
+   "name": "Csengele",
+   "settlement": "Csengele",
+   "lat": 46.55782,
+   "lon": 19.86915,
+   "vizig": 14,
+   "samplesSeen": 8610
+  },
+  {
+   "id": "talaj-6970",
+   "tsz": 6970,
+   "name": "Csólyospálos",
+   "settlement": "Csólyospálos",
+   "lat": 46.44788,
+   "lon": 19.79742,
+   "vizig": 14,
+   "samplesSeen": 8580
+  },
+  {
+   "id": "talaj-6984",
+   "tsz": 6984,
+   "name": "Csongrád",
+   "settlement": "Csongrád",
+   "lat": 46.76301,
+   "lon": 20.08198,
+   "vizig": 14,
+   "samplesSeen": 8646
+  },
+  {
+   "id": "talaj-6973",
+   "tsz": 6973,
+   "name": "Deszk",
+   "settlement": "Deszk",
+   "lat": 46.2032,
+   "lon": 20.35233,
+   "vizig": 14,
+   "samplesSeen": 8628
+  },
+  {
+   "id": "talaj-7064",
+   "tsz": 7064,
+   "name": "Gádoros",
+   "settlement": "Gádoros",
+   "lat": 46.6703,
+   "lon": 20.61249,
+   "vizig": 14,
+   "samplesSeen": 8574
+  },
+  {
+   "id": "talaj-1322",
+   "tsz": 1322,
+   "name": "Hódmezővásárhely",
+   "settlement": "Hódmezővásárhely",
+   "lat": 46.46134,
+   "lon": 20.36012,
+   "vizig": 14,
+   "samplesSeen": 8604
+  },
+  {
+   "id": "talaj-6972",
+   "tsz": 6972,
+   "name": "Királyhegyes",
+   "settlement": "Királyhegyes",
+   "lat": 46.26613,
+   "lon": 20.60804,
+   "vizig": 14,
+   "samplesSeen": 8634
+  },
+  {
+   "id": "talaj-6979",
+   "tsz": 6979,
+   "name": "Kiskunfélegyháza",
+   "settlement": "Kiskunfélegyháza",
+   "lat": 46.71193,
+   "lon": 19.87935,
+   "vizig": 14,
+   "samplesSeen": 8628
+  },
+  {
+   "id": "talaj-6977",
+   "tsz": 6977,
+   "name": "Kiskunhalas",
+   "settlement": "Kiskunhalas",
+   "lat": 46.38564,
+   "lon": 19.47194,
+   "vizig": 14,
+   "samplesSeen": 8616
+  },
+  {
+   "id": "talaj-6978",
+   "tsz": 6978,
+   "name": "Kisszállás",
+   "settlement": "Kisszállás",
+   "lat": 46.27243,
+   "lon": 19.56601,
+   "vizig": 14,
+   "samplesSeen": 8598
+  },
+  {
+   "id": "talaj-1323",
+   "tsz": 1323,
+   "name": "Mezőhegyes",
+   "settlement": "Mezőhegyes",
+   "lat": 46.30608,
+   "lon": 20.81864,
+   "vizig": 14,
+   "samplesSeen": 8640
+  },
+  {
+   "id": "talaj-6975",
+   "tsz": 6975,
+   "name": "Mindszent",
+   "settlement": "Mindszent",
+   "lat": 46.49112,
+   "lon": 20.20146,
+   "vizig": 14,
+   "samplesSeen": 8616
+  },
+  {
+   "id": "talaj-1491",
+   "tsz": 1491,
+   "name": "Nagybánhegyes",
+   "settlement": "Nagybánhegyes",
+   "lat": 46.48949,
+   "lon": 20.91185,
+   "vizig": 14,
+   "samplesSeen": 8646
+  },
+  {
+   "id": "talaj-6980",
+   "tsz": 6980,
+   "name": "Pálmonostora",
+   "settlement": "Pálmonostora",
+   "lat": 46.63256,
+   "lon": 19.9385,
+   "vizig": 14,
+   "samplesSeen": 8592
+  },
+  {
+   "id": "talaj-7058",
+   "tsz": 7058,
+   "name": "Röszke",
+   "settlement": "Röszke",
+   "lat": 46.18974,
+   "lon": 20.0679,
+   "vizig": 14,
+   "samplesSeen": 8550
+  },
+  {
+   "id": "talaj-6981",
+   "tsz": 6981,
+   "name": "Ruzsa",
+   "settlement": "Ruzsa",
+   "lat": 46.26251,
+   "lon": 19.76762,
+   "vizig": 14,
+   "samplesSeen": 8598
+  },
+  {
+   "id": "talaj-6974",
+   "tsz": 6974,
+   "name": "Sándorfalva",
+   "settlement": "Sándorfalva",
+   "lat": 46.40238,
+   "lon": 20.10342,
+   "vizig": 14,
+   "samplesSeen": 8556
+  },
+  {
+   "id": "talaj-6989",
+   "tsz": 6989,
+   "name": "Székkutas",
+   "settlement": "Székkutas",
+   "lat": 46.49982,
+   "lon": 20.54504,
+   "vizig": 14,
+   "samplesSeen": 8604
+  },
+  {
+   "id": "talaj-6992",
+   "tsz": 6992,
+   "name": "Szentes",
+   "settlement": "Szentes",
+   "lat": 46.75158,
+   "lon": 20.38589,
+   "vizig": 14,
+   "samplesSeen": 8466
+  },
+  {
+   "id": "talaj-7069",
+   "tsz": 7069,
+   "name": "Tótkomlós",
+   "settlement": null,
+   "lat": 46.39772,
+   "lon": 20.69892,
+   "vizig": 14,
+   "samplesSeen": 8022
+  },
+  {
+   "id": "talaj-6994",
+   "tsz": 6994,
+   "name": "Városföld",
+   "settlement": "Városföld",
+   "lat": 46.87203,
+   "lon": 19.7733,
+   "vizig": 14,
+   "samplesSeen": 8628
+  }
+ ]
+}
