@@ -900,6 +900,7 @@ async function probeDataTypes() {
     '/Vra/AdatFajta', '/Vra/AdatFajtak', '/Vra/AdatTipus', '/Vra/AdatTipusok', '/Vra/Mertekegyseg',
     '/Base/AdatFajta', '/Base/AdatTipus', '/Base/Mertekegyseg',
   ];
+  const out = {};
   for (const path of paths) {
     const url = `${VRAQUERY_BASE}${path}`;
     try {
@@ -908,12 +909,24 @@ async function probeDataTypes() {
         headers: { Authorization: `Bearer ${token}`, ...browserHeaders('https://data.vizugy.hu') },
       });
       const list = Array.isArray(rows) ? rows : [rows];
+      out[path] = list;
       console.log(`\n${url}: ${list.length} entries`);
-      for (const row of list.slice(0, 60)) console.log(`  ${JSON.stringify(row)}`);
+      // All of them, not the first 60. The catalogue is 68 entries long and the cut at 60
+      // silently hid the last eight, which are alphabetically the T-Z ones - among them
+      // Talajnedvesség, the soil-moisture measurement this project spent a whole probe
+      // concluding it could not have.
+      for (const row of list) console.log(`  ${JSON.stringify(row)}`);
     } catch (err) {
+      out[path] = { error: err.message.split('\n')[0] };
       console.log(`\n${url}: FAILED ${err.message}`);
     }
   }
+
+  // Written out, not only logged. This catalogue is the map of everything this API can
+  // be asked for - 68 quantities, of which this project reads six - and until now it
+  // existed only in a job log that expires in a fortnight, so every question about "is
+  // there data for X" started by probing for it again.
+  emitDocument('adatfajtak', out, 'reference - which AdatFajtaKod values exist at all');
 }
 
 /**
