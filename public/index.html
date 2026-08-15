@@ -3057,9 +3057,23 @@ function tabForSection(id){
   return el ? tabOf(el.closest('section[data-tab]') || el) : null;
 }
 
+/** The first section in a tab, so a tab has a shareable address. */
+function firstSectionOf(name){
+  const el = document.querySelector(`section[data-tab="${name}"][id]`);
+  return el ? el.id : null;
+}
+
 function initTabs(){
   for(const b of document.querySelectorAll('.navlabel[data-tab]')){
-    b.addEventListener('click', () => showTab(b.getAttribute('data-tab'), { scroll:true }));
+    b.addEventListener('click', () => {
+      const name = b.getAttribute('data-tab');
+      // Pushed, not replaced, so the browser's Back button undoes a tab change. It has
+      // to: clicking a marker on the map jumps the reader to a different tab entirely,
+      // and Back is what anyone would press to get back to the map.
+      const id = firstSectionOf(name);
+      if(id) history.pushState(null, '', '#' + id);
+      showTab(name, { scroll:true });
+    });
   }
   // A link into a closed tab opens it first - including one arriving in the URL.
   const fromHash = location.hash.length > 1 && tabForSection(location.hash.slice(1));
@@ -3071,6 +3085,12 @@ function initTabs(){
   addEventListener('hashchange', () => {
     const t = location.hash.length > 1 && tabForSection(location.hash.slice(1));
     if(t && t !== activeTab) showTab(t);
+  });
+  // Back and Forward. pushState does not raise hashchange, so this is the only place a
+  // history move is heard.
+  addEventListener('popstate', () => {
+    const t = (location.hash.length > 1 && tabForSection(location.hash.slice(1))) || 'most';
+    if(t !== activeTab) showTab(t);
   });
 }
 
