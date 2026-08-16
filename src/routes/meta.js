@@ -121,6 +121,15 @@ module.exports = function metaRoutes(ctx) {
           status: 'used as a constant, not fetched live',
         },
         {
+          name: 'vraquery vmoType 14, AdatFajtaKod 299 (Talajnedvesség)',
+          use: 'The 23 stations behind /talajnedvesseg: soil moisture as a percentage, hourly.',
+          status: 'live; the station registry and a one-year percentile record are baked',
+          limitation:
+            'No sensor depth, no soil type and no wilting point are published, so a reading is comparable with itself over time and only roughly between stations. ' +
+            'All 23 stations are in the south-east, which is not a national network. ' +
+            'The record behind the percentiles is about one year, not the ten the river and well histories use.',
+        },
+        {
           name: 'geoportal.vizugy.hu Honlap/Vizikozmu/MapServer/0',
           use: 'The 732 municipal wastewater treatment works behind /szennyviz: design capacity in population equivalent, arriving organic load, annual volume, receiving watercourse.',
           status: 'baked into src/config/sewage.json; the register is not a live feed',

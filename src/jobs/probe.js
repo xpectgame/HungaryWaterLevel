@@ -678,6 +678,13 @@ async function probeSite(baseUrl) {
       return { ok: d.totalM3s > 0, note: `${d.count} works, ${d.totalM3s} m3/s, ` +
         `${Math.round((d.volumeCapacityShare || 0) * 100)}% of capacity has a volume` };
     }],
+    ['talajnedvesseg', '/api/v1/talajnedvesseg', (d) => {
+      if (!d.count) return { ok: false, note: 'no stations - the registry is not in the deployment' };
+      // measuredCount, not count: the registry ships with the build and would report 23
+      // whether or not a single station answered, which is the one failure that matters.
+      return { ok: d.measuredCount > 0, note: `${d.measuredCount}/${d.count} reporting, ` +
+        `${d.dryCount} in their own lowest quarter, record ${d.recordYears} year(s)` };
+    }],
     ['ipari', '/api/v1/ipari?limit=1', (d) => {
       if (!d.count) return { ok: false, note: 'no outfalls - the register is not in the deployment' };
       // The vintage is checked, not just the count. A register whose date stopped
