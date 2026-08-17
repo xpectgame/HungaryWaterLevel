@@ -442,6 +442,32 @@ function loadYearly({ reload = false } = {}) {
 }
 
 /**
+ * The day-resolved archive: station -> year -> "MM-DD" -> daily mean discharge.
+ *
+ * The monthly documents above cannot say anything about the month currently running,
+ * and they are right not to: a partial August is not August. But "is it worse than 2022
+ * RIGHT NOW" is a different question, and the answer is to compare the same window -
+ * the 1st to the 17th against the 1st to the 17th - which needs the days that the
+ * monthly aggregation threw away.
+ *
+ * Optional. It is the largest document this project bakes, so a deployment without it
+ * loses the aligned-window comparison and keeps everything else, which is why every
+ * caller has to handle null rather than assume it.
+ */
+const DAILY_PATH = path.join(__dirname, '..', 'config', 'flow-daily.json');
+let cachedDaily;
+
+function loadDaily({ reload = false } = {}) {
+  if (cachedDaily !== undefined && !reload) return cachedDaily;
+  try {
+    cachedDaily = JSON.parse(fs.readFileSync(DAILY_PATH, 'utf8'));
+  } catch {
+    cachedDaily = null;
+  }
+  return cachedDaily;
+}
+
+/**
  * The years this month most resembles, and what the next month did in them.
  *
  * THIS IS NOT A FORECAST, and the distinction is the whole reason it is allowed to
@@ -529,7 +555,7 @@ function round(v, digits) {
 }
 
 module.exports = {
-  rankFlow, rankLake, rankWell, rankShallow, wellStatus, loadHistory, loadShallowHistory, loadLakeHistory, loadWellHistory, loadYearly,
+  rankFlow, rankLake, rankWell, rankShallow, wellStatus, loadHistory, loadShallowHistory, loadLakeHistory, loadWellHistory, loadYearly, loadDaily,
   findAnalogues, historyCoverage, percentileWithin, monthlyMedian,
   BANDS, QUANTILES, DOCUMENT_PATH, LAKE_DOCUMENT_PATH, WELL_DOCUMENT_PATH, SHALLOW_DOCUMENT_PATH,
 };

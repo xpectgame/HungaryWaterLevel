@@ -606,6 +606,10 @@ svg.map text{user-select:none;-webkit-user-select:none}
    meaning away. Reusing the established pair also keeps one vocabulary of "low" across
    the page instead of two that nearly match. */
 .dy-fact.hot b{color:#9c2b16}
+/* The running month. Marked out because it is the only figure in this section that is
+   about now rather than about a finished year, and it is a part-month - the border says
+   "this one is a different kind of thing" before the caption has to. */
+.dy-fact.dy-run{border-color:#9c2b16;border-left-width:4px;flex-basis:100%}
 table.dy{width:100%;border-collapse:collapse;font-size:13px}
 table.dy th,table.dy td{padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
 table.dy th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-faint);
@@ -5202,6 +5206,19 @@ function renderDroughtYears(d){
       `<span>ez az év tartja a legkisebb ${esc(adj)} vízhozam rekordját a legtöbb mércén (${worstYear.count} db)</span></div>` : '') +
     `<div class="dy-fact"><b>${d.years.length} év</b>` +
     `<span>${d.years[0]}–${d.years[d.years.length-1]}, havi medián vízhozamokból</span></div>`;
+
+  // The running month, when the day-resolved archive is deployed. Its own block above
+  // the table, never a column in it: those are whole months and this is a part-month,
+  // and putting seventeen days in the August column is the one mistake this section is
+  // built to avoid.
+  const run = d.running;
+  if(run && run.available && run.summary.comparable > 0){
+    summary.innerHTML +=
+      `<div class="dy-fact dy-run${run.summary.belowReference ? ' hot' : ''}">` +
+      `<b>${run.summary.belowReference} / ${run.summary.comparable}</b>` +
+      `<span><b>Eddig ${run.year}-ben</b> (${esc(run.monthHu)} 1–${run.throughDay}.): ennyi mércén ` +
+      `folyik kevesebb víz, mint ${run.reference} ugyanezen napjaiban</span></div>`;
+  }
 
   const years = d.years;
   const head = '<tr><th class="n">Mérce</th>' +

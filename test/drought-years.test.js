@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const {
-  compareYears, stationAcrossMonths, monthSeries, buildDroughtYears,
+  compareYears, compareWindow, stationAcrossMonths, monthSeries, buildDroughtYears,
 } = require('../src/domain/drought-years');
 
 /* Two gauges, four years, August in index 7. Small enough to reason about by hand. */
@@ -159,4 +159,96 @@ test('the endpoint payload can carry one gauge in detail alongside the table', (
   assert.ok(b.station, 'no per-gauge detail');
   assert.equal(b.station.id, 'tisza-szolnok');
   assert.equal(b.station.months.length, 12);
+});
+
+/* --- the running month, as an equal window -------------------------------- */
+
+/** August days 1..n for one year, all at the same discharge. */
+function augDays(n, value) {
+  const days = {};
+  for (let d = 1; d <= n; d += 1) days[`08-${String(d).padStart(2, '0')}`] = value;
+  return days;
+}
+
+const THIS_YEAR = new Date().getUTCFullYear();
+
+test('the running month is compared against the SAME days of other years', () => {
+  // Seventeen days is not August, and the monthly table is right to say nothing about
+  // it. Seventeen days against seventeen days is a different and answerable question.
+  const daily = {
+    'tisza-szolnok': {
+      2022: augDays(31, 100),
+      [THIS_YEAR]: augDays(17, 60),
+    },
+  };
+  const w = compareWindow({ month: 7, throughDay: 17, document: daily });
+  assert.equal(w.available, true);
+  assert.equal(w.windowDays, 17);
+  assert.equal(w.throughDay, 17);
+  const s = w.stations[0];
+  // 2022's median is taken over the SAME seventeen days, not over its whole August.
+  assert.equal(s.referenceValue, 100);
+  assert.equal(s.thisYear.value, 60);
+  assert.equal(s.vsReference, 0.6);
+  assert.equal(w.summary.belowReference, 1);
+});
+
+test('a year missing most of the window does not compete', () => {
+  // A median over four days compared against one over seventeen is not like for like,
+  // and the failure would be invisible: a plausible number from a quarter of the data.
+  const daily = {
+    'tisza-szolnok': {
+      2019: augDays(4, 5),
+      2022: augDays(17, 100),
+      [THIS_YEAR]: augDays(17, 60),
+    },
+  };
+  const w = compareWindow({ month: 7, throughDay: 17, document: daily });
+  const s = w.stations[0];
+  assert.equal(s.values['2019'], null, 'four days must not produce a value');
+  assert.equal(s.daysCounted['2019'], 4, 'but the count is still reported');
+  assert.ok(!w.years.includes(2019));
+});
+
+test('the window carries its own basis, distinct from the monthly table', () => {
+  const daily = { 'tisza-szolnok': { 2022: augDays(17, 100), [THIS_YEAR]: augDays(17, 60) } };
+  const w = compareWindow({ month: 7, throughDay: 17, document: daily });
+  assert.equal(w.basis, 'aligned-window');
+  assert.match(w.basisNote, /augusztus 1–17/);
+  assert.match(w.basisNote, /nem a teljes hónap/);
+  assert.match(w.basisNote, /nem átlag/);
+});
+
+test('the window is a median, the same statistic as the table above', () => {
+  // One row a median and the next a mean would invite exactly the comparison between
+  // them that is not valid.
+  const days = { '08-01': 1, '08-02': 2, '08-03': 3, '08-04': 4, '08-05': 100 };
+  const daily = { 'tisza-szolnok': { 2022: days, [THIS_YEAR]: days } };
+  const w = compareWindow({ month: 7, throughDay: 5, document: daily });
+  assert.equal(w.stations[0].referenceValue, 3, 'median of 1,2,3,4,100 is 3 - a mean would be 22');
+});
+
+test('with no daily archive it says so rather than returning an empty comparison', () => {
+  const w = compareWindow({ month: 7, throughDay: 17, document: {} });
+  assert.equal(w.available, false);
+  assert.match(w.reason, /napi felbontású/);
+});
+
+test('the first of the month has no complete day yet, and says so', () => {
+  const daily = { 'tisza-szolnok': { 2022: augDays(31, 100) } };
+  const w = compareWindow({ month: 7, throughDay: 0, document: daily });
+  assert.equal(w.available, false);
+});
+
+test('the payload attaches the window under its own key, never in the year columns', () => {
+  // A consumer that could not tell them apart would put seventeen days in the August
+  // column beside whole months.
+  const daily = { 'tisza-szolnok': { 2022: augDays(17, 100), [THIS_YEAR]: augDays(17, 60) } };
+  const b = buildDroughtYears({ month: AUG, document: FIXTURE, daily });
+  assert.ok(b.running, 'no running-month block');
+  assert.equal(b.running.basis, 'aligned-window');
+  assert.equal(b.basis, 'monthly-median');
+  // And the year columns still contain only whole months.
+  const koros = b.stations.find((s) => s.id === 'feher-koros-gyula');
+  assert.ok(!(String(THIS_YEAR) in koros.values) || koros.values[String(THIS_YEAR)] === undefined);
 });

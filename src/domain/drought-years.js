@@ -1,6 +1,6 @@
 'use strict';
 
-const { loadYearly } = require('./flow-history');
+const { loadYearly, loadDaily } = require('./flow-history');
 const { getStation } = require('../config/stations');
 
 /**
@@ -247,14 +247,161 @@ function stationAcrossMonths(id, { reference = REFERENCE_YEAR, document } = {}) 
   };
 }
 
+/* --- the running month, compared like for like ---------------------------- */
+
+/**
+ * The same window of days, in every year.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE MONTHLY TABLE CANNOT ANSWER THIS
+ * ---------------------------------------------------------------------------
+ * On the 17th of August the monthly table has nothing to say about this year, and it is
+ * right not to: seventeen days is not August, and publishing it as August would be the
+ * exact error the 20-day guard in the bake exists to prevent.
+ *
+ * But "is it worse than 2022 right now" is a different question, and it has an honest
+ * answer: compare the 1st to the 17th of August against the 1st to the 17th of August in
+ * every other year. Equal windows, same calendar days, no partial month presented as a
+ * whole one. That needs day resolution, which is why the bake now keeps a third document.
+ *
+ * ---------------------------------------------------------------------------
+ * THE SAME STATISTIC AS THE TABLE ABOVE
+ * ---------------------------------------------------------------------------
+ * The median of the window's daily means, not the mean of them - because the monthly
+ * table is medians, and a section where one row is a median and the next is a mean
+ * invites exactly the comparison that is not valid. One statistic throughout.
+ *
+ * ---------------------------------------------------------------------------
+ * A YEAR WITH A GAP IN THE WINDOW DOES NOT COMPETE
+ * ---------------------------------------------------------------------------
+ * If 2019 reported four of the seventeen days, its median is the median of four days and
+ * comparing it to seventeen is not like for like. Such a year comes back null with its
+ * day count attached, rather than silently contributing a number built from a quarter of
+ * the evidence.
+ */
+const MIN_WINDOW_COVERAGE = 0.8;
+
+function compareWindow({ month, throughDay, reference = REFERENCE_YEAR, document } = {}) {
+  const daily = document !== undefined ? document : loadDaily();
+  if (!daily || !Object.keys(daily).length) {
+    return {
+      available: false,
+      reason: 'A napi felbontású archívum nincs betöltve.',
+    };
+  }
+
+  const now = new Date();
+  const m = Number.isInteger(month) ? month : now.getUTCMonth();
+  // Through yesterday by default: today is usually partial at whatever hour this runs,
+  // and a half-day would drag the window's last value down for this year alone.
+  const through = Number.isInteger(throughDay) ? throughDay : now.getUTCDate() - 1;
+  if (through < 1) {
+    return { available: false, reason: 'A hónapból még nincs teljes nap.' };
+  }
+
+  const keys = [];
+  for (let d = 1; d <= through; d += 1) {
+    keys.push(`${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+  const needed = Math.ceil(keys.length * MIN_WINDOW_COVERAGE);
+
+  const stations = [];
+  const yearSet = new Set();
+
+  for (const [id, byYear] of Object.entries(daily)) {
+    const station = getStation(id);
+    const values = {};
+    const daysCounted = {};
+
+    for (const [year, days] of Object.entries(byYear)) {
+      const present = keys.map((k) => days[k]).filter((v) => Number.isFinite(v));
+      daysCounted[year] = present.length;
+      if (present.length < needed) { values[year] = null; continue; }
+      const sorted = present.slice().sort((a, b) => a - b);
+      values[year] = round(median(sorted), 2);
+      yearSet.add(Number(year));
+    }
+
+    const referenceValue = values[String(reference)];
+    const present = Object.entries(values)
+      .filter(([, v]) => Number.isFinite(v))
+      .map(([year, v]) => ({ year: Number(year), value: v }));
+    const thisYear = present.find((p) => p.year === now.getUTCFullYear()) || null;
+
+    stations.push({
+      id,
+      name: station ? station.name : id,
+      river: station ? station.river : null,
+      values,
+      daysCounted,
+      referenceValue: Number.isFinite(referenceValue) ? referenceValue : null,
+      comparable: Number.isFinite(referenceValue) && referenceValue > 0 && !!thisYear,
+      thisYear,
+      lowest: present.length
+        ? present.reduce((a, b) => (b.value < a.value ? b : a))
+        : null,
+      vsReference: thisYear && Number.isFinite(referenceValue) && referenceValue > 0
+        ? round(thisYear.value / referenceValue, 3)
+        : null,
+    });
+  }
+
+  stations.sort((a, b) => {
+    const av = a.vsReference, bv = b.vsReference;
+    if (av === null && bv === null) return a.name.localeCompare(b.name, 'hu');
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    return av - bv;
+  });
+
+  const comparable = stations.filter((s) => s.comparable);
+  const below = comparable.filter((s) => s.thisYear.value < s.referenceValue);
+
+  return {
+    available: true,
+    month: m,
+    monthHu: MONTHS_HU[m],
+    monthAdjHu: MONTHS_ADJ_HU[m],
+    year: now.getUTCFullYear(),
+    throughDay: through,
+    windowDays: keys.length,
+    reference,
+    years: [...yearSet].sort((a, b) => a - b),
+    stations,
+    summary: {
+      stations: stations.length,
+      comparable: comparable.length,
+      belowReference: below.length,
+      belowReferenceIds: below.map((s) => s.id),
+      lowestByYear: countLowestByYear(comparable),
+    },
+    basis: 'aligned-window',
+    basisNote: `${MONTHS_HU[m]} 1–${through}., ugyanaz a napszakasz minden évben. `
+      + 'A napi vízhozamok mediánja az ablakon belül — nem a teljes hónap, és nem átlag.',
+  };
+}
+
+function median(sorted) {
+  if (!sorted.length) return null;
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 /** The payload for the endpoint and the section. */
-function buildDroughtYears({ month, reference, station, document } = {}) {
+function buildDroughtYears({ month, reference, station, document, daily } = {}) {
   const body = compareYears({ month, reference, document });
   if (!body.available) return body;
   if (station) {
     const detail = stationAcrossMonths(station, { reference, document });
     if (detail) body.station = detail;
   }
+
+  // The running month, as an equal window across years. Attached under its own key with
+  // its own `basis`, never merged into the year columns above: those are whole months
+  // and this is seventeen days, and a consumer that could not tell them apart would put
+  // a partial figure in the August column.
+  const window = compareWindow({ month, reference, document: daily });
+  body.running = window.available ? window : { available: false, reason: window.reason };
   return body;
 }
 
@@ -264,6 +411,6 @@ function round(v, digits) {
 }
 
 module.exports = {
-  buildDroughtYears, compareYears, stationAcrossMonths, monthSeries,
-  REFERENCE_YEAR, MONTHS_HU, MONTHS_ADJ_HU,
+  buildDroughtYears, compareYears, compareWindow, stationAcrossMonths, monthSeries,
+  REFERENCE_YEAR, MONTHS_HU, MONTHS_ADJ_HU, MIN_WINDOW_COVERAGE,
 };
