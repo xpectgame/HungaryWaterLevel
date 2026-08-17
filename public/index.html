@@ -262,6 +262,46 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .water-line.receives.heavy{stroke:rgba(163,52,31,.85);stroke-width:calc(2.4px * var(--mk,1))}
 .sw:hover,.swnode:focus .sw{fill:var(--silt);stroke-width:calc(.9px * var(--mk,1))}
 
+
+/* --- the household water calculator ---------------------------------------
+   Interactive because the model is an assumption and the reader is the one who should
+   set it: a fixed "az átlagember 150 litert használ" hides its inputs, a slider shows
+   them. Sliders rather than number boxes because the point is to feel how much the
+   answer moves, not to type a value to the litre. */
+.wu-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin:14px 0}
+.wu-row{background:var(--sunk);border-radius:12px;padding:11px 13px}
+.wu-row label{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:2px}
+.wu-row .wu-q{display:flex;align-items:center;gap:9px;margin-top:7px}
+.wu-row input[type=range]{flex:1;accent-color:var(--flow);min-width:80px}
+.wu-row .wu-val{font-family:var(--mono);font-size:13px;font-weight:650;color:var(--deep);
+  min-width:5.5em;text-align:right;white-space:nowrap}
+.wu-row .wu-unit{font-size:11.5px;color:var(--ink-faint);line-height:1.4}
+.wu-row .wu-rate{font-size:11.5px;color:var(--ink-soft);margin-top:6px}
+.wu-row .wu-rate select{font:inherit;font-size:11.5px;padding:1px 3px;border-radius:5px;
+  border:1px solid var(--line);background:#fff;color:var(--ink)}
+/* The total, big enough to be the answer rather than a footnote. */
+.wu-total{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;
+  border-top:2px solid var(--line);padding-top:13px;margin-top:4px}
+.wu-total .big{font-size:38px;font-weight:250;color:var(--flow);line-height:1;
+  font-variant-numeric:tabular-nums}
+.wu-total .unit{font-size:15px;color:var(--ink-soft)}
+.wu-total .alt{font-size:13px;color:var(--ink-soft)}
+/* A stacked bar, not a pie: the eye compares lengths and cannot compare angles, and this
+   one has to be read against the numbers beside it. */
+.wu-bar{display:flex;height:26px;border-radius:7px;overflow:hidden;margin:12px 0 8px;
+  background:var(--sunk)}
+.wu-bar i{display:block;height:100%}
+.wu-bar i.u-shower{background:#0e8f9e}.wu-bar i.u-toilet{background:#37b7c3}
+.wu-bar i.u-tap{background:#7fc9d2}.wu-bar i.u-washing{background:#a9843f}
+.wu-bar i.u-garden{background:#7aa05a}
+.wu-legend{display:flex;flex-wrap:wrap;gap:5px 15px;font-size:12px;color:var(--ink-soft)}
+.wu-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+.wu-legend i.u-shower{background:#0e8f9e}.wu-legend i.u-toilet{background:#37b7c3}
+.wu-legend i.u-tap{background:#7fc9d2}.wu-legend i.u-washing{background:#a9843f}
+.wu-legend i.u-garden{background:#7aa05a}
+.wu-save td.num b{color:var(--flow)}
+.wu-save tr.off{opacity:.5}
+
 /* --- soil moisture ---------------------------------------------------------
    Squares, not dots. A well level and a soil percentage are different measurements of
    different water, and drawing 23 of one as dots beside 687 of the other would invite
@@ -1083,6 +1123,7 @@ footer a{color:var(--ink-soft)}
       <span class="navlabel">Most</span>
       <a href="#s-terkep">Térkép</a>
       <a href="#s-rendszerek">Folyók</a>
+      <a href="#s-vizhasznalat">Te mennyit?</a>
       <a href="#s-vizallas">Vízállás</a>
       <a href="#s-tavak">Tavak</a>
       <a href="#s-hirek">Mi történik</a>
@@ -1302,6 +1343,46 @@ footer a{color:var(--ink-soft)}
 <section class="card" id="s-mennyi" style="margin-bottom:18px">
   <h3>Mire elég ennyi víz?</h3>
   <div id="scale" class="scale"></div>
+</section>
+
+<!-- The one section about the reader rather than the country. Placed right after the
+     map and the headline numbers, because "mennyi folyik át az országon" and "mennyit
+     használok én" are the same question at two scales, and the second is the one most
+     people came for. -->
+<section class="card" id="s-vizhasznalat" style="margin-bottom:18px">
+  <h3>Mennyi vizet használsz — és mire</h3>
+  <p class="lead" style="margin-bottom:10px">
+    Az oldal többi része az országról szól. Ez rólad. Állítsd be, hogy nálatok hogy megy —
+    a számok <b>a te beállításaidból</b> jönnek, nem egy „átlagemberből", mert olyan
+    nincs, és <b>Magyarországon senki nem méri</b>, mire megy el a háztartási víz.
+  </p>
+  <div class="explain">
+    <details>
+      <summary>Miért nincs itt az a szokásos kördiagram, hogy „30% zuhany, 25% WC"?</summary>
+      <p>
+        Mert az nem magyar mérés. Azok a százalékok külföldi háztartás-vizsgálatokból
+        származnak, cikkről cikkre másolódnak a forrásuk nélkül, és országos adatként
+        bemutatva <b>kitalált mérésnek</b> számítanak.
+      </p>
+      <p>
+        Ami viszont biztos: a <b>fajlagos</b> adatok. Egy zuhanyfej 6–15 litert enged át
+        percenként, egy WC-tartály 6 liter, egy mosógép 45. Ezek mérnöki tények, szűk
+        tartománnyal, és rá vannak írva a készülékre. Ezért itt a <b>fajlagos érték</b> a
+        modell, a <b>mennyiséget</b> pedig te adod meg — így a végeredmény a ti
+        háztartásotokról szól, és a feltevés látszik, mert te állítod be.
+      </p>
+    </details>
+    <details>
+      <summary>Mennyire pontos ez?</summary>
+      <p>
+        Annyira, amennyire a beállításaid. A zuhany a legtöbb háztartásban a legnagyobb
+        egyetlen tétel, és hogy 6 vagy 15 liter percenként, az <b>kétszeres</b> különbség
+        a végösszegben — ezért van kiírva minden sornál a tartomány, és ezért állítható.
+        Nem a literre pontos szám a cél, hanem hogy lásd, <b>mi a nagy tétel nálatok</b>.
+      </p>
+    </details>
+  </div>
+  <div id="wu-body"></div>
 </section>
 
 <section class="card" id="s-vizallas" style="margin-bottom:18px">
@@ -4434,6 +4515,166 @@ function renderSewage(d){
     `mennyiségi adat — köztük ${missing} —, így a fenti m³/s alulbecslés.`:''}</p>`;
 }
 
+/* --- household water use --------------------------------------------------
+
+   The one section on this site about the reader rather than the country. Everything in
+   it is computed from controls they set, for a reason that is the same one behind every
+   other refusal here: nobody measures what a Hungarian household spends water on, so the
+   familiar "30% shower, 25% toilet" wedge is a foreign study wearing a national figure's
+   clothes. Per-unit rates are physics and are published on the appliance; the quantities
+   are the reader's. The assumption stays visible because they are holding it.
+-------------------------------------------------------------------------- */
+
+let waterUse = null;
+const wuInput = {};
+
+function loadWaterUse(){
+  if(waterUse) return Promise.resolve(waterUse);
+  return api('/api/v1/vizhasznalat', { cache:'force-cache' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { waterUse = j; renderWaterUse(); return j; })
+    .catch(() => null);
+}
+
+/** Litres a day for one line, mirroring domain/water-use exactly. */
+function wuLitres(use, q, rate){
+  if(!(q >= 0) || !(rate >= 0)) return 0;
+  return use.perWeek ? (q * rate) / 7 : q * rate;
+}
+
+function wuState(use){
+  const st = wuInput[use.id] || {};
+  return {
+    q: Number.isFinite(st.q) ? st.q : use.defaultQuantity,
+    rate: Number.isFinite(st.rate) ? st.rate : use.litresPerUnit,
+  };
+}
+
+function renderWaterUse(){
+  const box = $('wu-body');
+  if(!box || !waterUse || !waterUse.uses) return;
+
+  const rows = waterUse.uses.map(u => {
+    const { q, rate } = wuState(u);
+    const [lo, hi] = u.range;
+    // The slider's top is generous rather than tight: a household that waters a garden
+    // for an hour must be able to say so, and seeing the number run away is the point.
+    const max = u.perWeek ? 21 : (u.id === 'garden' ? 60 : 40);
+    return `<div class="wu-row">
+      <label for="wu-${u.id}">${esc(u.hu)}</label>
+      <div class="wu-unit">${esc(u.unitHu)}</div>
+      <div class="wu-q">
+        <input type="range" id="wu-${u.id}" min="0" max="${max}" step="1" value="${q}"
+               aria-label="${esc(u.hu)}: ${esc(u.unitHu)}">
+        <span class="wu-val" id="wu-${u.id}-v">${fmt(q,0)} ${esc(u.unit)}</span>
+      </div>
+      <div class="wu-rate">${esc(u.rangeNote)}<br>
+        <label for="wu-${u.id}-r">Nálad: </label>
+        <select id="wu-${u.id}-r">${
+          rangeOptions(lo, hi, rate).map(v =>
+            `<option value="${v}"${v===rate?' selected':''}>${fmt(v,0)} l/${esc(u.unit)}</option>`).join('')
+        }</select>
+      </div>
+    </div>`;
+  }).join('');
+
+  const lines = waterUse.uses.map(u => {
+    const { q, rate } = wuState(u);
+    return { u, litres: wuLitres(u, q, rate) };
+  });
+  const total = lines.reduce((s2, l) => s2 + l.litres, 0);
+  const m3 = total * 365 / 1000;
+
+  const bar = total > 0 ? lines.filter(l => l.litres > 0).map(l =>
+    `<i class="u-${l.u.id}" style="width:${(100*l.litres/total).toFixed(2)}%" title="${
+      esc(l.u.hu)}: ${fmt(l.litres,0)} l/nap"></i>`).join('') : '';
+  const legend = lines.filter(l => l.litres > 0)
+    .sort((a,b) => b.litres - a.litres)
+    .map(l => `<span><i class="u-${l.u.id}"></i>${esc(l.u.hu.split(' (')[0])} — `+
+      `<b>${fmt(l.litres,0)} l</b> (${fmt(100*l.litres/total,0)}%)</span>`).join('');
+
+  // Savings, computed from the same numbers the reader just set.
+  const saveRows = (waterUse.savings || []).map(sv => {
+    const u = waterUse.uses.find(x => x.id === sv.use);
+    if(!u) return null;
+    const { q, rate } = wuState(u);
+    let nq = q, nr = rate;
+    if(Number.isFinite(sv.quantityDelta)) nq = Math.max(0, q + sv.quantityDelta);
+    if(Number.isFinite(sv.quantityTo)) nq = sv.quantityTo;
+    if(Number.isFinite(sv.rateTo)) nr = Math.min(rate, sv.rateTo);
+    const saved = Math.max(0, wuLitres(u, q, rate) - wuLitres(u, nq, nr));
+    return { sv, saved };
+  }).filter(Boolean).sort((a,b) => b.saved - a.saved).map(({sv, saved}) =>
+    `<tr class="${saved > 0 ? '' : 'off'}"><td><b>${esc(sv.hu)}</b>`+
+    `<div class="src-what">${esc(sv.note)}</div></td>`+
+    `<td class="num">${saved > 0 ? `<b>${fmt(saved,0)} l</b>` : '–'}</td>`+
+    `<td class="num">${saved > 0 ? fmt(saved*365/1000,1)+' m³' : '–'}</td>`+
+    `<td class="num">${saved > 0 && total > 0 ? fmt(100*saved/total,0)+'%' : '–'}</td></tr>`).join('');
+
+  const m = waterUse.measured;
+
+  box.innerHTML =
+    `<div class="wu-grid">${rows}</div>`+
+
+    `<div class="wu-total"><div><span class="big">${fmt(total,0)}</span> `+
+    `<span class="unit">liter naponta</span></div>`+
+    `<div class="alt">Ez <b>${fmt(m3,0)} m³ egy évben</b> — ennyi jelenik meg a vízszámlán.</div></div>`+
+
+    `<div class="wu-bar">${bar}</div><div class="wu-legend">${legend}</div>`+
+
+    (m ? `<div class="warnbox" style="margin-top:16px"><b>Mihez képest sok ez?</b> `+
+      `A szennyvíz-nyilvántartásban <b>${fmt(m.plants,0)} telep</b> közli a rákötött `+
+      `lakosszámot és az odaérkező szennyvíz mennyiségét is. A kettőt elosztva `+
+      `<b>${fmt(m.litresPerResidentPerDay,0)} liter/fő/nap</b> jön ki — de ez `+
+      `<b>nem a fogyasztás</b>. ${esc(m.whatItIsNot)}</div>` : '')+
+
+    `<h4 style="margin:20px 0 4px;font-size:14px">Mennyit hoz, ha változtatsz</h4>`+
+    `<p class="fineprint" style="margin:0 0 10px">Mindegyik sor a <b>te fenti számaidból</b> `+
+    `van kiszámolva, nem egy általános „spórolj 30 litert"-ből. Ami nálad nem alkalmazható, `+
+    `az nullát mutat, nem tűnik el.</p>`+
+    `<div class="tablewrap"><table class="tbl wu-save"><thead><tr><th>Változtatás</th>`+
+    `<th class="num">Naponta</th><th class="num">Évente</th>`+
+    `<th class="num">A fogyasztásod</th></tr></thead><tbody>${saveRows}</tbody></table></div>`;
+
+  for(const u of waterUse.uses){
+    const slider = $(`wu-${u.id}`), sel = $(`wu-${u.id}-r`);
+    if(slider) slider.addEventListener('input', (e) => {
+      wuInput[u.id] = { ...(wuInput[u.id]||{}), q: Number(e.target.value) };
+      // Only the readout moves on drag; the whole panel redraws after, so the slider
+      // does not lose focus under the reader's finger mid-gesture.
+      const v = $(`wu-${u.id}-v`);
+      if(v) v.textContent = `${fmt(Number(e.target.value),0)} ${u.unit}`;
+      wuRedraw();
+    });
+    if(sel) sel.addEventListener('change', (e) => {
+      wuInput[u.id] = { ...(wuInput[u.id]||{}), rate: Number(e.target.value) };
+      renderWaterUse();
+    });
+  }
+}
+
+/* Coalesced, because a slider fires on every pixel and this rebuilds a table. */
+let wuPending = false;
+function wuRedraw(){
+  if(wuPending) return;
+  wuPending = true;
+  requestAnimationFrame(() => {
+    wuPending = false;
+    const active = document.activeElement && document.activeElement.id;
+    renderWaterUse();
+    // Put the reader back on the control they were dragging.
+    if(active && $(active)) $(active).focus();
+  });
+}
+
+/** The rates a reader might plausibly have, from the published range. */
+function rangeOptions(lo, hi, current){
+  const out = [];
+  for(let v = lo; v <= hi; v += 1) out.push(v);
+  if(!out.includes(current)) out.push(current);
+  return out.sort((a,b) => a-b);
+}
+
 /* --- soil moisture --------------------------------------------------------- */
 
 let soil = null, soilLoading = false;
@@ -5794,6 +6035,7 @@ async function refresh(){
     // can click one.
     loadIndustry();
     loadSoil();
+    loadWaterUse();
     // loadDrought() is called on its own further down and now feeds the map as well.
     loadVizhiany();
     if(ev){ renderRegions(ev.regions); renderFeed(ev); renderArrivals(ev.arrivals); }

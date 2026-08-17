@@ -9,6 +9,7 @@ const rainfallRoutes = require('./rainfall');
 const groundwaterRoutes = require('./groundwater');
 const droughtRoutes = require('./drought');
 const soilRoutes = require('./soil');
+const waterUseRoutes = require('./water-use');
 const sewageRoutes = require('./sewage');
 const industryRoutes = require('./industry');
 const vizhianyRoutes = require('./vizhiany');
@@ -42,6 +43,7 @@ function createRouter(ctx) {
   router.use(groundwaterRoutes(ctx));
   router.use(droughtRoutes(ctx));
   router.use(soilRoutes(ctx));
+  router.use(waterUseRoutes(ctx));
   router.use(sewageRoutes(ctx));
   router.use(industryRoutes(ctx));
   router.use(vizhianyRoutes(ctx));
