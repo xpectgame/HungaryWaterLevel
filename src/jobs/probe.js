@@ -705,6 +705,19 @@ async function probeSite(baseUrl) {
       ok: Array.isArray(d.days) ? d.days.length > 0 : Boolean(d),
       note: Array.isArray(d.days) ? `${d.days.length} days` : 'responded',
     })],
+    // The drainage chain. Checked on a real stream rather than on the count, because the
+    // failure that matters is the index being absent from the deployment - which returns
+    // a perfectly well-formed 404 and looks like a typo in the slug.
+    ['viz', '/api/v1/viz/ilona-patak', (d) => {
+      const steps = ((d.downstream || {}).steps || []).map((s) => s.name);
+      return { ok: d.available === true && steps.length > 0,
+        note: steps.length ? `${d.name} → ${steps.join(' → ')}` : 'no chain - is watercourses.json deployed?' };
+    }],
+    ['aszalyevek', '/api/v1/aszalyevek', (d) => {
+      const s = d.summary || {};
+      return { ok: d.available === true && s.comparable > 0,
+        note: `${d.monthHu}: ${s.belowReference}/${s.comparable} below ${d.reference}, ${(d.years || []).length} years` };
+    }],
   ];
 
   for (const [name, path, check] of extras) {
@@ -733,6 +746,34 @@ async function probeSite(baseUrl) {
     } catch (err) {
       console.log(`    ${name.padEnd(14)} FAIL  ${err.message.split('\n')[0].slice(0, 80)}`);
     }
+  }
+
+  // The two surfaces that are not JSON, and both are the kind that fail invisibly.
+  //
+  // The share card is fetched by a crawler and never by a reader, so a broken one is
+  // discovered by seeing a link with no picture on somebody else's timeline. The
+  // watercourse page is a server-rendered route at the site root, which is exactly the
+  // shape of thing Vercel serves as a static-file 404 when its rewrite is missing - the
+  // same failure that hid /archive and /feed.xml for months.
+  console.log('\n  the two non-JSON surfaces:');
+  const { fetchText: fetchRaw } = require('../lib/http');
+  try {
+    const res = await fetch(`${base}/share/card.png`, { signal: AbortSignal.timeout(30000) });
+    const buf = Buffer.from(await res.arrayBuffer());
+    const isPng = buf.length > 8 && buf.slice(1, 4).toString('ascii') === 'PNG';
+    console.log(`    card.png       ${isPng ? 'OK  ' : 'FAIL'}  HTTP ${res.status} ` +
+      `${res.headers.get('content-type')} ${buf.length}B` +
+      `${isPng ? '' : ' - og:image is not a PNG, so no preview on Facebook, X or LinkedIn'}`);
+  } catch (err) {
+    console.log(`    card.png       FAIL  ${err.message.split('\n')[0].slice(0, 80)}`);
+  }
+  try {
+    const html = await fetchRaw(`${base}/viz/rakos-patak`, { timeoutMs: 30000 });
+    const title = (html.match(/<title>([^<]*)<\/title>/) || [])[1] || '';
+    const named = /Rákos-patak/.test(title);
+    console.log(`    /viz/:slug     ${named ? 'OK  ' : 'FAIL'}  title: ${title.slice(0, 60) || '(none)'}`);
+  } catch (err) {
+    console.log(`    /viz/:slug     FAIL  ${err.message.split('\n')[0].slice(0, 80)}`);
   }
 }
 
