@@ -805,6 +805,43 @@ async function probeSite(baseUrl) {
     record('card.png', false, err.message.split('\n')[0].slice(0, 80));
     console.log(`    card.png       FAIL  ${err.message.split('\n')[0].slice(0, 80)}`);
   }
+  // ---------------------------------------------------------------------------
+  // Is the deployed front end the one in this branch?
+  //
+  // This check exists because a slider fix was reported still broken after a deploy,
+  // and there was no way to tell from here whether the live page carried it: the bug
+  // reproduced only under a pointer, the sandbox cannot reach the site, and "I pushed
+  // it" is not evidence that a host is serving it.
+  //
+  // The runner has the repo checked out, so it can simply compare. Not a hash - the
+  // deployed file legitimately differs from the source in whitespace-preserving ways on
+  // some hosts - but a set of markers taken from the current source, each one a string
+  // that only exists after a specific change. Any of them missing means the live page
+  // is older than this branch, and the check says which.
+  // ---------------------------------------------------------------------------
+  try {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const localPath = path.join(__dirname, '..', '..', 'public', 'index.html');
+    const local = fs.readFileSync(localPath, 'utf8');
+    const res = await fetchRaw(`${base}/`, { timeoutMs: 30000 });
+    const live = typeof res === 'string' ? res : (res && res.body) || '';
+
+    // Markers chosen to be load-bearing rather than decorative: a function name, a
+    // container id, and a class that each arrived with a change worth verifying.
+    const MARKERS = ['renderWaterUseOutputs', 'wu-out', 'details class="caveat"', 'class="chapter"'];
+    const missing = MARKERS.filter((m) => local.includes(m) && !live.includes(m));
+    const ok = missing.length === 0;
+    record('index.html', ok, ok
+      ? `matches this branch (${Math.round(live.length / 1024)} KB live, ${Math.round(local.length / 1024)} KB local)`
+      : `STALE: live page is missing ${missing.join(', ')} - the deploy has not landed`);
+    console.log(`    index.html     ${ok ? 'OK  ' : 'STALE'}  ${
+      ok ? 'live front end matches this branch' : `missing: ${missing.join(', ')}`}`);
+  } catch (err) {
+    record('index.html', false, err.message.split('\n')[0].slice(0, 80));
+    console.log(`    index.html     FAIL  ${err.message.split('\n')[0].slice(0, 80)}`);
+  }
+
   try {
     // fetchText resolves to { body, contentType, url }, not to the string. Calling
     // .match on the wrapper threw "html.match is not a function", which the catch below
