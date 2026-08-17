@@ -78,6 +78,11 @@ function latestSample(entry) {
     at: last.at.toISOString(),
     samples: items.length,
     firstAt: items[0].at.toISOString(),
+    // The oldest value in the window, not only when it was taken. With a window a week
+    // wide this is what makes "and a week ago it was" possible without keeping a series
+    // or a store - and the caller has firstAt beside it, so it can say how long ago
+    // "ago" actually was rather than assuming the window was full.
+    firstValue: items[0].value,
   };
 }
 
@@ -106,10 +111,12 @@ async function fetchWells({ days = DEFAULT_DAYS, now = new Date(), env = process
  * the same operation, and giving it its own copy of the request builder would be three
  * places to fix the next time the portal changes its mind about a header.
  *
- * Three days, not forty: these stations report hourly, and a reading three days old from
- * one of them means the station is down, not that the round has not come past yet.
+ * Eight days, not forty and not three. Three was enough to answer "what is it now" and
+ * nothing else; eight also carries the far end of a week, which is what turns a
+ * percentage into a direction. Soil moisture falls visibly over a dry week and jumps
+ * within hours of rain, so the week is the window where the number says something.
  */
-async function fetchSoilMoisture({ days = 3, now = new Date(), env = process.env } = {}) {
+async function fetchSoilMoisture({ days = 8, now = new Date(), env = process.env } = {}) {
   const registry = require('../config/soil-stations.json');
   return fetchNetwork(registry.stations, registry.kind, { days, now, env });
 }

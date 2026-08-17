@@ -280,6 +280,10 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .key.sq.s-high{background:#4f9d78}.key.sq.s-record-high{background:#2f7f68}
 /* The same words in the table as on the map, so a reader who looks up a station finds
    the colour they just clicked. */
+/* Drying is the ember this site uses for loss everywhere else; wetting is the flow
+   teal. Not red and green: a soil that gained two points is not "good", it rained. */
+.soil-dn{color:var(--ember);font-weight:600}
+.soil-up{color:var(--flow);font-weight:600}
 .soil-band{font-size:12px;font-weight:600;white-space:nowrap}
 .soil-band.s-record-low{color:#7a3b17}.soil-band.s-very-low{color:#b06a24}
 .soil-band.s-low{color:#a9782f}.soil-band.s-middle{color:var(--ink-soft)}
@@ -4444,6 +4448,21 @@ function loadSoil(){
 }
 
 /**
+ * A week's change, with the week it actually covers.
+ *
+ * The span is printed because it is measured rather than requested: the window asks for
+ * eight days, and a station with a gap answers for six. "6 nap alatt" is true; "a héten"
+ * would not be.
+ */
+function trendCell(t){
+  if(!t) return '–';
+  const sign = t.deltaPercent > 0 ? '+' : '';
+  const cls = t.deltaPercent < 0 ? 'soil-dn' : t.deltaPercent > 0 ? 'soil-up' : '';
+  return `<span class="${cls}">${sign}${fmt(t.deltaPercent,1)}</span>`+
+    `<small style="color:var(--ink-faint)"> / ${fmt(t.days,0)} nap</small>`;
+}
+
+/**
  * The soil-moisture section.
  *
  * Written around the one thing that makes these 23 numbers hard to read: a percentage
@@ -4471,7 +4490,9 @@ function renderSoil(d){
     stat(fmt(d.measuredCount,0), `/ ${fmt(d.count,0)}`, 'állomás jelentett az elmúlt órákban')+
     stat(fmt(d.dryCount,0), 'állomás', 'áll a saját eddigi méréseinek alsó negyedében',
       d.dryCount > d.rankedCount/2 ? 'alarm' : '')+
-    stat(fmt(d.recordLowCount,0), 'állomás', 'mér most kevesebbet, mint bármikor eddig ilyenkor');
+    stat(fmt(d.recordLowCount,0), 'állomás', 'mér most kevesebbet, mint bármikor eddig ilyenkor')+
+    stat(fmt(d.dryingCount,0), `/ ${fmt(d.dryingCount + d.wettingCount,0)}`,
+      'állomáson száradt a talaj az elmúlt hétben');
 
   const rows = d.stations
     .filter(s => s.current)
@@ -4482,6 +4503,7 @@ function renderSoil(d){
       return `<tr><td>${esc(s.name)}</td>`+
         `<td class="num">${fmt(s.current.percent,1)}%</td>`+
         `<td class="num">${h ? fmt(h.min,1)+'–'+fmt(h.max,1)+'%' : '–'}</td>`+
+        `<td class="num">${trendCell(s.current.trend)}</td>`+
         `<td>${h ? `<span class="soil-band s-${h.band}">${esc(h.bandHu)}</span>` : '–'}</td>`+
         `<td class="num">${s.current.ageMinutes!=null ? fmt(s.current.ageMinutes,0)+' perce' : '–'}</td></tr>`;
     }).join('');
@@ -4502,7 +4524,8 @@ function renderSoil(d){
 
     `<div class="tablewrap"><table class="tbl"><thead><tr>`+
     `<th>Állomás</th><th class="num">Most</th><th class="num">Eddig mért tartomány</th>`+
-    `<th>Hol áll ebben</th><th class="num">Mérés kora</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    `<th class="num">Változás</th><th>Hol áll ebben</th>`+
+    `<th class="num">Mérés kora</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 /* --- industrial and other non-municipal outfalls --------------------------- */

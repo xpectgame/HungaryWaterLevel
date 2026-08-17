@@ -306,6 +306,43 @@ paths:
         "200": { description: National totals, works and receiving waters }
         "503": { description: The register has not been baked into this deployment }
 
+  /talajnedvesseg:
+    get:
+      tags: [hydrology]
+      summary: Soil moisture, where it is measured
+      description: |
+        23 stations on the meteorological network (vraquery vmoType 14, AdatFajtaKod 299),
+        reporting a percentage hourly. The only quantity on this API that measures the
+        water in the ground itself rather than the wells under it or the rain above it.
+
+        WHAT THE PERCENTAGE DOES NOT SAY, and it is most of what there is to say. The
+        register publishes no sensor depth, no soil type and no wilting point - so 26% is
+        not "26% of what this soil can hold". It is comparable with ITSELF over time and
+        only roughly between stations: Csongrád sits between 5 and 6 all year and
+        Hódmezővásárhely between 25 and 29, and neither is wetter than the other.
+        `hasSensorDepth` and `hasSoilType` are in the response, both false.
+
+        So every reading is placed in that station's own record for the calendar month,
+        the same treatment a river discharge gets - with one difference the response
+        insists on. `history.years` is ONE on this network, against ten for the rivers.
+        The bands are named accordingly: none of them says "normal", because one year has
+        no "usually" in it. A month the station has no record for ranks to null rather
+        than borrowing a neighbouring month.
+
+        `coverage` says in words that all 23 stations are in the south-east and this is
+        not a national network. It is repeated out of the registry into every response so
+        a consumer cannot render a national drought map from it by accident.
+
+        `trend` is the change across the window the station actually reported in, with
+        `days` measured rather than assumed - a station with a gap gets its real span, not
+        the eight the request asked for. Null under two days.
+
+        National figures are counts, never means. A mean of percentages from unknown soils
+        at unknown depths has no referent and would move when a station broke.
+      responses:
+        "200": { description: The stations, their readings and where each sits in its own record }
+        "503": { description: The upstream did not answer; no reading is substituted }
+
   /ipari:
     get:
       tags: [hydrology]

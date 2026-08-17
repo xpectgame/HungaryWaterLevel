@@ -426,7 +426,9 @@ function round(v, digits) {
  * toward the dry end for the same reason, and clamped to 0-100 because a percentage that
  * left its own range would be a fixture bug wearing a data bug's clothes.
  */
-async function fetchSoilMoisture({ days = 3, now = new Date() } = {}) {
+// 8, matching the live source. A fixture with a different window makes the trend three
+// days long in development and a week long in production, and only one of them is tested.
+async function fetchSoilMoisture({ days = 8, now = new Date() } = {}) {
   const registry = require('../config/soil-stations.json');
   const { loadSoilHistory } = require('../domain/soil');
   const history = (loadSoilHistory() || {}).stations || {};
@@ -444,11 +446,17 @@ async function fetchSoilMoisture({ days = 3, now = new Date() } = {}) {
     const seed = seedFor(station.id);
     const span = Math.max(record.max - record.min, 1);
     const offset = (noise(seed + Math.floor(now.getTime() / DAY_MS)) - 0.55) * span * 0.7;
+    const value = round(Math.min(100, Math.max(0, record.p[2] + offset)), 2);
     wells[station.id] = {
-      value: round(Math.min(100, Math.max(0, record.p[2] + offset)), 2),
+      value,
       at: new Date(now.getTime() - (Math.abs(seed) % 3) * 3600 * 1000).toISOString(),
       samples: 72,
       firstAt: new Date(now.getTime() - days * DAY_MS).toISOString(),
+      // A week ago, drawn from the same record and biased WET, so the synthetic network
+      // is drying. Without a firstValue the trend branch would never run in CI and would
+      // first be exercised in production, which is the whole reason this fixture reads
+      // the baked record instead of inventing round numbers.
+      firstValue: round(Math.min(100, Math.max(0, value + Math.abs(offset) * 0.4 + 0.3)), 2),
     };
   }
 

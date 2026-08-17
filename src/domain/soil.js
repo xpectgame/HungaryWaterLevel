@@ -132,6 +132,10 @@ function buildSoil(readings = {}, { registry, document, now = new Date() } = {})
         ? {
             percent: value,
             at: reading.at,
+            // Which way it is going, over however much of a week the station actually
+            // reported. See trendOf: the span is measured, not assumed, because a station
+            // with a two-day gap would otherwise have its two-day change labelled a week.
+            trend: trendOf(reading),
             // Minutes, not a boolean "fresh". These stations report hourly, so 70 minutes
             // is fine and 700 is a station that has stopped - and only the number can
             // tell those apart without a threshold nobody agreed on.
@@ -162,6 +166,11 @@ function buildSoil(readings = {}, { registry, document, now = new Date() } = {})
     // Counted, never averaged. A mean of 23 percentages from unknown soils at unknown
     // depths is a number with no referent - it would move when a station broke.
     dryCount: dry.length,
+    // How many are drying and how many are wetting, counted rather than averaged for the
+    // same reason as everything else here: the percentages are not commensurable, but the
+    // DIRECTION of each station's own change is.
+    dryingCount: measured.filter((s) => s.current.trend && s.current.trend.deltaPercent < 0).length,
+    wettingCount: measured.filter((s) => s.current.trend && s.current.trend.deltaPercent > 0).length,
     recordLowCount: ranked.filter((s) => s.current.history.band === 'record-low').length,
     driest: measured.length
       ? measured.slice().sort((a, b) => a.current.percent - b.current.percent)[0]
@@ -173,6 +182,37 @@ function buildSoil(readings = {}, { registry, document, now = new Date() } = {})
     recordYears: maxYears(document !== undefined ? document : loadSoilHistory()),
     stations,
   };
+}
+
+/**
+ * The change across the window the station actually reported in.
+ *
+ * Null under two days: the request asks for eight, but a station that came back online
+ * this morning has hours of record, and "down 4 points" over six hours is a sentence
+ * about a sensor warming up rather than about a drought.
+ *
+ * `days` is the measured span, not the requested one, and the page prints it. That is the
+ * difference between "a hét alatt" and "hat nap alatt", and only one of them is true when
+ * the station has a gap.
+ */
+function trendOf(reading) {
+  if (!reading || !Number.isFinite(reading.value) || !Number.isFinite(reading.firstValue)) return null;
+  const from = Date.parse(reading.firstAt);
+  const to = Date.parse(reading.at);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+  const days = (to - from) / 86400000;
+  if (days < 2) return null;
+  return {
+    deltaPercent: round(reading.value - reading.firstValue, 2),
+    days: Math.round(days),
+    fromPercent: round(reading.firstValue, 2),
+    fromAt: reading.firstAt,
+  };
+}
+
+function round(v, digits) {
+  const f = 10 ** digits;
+  return Math.round(v * f) / f;
 }
 
 /** The longest record any station has, in years, or null when nothing is baked. */
