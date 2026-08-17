@@ -271,7 +271,7 @@ megkeresni őket:
 | **Hóvízegyenérték** | 76 | **2 állomás** (Felsőberecki, Szalonna). Augusztusban amúgy is nulla; télen érdemes újranézni. |
 | **Párolgás** | 308 | **4 állomás**, mind június 30. körül jelentett utoljára. Szezonális vagy kézi mérés, nem élő adatsor. |
 | **Forrás vízhozam / vízállás / hőmérséklet** | 74 / 92 / 93 | A katalógusban **7 forrásállomás** van egy külön hálózaton (`vmoType 1`: Tapolca Malomtó, Kapolcs Mázas kút…), de **egyik sem ad vissza idősort** — négy adattípuson próbálva sem. |
-| **Oldott oxigén, nitrát, ammónium, klorofill, fikocianin** | 809, 811, 812, 807, 805 | A katalógusban szerepelnek, a felszíni hálózaton az 1-es és 100-as adattípuson üresek. A 2-es és 4-es típus vizsgálata folyamatban — a tanulság a talajvíznél az volt, hogy a rossz kombináció nem bizonyít semmit. |
+| **Oldott oxigén, nitrát, ammónium, klorofill, fikocianin** | 809, 811, 812, 807, 805 | **Nincs.** A katalógusban szerepelnek, de a felszíni hálózat 1193 állomásán mind a négy megpróbált kombináció (809 és 811 az 1-es, 2-es, 4-es és 100-as adattípuson) **nulla állomással** tért vissza — nem hibával, hanem üres válasszal. A talajvíznél az volt a tanulság, hogy a rossz kombináció nem bizonyít semmit, ezért lett négyszer megkérdezve. Ezek a kódok a katalógus részei, de idősor nem tartozik hozzájuk. |
 
 A hálózatokat is feltérképeztük (`npm run probe -- --vmo-scan`), mert korábban mind a
 négyet véletlenül találtuk meg. **Öt van**: 1 = források (7), 11 = felszíni vízmércék
