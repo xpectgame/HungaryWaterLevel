@@ -733,8 +733,23 @@ async function probeSite(baseUrl) {
     }],
     ['aszalyevek', '/api/v1/aszalyevek', (d) => {
       const s = d.summary || {};
-      return { ok: d.available === true && s.comparable > 0,
-        note: `${d.monthHu}: ${s.belowReference}/${s.comparable} below ${d.reference}, ${(d.years || []).length} years` };
+      const ok = d.available === true && s.comparable > 0;
+      return { ok, note: `${d.monthHu}: ${s.belowReference}/${s.comparable} below ${d.reference}, ${(d.years || []).length} years` };
+    }],
+    // The running month is a separate check because it depends on a separate document.
+    // flow-daily.json is 1.3 MB - by some way the largest thing in the bundle - and a
+    // host that declined to ship it would leave the monthly table working perfectly
+    // while the "how does it look right now" block simply never appeared.
+    ['aszalyevek/most', '/api/v1/aszalyevek', (d) => {
+      const r = d.running;
+      if (!r || !r.available) {
+        return { ok: false, note: `no running window: ${(r && r.reason) || 'absent'} - is flow-daily.json deployed?` };
+      }
+      const s = r.summary || {};
+      const rec = (s.lowestByYear || [])[0] || {};
+      return { ok: s.comparable > 0,
+        note: `${r.monthHu} 1-${r.throughDay}: ${s.belowReference}/${s.comparable} below ${r.reference}`
+          + `, record year ${rec.year} on ${rec.count}` };
     }],
   ];
 
