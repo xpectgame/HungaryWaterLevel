@@ -400,6 +400,17 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .chain-step{display:grid;grid-template-columns:64px 1fr;gap:14px;align-items:start;
   padding:14px 0;position:relative}
 .chain-step + .chain-step{border-top:1px solid var(--line)}
+/* The chain arrives one link at a time.
+   It is a chain: each link is a consequence of the one above it, and seeing them land in
+   order is the argument. All seven at once is a list. Staggered by index in the renderer
+   rather than by :nth-child here, because the number of links depends on how many of the
+   seven measurements answered. */
+.js-reveal .chain-step{opacity:0;transform:translateY(10px)}
+.js-reveal .chain-step.lit{opacity:1;transform:none;
+  transition:opacity .5s ease,transform .5s cubic-bezier(.2,.7,.3,1)}
+@media (prefers-reduced-motion:reduce){
+  .js-reveal .chain-step{opacity:1;transform:none}
+}
 /* The connector: a line down the left, so the eye reads it as one sequence. */
 .chain-step::before{content:"";position:absolute;left:31px;top:0;bottom:0;width:2px;
   background:linear-gradient(var(--line),var(--line));z-index:0}
@@ -493,18 +504,44 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .flow-lab{font-size:10.5px;fill:var(--ink-soft);font-family:var(--sans)}
 .flow-lab.strong{fill:var(--ink);font-weight:600}
 .flow-num{font-family:var(--mono);font-size:10.5px;fill:var(--ink-soft)}
+/* ---------------------------------------------------------------------------
+   Making it look like water.
+
+   The first version drew one dashed stroke, and a dash pattern of 7 on 11 off reads as a
+   string of beads travelling down a tube - which is what it is. Water does not look like
+   that. What makes moving water legible is not dots but three things happening at once:
+   a translucent BODY you can see depth in, long soft streaks of CURRENT inside it moving
+   with the flow, and sparse quick GLINTS on the surface.
+
+   So each pipe is three strokes over each other, all on the same path:
+
+     .flow-body     solid, translucent, full width  - the water itself
+     .flow-current  long dashes, ~60% width, slower - the sodrás inside it
+     .flow-glint    short sparse dashes, thin, fast - light on the surface
+
+   Nothing about the volume is carried by the animation; the widths do that, and a still
+   frame under prefers-reduced-motion keeps the body and drops the two moving layers.
+   --------------------------------------------------------------------------- */
 .flow-pipe{fill:none;stroke-linecap:round}
-/* The dashed overlay is the moving water. The solid stroke underneath is the pipe, so a
-   still frame still shows the route and the volume. */
-.flow-move{fill:none;stroke-linecap:round;stroke-dasharray:7 11;opacity:.85;
-  animation:flowdash 1.1s linear infinite}
-@keyframes flowdash{to{stroke-dashoffset:-18}}
+.flow-body{fill:none;stroke-linecap:round;opacity:.55}
+/* Blurred, and that is the whole difference between water and a string of lozenges.
+   A hard-edged dash travelling down a pipe reads as an object moving THROUGH water; a
+   soft one reads as the water itself moving. The blur radius is tied to nothing clever -
+   it is simply enough to lose the cap. */
+.flow-current{fill:none;stroke-linecap:round;opacity:.55;stroke-dasharray:48 44;
+  filter:blur(2.6px);animation:flowdash 2.8s linear infinite}
+.flow-glint{fill:none;stroke-linecap:round;opacity:.5;stroke-dasharray:10 96;
+  filter:blur(1.7px);animation:flowdash 1.7s linear infinite}
+@keyframes flowdash{to{stroke-dashoffset:-92}}
 .flow-works{fill:#fff;stroke:var(--flow);stroke-width:1.5}
 .flow-soil{fill:#e7efdd;stroke:#bcd0a4;stroke-width:1}
 .flow-river{fill:#cfeaf0}
 .flowfig figcaption{font-size:12.5px;color:var(--ink-soft);margin:8px 4px 4px;line-height:1.5}
 .flowfig figcaption b{color:var(--ink)}
-@media (prefers-reduced-motion:reduce){ .flow-move{animation:none;stroke-dasharray:none;opacity:.55} }
+@media (prefers-reduced-motion:reduce){
+  .flow-current,.flow-glint{animation:none;display:none}
+  .flow-body{opacity:.62}
+}
 
 /* ---------------------------------------------------------------------------
    Arriving.
@@ -2695,6 +2732,12 @@ function setNumber(el, value, decimals=0){
 
 /* -------------------------------------------------------------------------- */
 let stations = [], plants = [], lakes = [], snapshot = null;
+/* Declared up here with the rest of the page state, because it is read by playChain(),
+   which the chain renderer calls - and the boot IIFE further down runs during script
+   evaluation. Left beside its function, this `let` sat AFTER that IIFE and every early
+   render hit its temporal dead zone: "Cannot access 'chainPlayed' before initialization",
+   which silently left all seven links invisible. */
+let chainPlayed = false;
 
 /**
  * Draw everything that does not change: countries, water, towns.
@@ -5311,6 +5354,7 @@ function renderChain(){
         ${has ? `<div class="chain-src">→ <a href="${st.href}">${esc(st.src)}</a></div>` : ''}
       </div></div>`;
   }).join('')}</div>`;
+  playChain();
 }
 
 /* --- household water use --------------------------------------------------
@@ -5528,7 +5572,19 @@ function flowFigure(lines, total){
   // 200 l/day shower is a hairline beside a slab, and the small one stops reading as a
   // pipe at all.
   const W = (l) => Math.max(2, Math.min(17, 2 + Math.sqrt(l) * 1.05));
-  const speed = (l) => `${Math.max(.45, Math.min(2.4, 26 / Math.max(6, l))).toFixed(2)}s`;
+  // More water runs faster. This is the ONLY thing the motion encodes.
+  const speed = (l) => Math.max(1.1, Math.min(4.2, 52 / Math.max(6, l)));
+
+  /* One length of water: body, current, glint. See the note in the stylesheet. */
+  const pipe = (d, colour, litres, glintColour) => {
+    const w = W(litres), t = speed(litres);
+    const light = glintColour || '#ffffff';
+    return `<path class="flow-body" d="${d}" stroke="${colour}" stroke-width="${w}"/>`
+      + `<path class="flow-current" d="${d}" stroke="${colour}" stroke-width="${(w*0.62).toFixed(1)}"`
+      + ` style="animation-duration:${t.toFixed(2)}s"/>`
+      + `<path class="flow-glint" d="${d}" stroke="${light}" stroke-width="${Math.max(1,(w*0.28)).toFixed(1)}"`
+      + ` style="animation-duration:${(t*0.58).toFixed(2)}s"/>`;
+  };
 
   // Four fixtures down the left, into a stack, out to the works, out to the stream.
   const rows = drains.map((id, i) => {
@@ -5540,9 +5596,7 @@ function flowFigure(lines, total){
       <rect class="hit" x="8" y="${y - 12}" width="176" height="26"/>
       <text class="flow-lab" x="72" y="${y + 3.5}" text-anchor="end">${esc(NAME[id])}</text>
       <text class="flow-num" x="72" y="${y + 15}" text-anchor="end">${fmt(by[id],0)} l</text>
-      <path class="flow-pipe" d="${d}" stroke="${COLOUR[id]}" stroke-width="${w}" opacity=".28"/>
-      <path class="flow-move" d="${d}" stroke="${COLOUR[id]}" stroke-width="${w}"
-            style="animation-duration:${speed(by[id])}"/>
+      ${pipe(d, COLOUR[id], by[id])}
     </g>`;
   }).join('');
 
@@ -5561,17 +5615,13 @@ function flowFigure(lines, total){
       <path class="flow-roof" d="M74 21 L129 2 L184 21 Z"/>
       ${rows}
       ${sewage > 0 ? `
-        <path class="flow-pipe" d="${sewerD}" stroke="#3f7f8c" stroke-width="${sewerW}" opacity=".26"/>
-        <path class="flow-move" d="${sewerD}" stroke="#3f7f8c" stroke-width="${sewerW}"
-              style="animation-duration:${speed(sewage)}"/>
+        ${pipe(sewerD, '#3f7f8c', sewage)}
         <text class="flow-lab strong" x="244" y="141" text-anchor="middle">csatorna</text>
         <text class="flow-num" x="244" y="168" text-anchor="middle">${fmt(sewage,0)} l/nap</text>
         <rect class="flow-works" x="322" y="126" width="82" height="48" rx="7"/>
         <text class="flow-lab strong" x="363" y="146" text-anchor="middle">szennyvíz-</text>
         <text class="flow-lab strong" x="363" y="159" text-anchor="middle">tisztító</text>
-        <path class="flow-pipe" d="${outD}" stroke="#0e8f9e" stroke-width="${sewerW}" opacity=".26"/>
-        <path class="flow-move" d="${outD}" stroke="#0e8f9e" stroke-width="${sewerW}"
-              style="animation-duration:${speed(sewage)}"/>
+        ${pipe(outD, '#0e8f9e', sewage)}
         <path class="flow-river" d="M462 128 q14 22 0 44 q-14 22 0 44 l24 0 q-14 -22 0 -44 q14 -22 0 -44 Z"/>
         <text class="flow-lab strong" x="486" y="120" text-anchor="middle">patak</text>` : ''}
       ${garden > 0 ? `
@@ -5580,9 +5630,7 @@ function flowFigure(lines, total){
         <rect class="hit" x="8" y="186" width="176" height="30"/>
         <text class="flow-lab" x="72" y="199.5" text-anchor="end">${esc(NAME.garden)}</text>
         <text class="flow-num" x="72" y="211" text-anchor="end">${fmt(garden,0)} l</text>
-        <path class="flow-pipe" d="${gardenD}" stroke="${COLOUR.garden}" stroke-width="${W(garden)}" opacity=".28"/>
-        <path class="flow-move" d="${gardenD}" stroke="${COLOUR.garden}" stroke-width="${W(garden)}"
-              style="animation-duration:${speed(garden)}"/>
+        ${pipe(gardenD, COLOUR.garden, garden, '#eaf3df')}
         <rect class="flow-soil" x="120" y="232" width="120" height="20" rx="4"/>
         <text class="flow-lab" x="180" y="246" text-anchor="middle">elszivárog, elpárolog</text>
         </g>` : ''}
@@ -5597,6 +5645,26 @@ function flowFigure(lines, total){
         : ' A locsolóvíz nem a csatornába megy: az elszivárog és elpárolog — állítsd el a „Kert" csúszkát, és megjelenik ez az ág is.'
     }</figcaption>
   </figure>`;
+}
+
+/**
+ * Run a stroke on from its start, once.
+ *
+ * Uses the path's own measured length, so it works for any curve without anyone having
+ * to estimate it. Silently does nothing where getTotalLength is unavailable or the
+ * reader has asked for less motion - in both cases the line is simply already there,
+ * which is the correct fallback for a chart.
+ */
+function drawLine(path, delayMs){
+  if(!path || typeof path.getTotalLength !== 'function') return;
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let len = 0;
+  try { len = path.getTotalLength(); } catch(e) { return; }
+  if(!len || !isFinite(len)) return;
+  path.style.strokeDasharray = `${len}`;
+  path.style.strokeDashoffset = `${len}`;
+  path.style.transition = `stroke-dashoffset 1.15s cubic-bezier(.25,.8,.3,1) ${delayMs}ms`;
+  requestAnimationFrame(() => { path.style.strokeDashoffset = '0'; });
 }
 
 /* Coalesced: a slider fires on every pixel and this rebuilds a table. Only #wu-out is
@@ -6486,8 +6554,14 @@ function renderSpark(history){
     svg.appendChild(t);
   }
 
-  svg.appendChild(svgEl('path',{ d:line('inflowM3s') }));
-  svg.appendChild(svgEl('path',{ class:'out', d:line('outflowM3s') }));
+  // Drawn on rather than appearing. A line chart of two days is a story with a
+  // direction, and watching it run left to right is how you read a direction; the same
+  // curve arriving all at once is a shape. The dash trick needs the real path length,
+  // which only exists once the node is in the document.
+  const drawIn = svgEl('path',{ d:line('inflowM3s') });
+  const drawOut = svgEl('path',{ class:'out', d:line('outflowM3s') });
+  svg.appendChild(drawIn); svg.appendChild(drawOut);
+  drawLine(drawIn, 0); drawLine(drawOut, 260);
 
   const hrs = Math.round((Date.parse(history[history.length-1].timestamp)-Date.parse(history[0].timestamp))/3600000);
   $('spark-note').innerHTML = `Beáramlás <span style="color:var(--flow)">———</span> és kiáramlás `+
@@ -7355,6 +7429,32 @@ let caveatTimer = null;
 function caveatsDirty(){
   clearTimeout(caveatTimer);
   caveatTimer = setTimeout(hideEmptyCaveats, 0);
+}
+
+/**
+ * Let the chain land link by link, the first time it is reached.
+ *
+ * Called after every chain render, and guarded so a re-render while the reader is
+ * looking at it does not replay the whole sequence in their face.
+ */
+function playChain(){
+  const body = document.getElementById('chain-body');
+  if(!body) return;
+  const steps = body.querySelectorAll('.chain-step');
+  if(!steps.length) return;
+
+  const light = () => steps.forEach((el, i) => setTimeout(() => el.classList.add('lit'), i * 110));
+  if(chainPlayed || !('IntersectionObserver' in window)){ steps.forEach(el => el.classList.add('lit')); return; }
+
+  const io = new IntersectionObserver((entries) => {
+    for(const e of entries){
+      if(!e.isIntersecting) continue;
+      chainPlayed = true;
+      light();
+      io.disconnect();
+    }
+  }, { threshold: 0.12 });
+  io.observe(body);
 }
 
 function hideEmptyCaveats(){
