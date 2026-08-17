@@ -258,6 +258,26 @@ megismétli.
 | **Árvíz- és belvízkockázat (AKK)** | A geoportál `AKK` mappájában 42 szolgáltatás van elöntési, védett területi és kockázati térképekkel. **Mind a 24 MapServer üres réteglistával válaszol**: érvényes JSON, `maxRecordCount`, hibaüzenet nélkül — és nulla lekérdezhető réteg. Ezek térképképként vannak publikálva, nem adatként; nincs mit lekérni belőlük. (A többi `ImageServer`, ami raszter.) |
 | **Cégnév bármelyik bevezetésnél** | Nincs. Sem a szennyvíz-, sem az ipari nyilvántartás nem rögzít üzemeltetőt: a sor a helyet, a befogadó víztestet és — az ipari lapon — az ágazatot tartalmazza. Ezért nem szerepel az oldalon egyetlen akkumulátorgyár sem néven; ami odaírható volna, az becslés lenne, nem adat. |
 
+### 11/a. Ami létezik, de túl vékony ahhoz, hogy szekciót kapjon
+
+A `Base/AdatFajta` katalógus **68 mennyiséget** sorol fel, ebből hetet olvasunk. A többit
+végigmértük — nem feltételeztük, hogy nincsenek. Ezek léteznek, jelentenek is, csak annyi
+állomásról, hogy országos állítást nem bírnak el. Itt vannak, hogy ne kelljen újra
+megkeresni őket:
+
+| Mennyiség | Kód | Mit találtunk |
+|---|---|---|
+| **Lebegtetett hordalékhozam** | 78 | **2 állomás.** Győr él (1300 minta, ma reggel 362 g/s), Gönyű júniusban jelentett utoljára. A hordalék az, ami a medret építi és bontja — de két szelvényből nem rajzolható meg. |
+| **Hóvízegyenérték** | 76 | **2 állomás** (Felsőberecki, Szalonna). Augusztusban amúgy is nulla; télen érdemes újranézni. |
+| **Párolgás** | 308 | **4 állomás**, mind június 30. körül jelentett utoljára. Szezonális vagy kézi mérés, nem élő adatsor. |
+| **Forrás vízhozam / vízállás / hőmérséklet** | 74 / 92 / 93 | A katalógusban **7 forrásállomás** van egy külön hálózaton (`vmoType 1`: Tapolca Malomtó, Kapolcs Mázas kút…), de **egyik sem ad vissza idősort** — négy adattípuson próbálva sem. |
+| **Oldott oxigén, nitrát, ammónium, klorofill, fikocianin** | 809, 811, 812, 807, 805 | A katalógusban szerepelnek, a felszíni hálózaton az 1-es és 100-as adattípuson üresek. A 2-es és 4-es típus vizsgálata folyamatban — a tanulság a talajvíznél az volt, hogy a rossz kombináció nem bizonyít semmit. |
+
+A hálózatokat is feltérképeztük (`npm run probe -- --vmo-scan`), mert korábban mind a
+négyet véletlenül találtuk meg. **Öt van**: 1 = források (7), 11 = felszíni vízmércék
+(1193), 12 = talajvízkutak (2030), 13 = rétegvízkutak (524), 14 = meteorológiai állomások
+(441). Minden más üres.
+
 Előrejelzés helyett két dolog szerepel az oldalon, mert ez a kettő **őszintén állítható**.
 
 Az egyik: hol tart most a víz.
