@@ -79,18 +79,44 @@
   /* Daylight over water. The dark build read as an instrument panel at night; this is
      the same river seen from the bank. Ink stays a deep petrol rather than black, so
      the page never goes fully neutral - the subject is water, including in the text. */
-  --paper:#f4f9fb; --paper-2:#ffffff; --sunk:#e6f1f5;
+  --paper:#f5f8f9; --paper-2:#ffffff; --sunk:#e6f1f5;
   --flow:#0e8f9e; --flow-dim:#7fc9d2; --deep:#0b5566; --shallow:#37b7c3;
   --silt:#a9843f; --silt-dim:#dcc79a;
   --ember:#c2521c; --ember-dim:#f0b895;   /* the power sector, and nothing else */
   --alarm:#b3243c;
-  --ink:#0a2c37; --ink-soft:#41707d; --ink-faint:#7b9aa4;
-  --card:#ffffff; --line:#cfe3ea; --shadow:0 1px 2px rgba(10,44,55,.06),0 8px 24px rgba(10,44,55,.06);
+  /* Ink went darker. At #0a2c37 on #f4f9fb every heading, every label and every line of
+     prose sat in the same narrow band of contrast, which is most of why the page read
+     as one undifferentiated field of data. There is room between #062029 and
+     --ink-faint for a real hierarchy now. */
+  --ink:#062029; --ink-soft:#3c6a78; --ink-faint:#7b9aa4;
+  --card:#ffffff; --line:#dbe8ed;
+  --shadow:0 1px 2px rgba(6,32,41,.04),0 10px 30px rgba(6,32,41,.05);
   --sans:ui-sans-serif,-apple-system,"Segoe UI",Inter,system-ui,sans-serif;
+  /* ---------------------------------------------------------------------------
+     A serif for headings, and it is the single biggest change on this page.
+     ---------------------------------------------------------------------------
+     Everything here was one sans family in one narrow weight range, which is what a
+     generated dashboard looks like: the type has no opinion, so the page reads as
+     output rather than as something written. A serif headline against a sans body is
+     the oldest editorial pairing there is, and it moves the whole register from
+     "instrument panel" to "publication" without changing a single number.
+
+     System faces only - no third-party host, which entry.test.js enforces. The stack
+     covers macOS/iOS (Iowan, Palatino), Windows (Palatino Linotype, Georgia), Android
+     (Noto Serif) and Linux (DejaVu Serif), and every one of them has the full Hungarian
+     set including ő and ű, which is the thing that eliminates most web-safe serifs. */
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Charter,Georgia,"Noto Serif","DejaVu Serif",serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+/* Every jump target clears the sticky bar. Without this the bar lands on top of the
+   heading you just navigated to, so the one thing you asked to see is the one thing
+   covered up - and it is not obvious that anything is wrong, because the section below
+   it is perfectly visible. */
+section[id],[id^="ch-"],.chapter h2{scroll-margin-top:104px}
+@media (max-width:820px){ section[id],[id^="ch-"],.chapter h2{scroll-margin-top:16px} }
+@media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} }
 body{
   margin:0; font-family:var(--sans); color:var(--ink); line-height:1.55;
   background:
@@ -100,14 +126,39 @@ body{
   background-attachment:fixed; min-height:100vh;
 }
 .wrap{max-width:1180px;margin:0 auto;padding:clamp(14px,3vw,28px)}
-h1,h2,h3{line-height:1.2;margin:0}
+
+/* ---------------------------------------------------------------------------
+   The type scale.
+
+   There was no scale before: h1 and h3 differed by a few pixels, every heading was the
+   same weight as its neighbours, and the only large thing on the page was a number. So
+   twenty-three sections all shouted at exactly the same volume and the eye had nowhere
+   to land.
+
+   Headings are serif and set tight; body stays sans and gets a little more air. The
+   jump from h3 to body is deliberately large - that gap is what tells a reader where
+   one thing ends and the next begins, over twenty-four thousand pixels of scrolling.
+   --------------------------------------------------------------------------- */
+h1,h2,h3,h4{font-family:var(--serif);font-weight:600;margin:0;
+  line-height:1.15;letter-spacing:-.011em;text-wrap:balance}
+h3{font-size:clamp(19px,2.1vw,23px)}
+h4{font-size:16px}
 a{color:var(--flow)}
+/* Prose gets a measure. A 1180px-wide paragraph is unreadable at any size, and most of
+   the explanatory text on this page was running the full width of its card. */
+.lead,.note,p{max-width:74ch}
 
 /* --- header --- */
-header{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between;margin-bottom:22px}
-h1{font-size:clamp(21px,3.4vw,32px);font-weight:650;letter-spacing:-.02em}
-h1 em{font-style:normal;color:var(--flow)}
-.sub{color:var(--ink-soft);font-size:14px;margin-top:5px;max-width:56ch}
+/* `1 1 420px` on the title block, `0 0 auto` on the clock: without a basis the title
+   div claimed the whole row and pushed the clock underneath, where a big mono time
+   floating under the subtitle reads as a number nobody labelled. */
+header{display:flex;flex-wrap:wrap;gap:18px 28px;align-items:flex-end;
+  justify-content:space-between;margin-bottom:clamp(22px,3vw,34px)}
+header > div:first-child{flex:1 1 420px;min-width:0}
+header > div:last-child{flex:0 0 auto;text-align:right}
+h1{font-size:clamp(30px,5vw,52px);font-weight:600;letter-spacing:-.021em}
+h1 em{font-style:italic;color:var(--flow);font-weight:600}
+.sub{color:var(--ink-soft);font-size:clamp(15px,1.5vw,17px);margin-top:10px;max-width:52ch;line-height:1.5}
 .clock{font-family:var(--mono);font-size:clamp(20px,3vw,28px);font-variant-numeric:tabular-nums;color:var(--shallow)}
 .stamp{font-size:12px;color:var(--ink-faint);text-align:right;font-family:var(--mono)}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--flow);margin-right:6px;vertical-align:middle}
@@ -123,32 +174,53 @@ h1 em{font-style:normal;color:var(--flow)}
    that gave the whole page a horizontal scroll. */
 /* 24px, not a full capsule: the bar is two lines tall on most widths now, and a 99px
    radius on a 90px box bulges its ends into ovals. */
-.nav{position:sticky;top:8px;z-index:40;margin-bottom:16px;border-radius:24px;
-  background:rgba(255,255,255,.9);backdrop-filter:blur(12px);
-  border:1px solid var(--line);box-shadow:0 2px 10px rgba(10,44,55,.07)}
-/* Wraps rather than scrolls, and this has now been decided twice. Fifteen links in one
-   sideways-scrolling row fit on one line by keeping half of them off the screen with
-   nothing to indicate it: the row never looks broken, it just quietly hides half the
-   site. Wrapping costs a second line and shows everything. */
-.nav-inner{display:flex;align-items:center;gap:2px 8px;flex-wrap:wrap;padding:6px 9px}
-.navgroup{display:flex;align-items:center;gap:3px;flex:0 0 auto}
-.navgroup + .navgroup{border-left:1px solid var(--line);padding-left:9px}
-.navlabel{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-faint);font-weight:650;padding-right:3px;white-space:nowrap}
-@media (max-width:640px){
-  /* And it stops being sticky. Fifteen links wrap to five lines on a phone, and 183
-     pixels of permanently-stuck chrome over a 700-pixel screen is a quarter of the page
-     that never shows any water. It sits at the top instead, where a contents list goes. */
-  .nav{position:static}
-  /* The group names go, the links stay. On a phone the labels cost four lines of a
-     sticky bar to say what the links already say, and a nav that eats a third of the
-     screen is worse than one that is merely ungrouped. */
-  .navlabel{display:none}
-  .navgroup + .navgroup{border-left:none;padding-left:0}
-  /* A group wider than a phone cannot wrap while it is an unbreakable flex item, so
-     "Mi történik" and "Rétegvíz" were clipped off the right edge - visible in the DOM,
-     invisible on the screen, which is the failure this bar was supposed to stop having. */
-  .navgroup{flex-wrap:wrap;flex:0 1 auto}
+/* ---------------------------------------------------------------------------
+   THE BAR, REBUILT. It was 115px of ragged rows on a desktop and 285px - a third of
+   the screen - on a phone.
+
+   Three things were fighting inside one wrapping flex row: sixteen links, four uppercase
+   group labels, and the scenario toggle. Wrapping cannot align any of that, so the
+   groups broke at arbitrary points, "TERHELÉS" ended up stranded in the middle of the
+   second line, and the toggle floated off the right end of the third. That is the
+   "össze-vissza" - not a bug in one rule, but the consequence of asking a wrapping flex
+   to lay out three different kinds of thing.
+
+   So: the group labels are gone from the bar (they survive as the chapter headings in
+   the page itself, where a heading belongs, and as aria-label on each group for anyone
+   reading with a screen reader). The toggle has moved next to the balance it changes.
+   What is left is one kind of thing - links - which wrapping can align perfectly well.
+
+   The old comment argued wrapping over scrolling because a scrolling row "quietly hides
+   half the site". Right on a desktop, wrong on a phone: there, sixteen chips wrap to
+   eight lines and hide the site behind 285 pixels of chrome instead. Both now, chosen
+   by width - wrap where there is room, scroll where there is not, with a fade at the
+   edge so the scroll is visible rather than quiet.
+   --------------------------------------------------------------------------- */
+.nav{position:sticky;top:8px;z-index:40;margin-bottom:22px;border-radius:16px;
+  background:rgba(255,255,255,.88);backdrop-filter:blur(14px) saturate(1.4);
+  border:1px solid var(--line);box-shadow:0 2px 14px rgba(6,32,41,.07)}
+.nav-inner{display:flex;align-items:center;gap:3px 4px;flex-wrap:wrap;padding:7px 9px}
+.navgroup{display:contents}
+.navlabel{display:none}
+/* A hairline between chapters, drawn by the first link of each group rather than by a
+   wrapper - `display:contents` above dissolves the groups so that all sixteen links
+   participate in one flex flow and wrap evenly, which is the whole point. */
+.nav .navgroup + .navgroup > a:first-of-type{margin-left:9px;position:relative}
+.nav .navgroup + .navgroup > a:first-of-type::before{content:"";position:absolute;
+  left:-6px;top:50%;transform:translateY(-50%);width:1px;height:15px;background:var(--line)}
+
+@media (max-width:820px){
+  /* One row, scrolling. Sixteen chips cannot wrap tidily into a phone, and a bar that
+     eats a third of the viewport is worse than one a thumb has to push sideways. */
+  .nav{position:static;border-radius:14px}
+  .nav-inner{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;scroll-padding-inline:14px;padding:6px 8px}
+  .nav-inner::-webkit-scrollbar{display:none}
+  /* The fade is the affordance. Without it a scrolling row looks like a row that ends,
+     which is exactly the failure the previous comment was worried about. */
+  .nav{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 16px,#000 calc(100% - 22px),transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0,#000 16px,#000 calc(100% - 22px),transparent 100%)}
+  .nav .navgroup + .navgroup > a:first-of-type{margin-left:11px}
 }
 /* The search results list and a few other things hide themselves with the attribute,
    and several of them set their own display, which a plain [hidden] loses to. */
@@ -183,12 +255,24 @@ body.what-if .whatif-bar{display:block}
 .banner{border-radius:12px;padding:12px 15px;margin-bottom:18px;font-size:14px;border:1px solid}
 .banner.warn{background:#fdeef1;border-color:#eab8c3;color:#8d1329}
 .banner.note{background:#fdf1e8;border-color:#e8c3a6;color:#8a3d12}
-.banner.ok{background:#eaf6f8;border-color:var(--line);color:var(--ink-soft)}
+/* The two standing status lines are not warnings and should not be shaped like them:
+   no filled box, just a rule down the left edge. A page whose normal state is three
+   coloured banners has taught its reader to skip coloured banners. */
+.banner.ok{background:none;border:0;border-left:3px solid var(--flow-dim);border-radius:0;
+  padding:2px 0 2px 13px;margin:0;font-size:13.5px;color:var(--ink-soft)}
+.statusstrip{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+  gap:14px 26px;margin-bottom:22px}
 .hidden{display:none !important}
 
 /* --- the three headline figures --- */
 .headline{display:grid;grid-template-columns:1fr auto 1fr;gap:clamp(10px,2vw,26px);align-items:center;
-  background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(16px,3vw,26px);margin-bottom:18px;box-shadow:var(--shadow)}
+  background:var(--card);border:1px solid var(--line);border-radius:20px;
+  padding:clamp(20px,3.4vw,34px);margin-bottom:22px;box-shadow:var(--shadow)}
+/* The scenario switch, under the three numbers it governs, spanning the whole grid. */
+.scenariorow{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:10px;
+  flex-wrap:wrap;margin-top:clamp(14px,2vw,22px);padding-top:clamp(14px,2vw,20px);
+  border-top:1px solid var(--line)}
+.scenariolab{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)}
 .side{text-align:center}
 .side .label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
 .big{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:-.03em;
@@ -201,6 +285,28 @@ body.what-if .whatif-bar{display:block}
 .net.insignificant{color:var(--ink-faint)}
 .net.accumulating{color:var(--shallow)} .net.draining{color:var(--ember)}
 .verdict{font-size:12px;color:var(--ink-soft);margin-top:6px;max-width:22ch;margin-inline:auto}
+
+/* ---------------------------------------------------------------------------
+   Chapters.
+
+   Twenty-three sections in one linear scroll, every one of them a white card of the
+   same weight, over twenty-four thousand pixels. There was nothing to tell a reader
+   they had moved from "how much water is there" to "what we put into it" - so the page
+   read as an undifferentiated field of data, which is exactly what it was.
+
+   These are the four names the navigation bar used to carry as small grey labels. They
+   work far better here, at size, with air around them: a heading in the page is a place
+   you arrive at, where the same words in a toolbar are just a category.
+   --------------------------------------------------------------------------- */
+.chapter{margin:clamp(38px,6vw,74px) 0 clamp(16px,2vw,24px);scroll-margin-top:90px}
+.chapter:first-of-type{margin-top:clamp(20px,3vw,34px)}
+.chapter .num{font-family:var(--mono);font-size:12px;letter-spacing:.18em;color:var(--flow);
+  display:block;margin-bottom:8px}
+.chapter h2{font-family:var(--serif);font-size:clamp(26px,4.2vw,40px);font-weight:600;
+  letter-spacing:-.02em;line-height:1.1}
+.chapter p{margin:9px 0 0;color:var(--ink-soft);font-size:clamp(14px,1.5vw,16px);max-width:56ch}
+.chapter .rule{height:1px;background:linear-gradient(90deg,var(--flow-dim),transparent);
+  margin-top:clamp(14px,2vw,20px)}
 
 /* --- map --- */
 .mapcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(10px,2vw,18px);margin-bottom:18px;position:relative;box-shadow:var(--shadow)}
@@ -767,10 +873,30 @@ table.dy tr.worse td.n{font-weight:650}
 /* --- cards --- */
 .grid{display:grid;gap:12px;margin-bottom:18px}
 .g3{grid-template-columns:repeat(auto-fit,minmax(238px,1fr))}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 16px;box-shadow:var(--shadow)}
-.card h3{font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);font-weight:600;margin-bottom:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:clamp(16px,2.2vw,26px);box-shadow:var(--shadow)}
+
+/* ---------------------------------------------------------------------------
+   Section headings are headings again.
+   ---------------------------------------------------------------------------
+   `.card h3` used to set every h3 inside a card to 11.5px uppercase grey. That is the
+   right treatment for the four metric tiles in #cards, where the h3 is a field label
+   over a big number - and it was being applied to all twenty-three SECTION headings as
+   well, because they are h3 inside a section.card.
+
+   So the page had no headings on it. Twenty-four thousand pixels of content with
+   nothing but small grey labels to divide it, which is most of the reason it reads as a
+   data dump rather than as something with parts. The tile treatment is scoped to the
+   tiles now, and a section heading looks like a section heading.
+   --------------------------------------------------------------------------- */
+.card h3{margin-bottom:10px}
+#cards .card h3,.card h3.label{font-family:var(--sans);font-size:11.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--ink-faint);font-weight:600;margin-bottom:8px}
 .card .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600;letter-spacing:-.02em}
-.card p{font-size:13px;color:var(--ink-soft);margin:8px 0 0}
+.card p{font-size:14px;color:var(--ink-soft);margin:8px 0 0}
+/* The first paragraph after a section heading is the one that explains it, so it gets
+   to be slightly larger and darker than the small print further down. */
+.card .lead{font-size:15px;color:var(--ink-soft);line-height:1.55}
 .card.power{border-color:var(--ember-dim)} .card.power .v{color:var(--ember)}
 
 /* --- station bars --- */
@@ -1300,11 +1426,6 @@ footer a{color:var(--ink-soft)}
       <a href="#s-forrasok">Források</a>
       <a href="#s-modszertan">Módszertan</a>
     </div>
-    <span class="spacer"></span>
-    <div class="scenario" role="group" aria-label="Mit mutasson az oldal">
-      <button type="button" id="mode-now" aria-pressed="true">Most</button>
-      <button type="button" id="mode-normal" aria-pressed="false">Átlagos évben</button>
-    </div>
   </div>
 </nav>
 
@@ -1319,8 +1440,13 @@ footer a{color:var(--ink-soft)}
   Hihetőnek látszanak, és pontosan ezért van itt ez a sáv.
 </div>
 <div class="banner note hidden" id="stale"></div>
-<div class="banner ok" id="flood">&nbsp;</div>
-<div class="banner ok" id="drought">&nbsp;</div>
+<!-- Side by side, not stacked. Two full-width pills of near-identical colour, one
+     under the other, read as a wall of notices and pushed the number this page exists
+     for below the fold. They are STATUS - a glance, not a paragraph. -->
+<div class="statusstrip">
+  <div class="banner ok" id="flood">&nbsp;</div>
+  <div class="banner ok" id="drought">&nbsp;</div>
+</div>
 
 <!-- the whole story in three numbers. On the front tab only: the question it answers is
      in the header and stays on every tab, but 215 pixels of border balance above the
@@ -1341,6 +1467,24 @@ footer a{color:var(--ink-soft)}
     <div class="big"><span id="outflow">–</span><span class="unit">m³/s</span></div>
     <div class="meta" id="outflow-meta">&nbsp;</div>
   </div>
+  <!-- The scenario switch lives here now, under the balance it changes, instead of
+       floating off the right end of the navigation bar's third row. It is a control for
+       these three numbers - not a place to go - and it was the single biggest cause of
+       that bar being ragged. -->
+  <div class="scenariorow">
+    <span class="scenariolab">Mit mutasson:</span>
+    <div class="scenario" role="group" aria-label="Mit mutasson az oldal">
+      <button type="button" id="mode-now" aria-pressed="true">Most</button>
+      <button type="button" id="mode-normal" aria-pressed="false">Átlagos évben</button>
+    </div>
+  </div>
+</section>
+
+<section class="chapter" aria-labelledby="ch-01">
+  <span class="num">01</span>
+  <h2 id="ch-01">Mennyi víz van most</h2>
+  <p>Ami ebben a percben belép a határon, ami elhagyja, és ami közben itt folyik. Minden szám mérésből, negyedóránként frissítve.</p>
+  <div class="rule"></div>
 </section>
 
 <section class="mapcard" id="s-terkep">
@@ -1652,6 +1796,13 @@ footer a{color:var(--ink-soft)}
      orders of magnitude - the Danube at 1 500 m3/s, the Fehér-Körös at 0.09 - cannot be
      averaged into a number anyone should read.
      --------------------------------------------------------------------------- -->
+<section class="chapter" aria-labelledby="ch-02">
+  <span class="num">02</span>
+  <h2 id="ch-02">Mennyire száraz</h2>
+  <p>Nem önmagában nézve — a saját tízéves sorához, a szokásos augusztushoz és ahhoz az évhez mérve, amire mindenki emlékszik.</p>
+  <div class="rule"></div>
+</section>
+
 <section class="card" id="s-2022" style="margin-bottom:18px">
   <div class="cardhead">
     <h3>Rosszabb, mint 2022?</h3>
@@ -1864,6 +2015,13 @@ footer a{color:var(--ink-soft)}
   </div>
 </section>
 
+<section class="chapter" aria-labelledby="ch-03">
+  <span class="num">03</span>
+  <h2 id="ch-03">Mit csinálunk vele</h2>
+  <p>Amit visszaengedünk, amit kiveszünk, és amit felmelegítünk. A víz nem tűnik el az országban — használtan megy tovább.</p>
+  <div class="rule"></div>
+</section>
+
 <section class="card" id="s-szennyviz" style="margin-bottom:18px">
   <h3>Ahol a víz visszatér</h3>
   <p class="lead" style="margin-bottom:6px">
@@ -1995,6 +2153,13 @@ footer a{color:var(--ink-soft)}
 
 <!-- Above the methodology, not below it: "mit számolunk" is worth nothing if the reader
      cannot tell whether the thing they just looked at had any data behind it. -->
+<section class="chapter" aria-labelledby="ch-04">
+  <span class="num">04</span>
+  <h2 id="ch-04">Honnan van mindez</h2>
+  <p>Minden szám forrása, a számítás módja, és külön felsorolva az is, amit ez az oldal nem tud megmondani.</p>
+  <div class="rule"></div>
+</section>
+
 <section class="card" id="s-forrasok" style="margin-bottom:18px">
   <h3>Mi felelt most, és mi nem</h3>
   <p class="lead" style="margin-bottom:10px">
