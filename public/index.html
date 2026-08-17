@@ -6,38 +6,59 @@
 <title>Mennyi víz folyik át Magyarországon?</title>
 <meta name="description" content="Magyarország felszíni vízmérlege élőben: mennyi víz lép be a határon, mennyi hagyja el, és mennyit vesz ki az energiaipar hűtésre.">
 <meta name="theme-color" content="#f4f9fb">
-<meta property="og:title" content="Mennyi víz folyik át Magyarországon?">
-<meta property="og:description" content="Élő vízmérleg 30 határszelvényből, negyedóránként frissítve.">
-<meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>💧</text></svg>">
 <!-- A szerkesztőségek nem járnak vissza egy oldalra: feliratkoznak. Ez az a sor, amitől
      a böngésző és az olvasó hírolvasója magától megtalálja a riasztásokat. -->
 <link rel="alternate" type="application/atom+xml" title="hovafolyik.hu — riasztások" href="/feed.xml">
 
 <!-- Ha valaki bemásolja a linket, a mai szám jelenjen meg, ne egy csupasz URL.
-     A kártya élő adatból generálódik, SVG-ben - lásd src/routes/share.js. -->
+     A kártya élő adatból generálódik - lásd src/routes/share.js.
+
+     EGYSZER szerepel mindegyik tag. Korábban az og:title, og:description és og:type
+     kétszer volt kiírva, két különböző szöveggel: a crawlerek többsége az elsőt veszi,
+     tehát a régi, gyengébb változat ment ki, és ez sehol nem látszott.
+
+     PNG, nem SVG. A Facebook, az X és a LinkedIn nem rendereli az SVG-t link-előnézetben
+     — kizárólag PNG/JPEG/GIF/WebP —, vagyis pont azon a három felületen, ahol a link
+     olyanokhoz jut el, akik még nem olvassák az oldalt, eddig egyáltalán nem volt kép.
+     Az SVG változat megmarad a /share/card.svg címen. -->
 <meta property="og:title" content="hovafolyik.hu — Magyarország vízmérlege élőben">
 <meta property="og:description" content="Mennyi víz lép be a határon, mennyi hagyja el, és hogyan áll ez az elmúlt tíz év azonos hónapjához képest.">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="hovafolyik.hu">
 <meta property="og:url" content="https://www.hovafolyik.hu/">
-<meta property="og:image" content="https://www.hovafolyik.hu/share/card.svg">
+<meta property="og:image" content="https://www.hovafolyik.hu/share/card.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Ma ennyi víz lép be Magyarország határán, m³/s-ban, és ez hány százaléka az ilyenkor szokásosnak.">
 <meta property="og:locale" content="hu_HU">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="hovafolyik.hu — Magyarország vízmérlege élőben">
-<meta name="twitter:image" content="https://www.hovafolyik.hu/share/card.svg">
+<meta name="twitter:description" content="Mennyi víz lép be a határon, mennyi hagyja el, és hogyan áll ez az elmúlt tíz év azonos hónapjához képest.">
+<meta name="twitter:image" content="https://www.hovafolyik.hu/share/card.png">
 
-<!-- Google Analytics. The ONE third-party request on this page, and the test in
-     entry.test.js that forbids third-party hosts now names this one host explicitly
-     rather than being relaxed - everything else must still be self-hosted.
-     `async`, and every call goes through the inline gtag stub below, so a blocked or
-     unreachable googletagmanager costs the page nothing: no render blocking, no thrown
-     error, no missing data. That is the condition for it being allowed here at all. -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-V1FJPKWEY2"></script>
+<!-- ---------------------------------------------------------------------------
+     Google Analytics, and it does not load until the reader says so.
+
+     This used to be a plain <script src> in the head. GA4 sets identifiers and reads
+     them back on the next visit, which under the ePrivacy directive needs consent
+     BEFORE it happens, not a banner that appears while the request is already in
+     flight. A banner that only hides itself is not consent; it is a notice.
+
+     So there is no <script src> here at all. The tag is injected by loadAnalytics()
+     further down, and only from the accept branch. Decline stores the refusal and the
+     googletagmanager request is never made - not blocked, not sent-and-ignored, never
+     made. That is the difference between a consent banner and a cookie wall with extra
+     steps, and it is the only version worth shipping.
+
+     The inline gtag stub stays and is defined unconditionally, so every gtag() call on
+     this page is safe whether the reader accepted, declined, or has an ad blocker. The
+     queue simply never gets flushed to anyone.
+     --------------------------------------------------------------------------- -->
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-V1FJPKWEY2');
 </script>
 
 <style>
@@ -545,6 +566,30 @@ svg.map text{user-select:none;-webkit-user-select:none}
    heading and the hint left over - about 195px, which cut the placeholder off mid-word
    at "Keresd meg a saját pata" and made the search look broken before it was used. The
    basis is wider than the leftover on purpose: it wraps onto its own line instead. */
+/* The consent bar. Bottom-anchored, above the tooltip layer but below nothing, and it
+   never covers the page: `position:fixed` with the content still scrollable behind it,
+   because the reader came for the measurements and the question is about a counter. */
+.consent{position:fixed;left:12px;right:12px;bottom:12px;z-index:800;
+  display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  max-width:760px;margin:0 auto;padding:13px 16px;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 6px 28px rgba(10,44,55,.17)}
+.consent p{margin:0;flex:1 1 320px;font-size:13.5px;line-height:1.5;color:var(--ink-soft)}
+.consent b{color:var(--ink)}
+.consent-btns{display:flex;gap:8px;flex:0 0 auto;margin-left:auto}
+.consent button{font:inherit;font-size:13.5px;font-weight:600;padding:8px 15px;cursor:pointer;
+  border-radius:8px;border:1px solid var(--flow);background:var(--flow);color:#fff}
+.consent button:hover{filter:brightness(1.08)}
+/* The refusal is a real button of the same size, not a link in the small print. A
+   decline that is harder to find than the accept is not a choice. */
+.consent button.ghost{background:transparent;color:var(--ink-soft);border-color:var(--line)}
+.consent button.ghost:hover{border-color:var(--ink-soft);filter:none}
+@media (max-width:560px){
+  .consent{gap:10px;padding:12px 14px}
+  .consent-btns{margin-left:0;width:100%}
+  .consent button{flex:1 1 0}
+}
+
 /* "Rosszabb, mint 2022?" — one row per gauge, one column per year.
    The bar is drawn with a background gradient rather than an element per cell: 28 rows
    times 10 years is 280 cells, and 280 extra nodes to draw a line each is a lot of DOM
@@ -2123,6 +2168,22 @@ footer a{color:var(--ink-soft)}
 
 </div>
 <div id="tip"></div>
+
+<!-- Nem modális és nem sötétíti el az oldalt. Semmi nincs mögötte elzárva: a mérések
+     miatt jött ide az olvasó, és egy teljes képernyős akadály egy közérdekű adatsor
+     előtt azért, hogy egy látogatásszámlálóról kérdezzünk, aránytévesztés. Amíg nincs
+     válasz, semmilyen külső kérés nem indul. -->
+<div id="consent" class="consent" role="region" aria-label="Sütik" hidden>
+  <p>
+    Ez az oldal <b>alapból semmilyen sütit nem használ</b>, és amíg nem válaszolsz, egyetlen
+    külső kérés sem indul. Szeretnénk viszont látni, hány olvasó jut el idáig — ehhez a Google
+    Analytics azonosítót tenne le a böngésződben. Enélkül minden működik ugyanúgy.
+  </p>
+  <div class="consent-btns">
+    <button type="button" id="consent-no" class="ghost">Köszönöm, nem</button>
+    <button type="button" id="consent-yes">Rendben</button>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -6732,7 +6793,76 @@ function tick(){
   // are laid out again rather than left at the previous screen's scale.
   let resizeTimer = null;
   addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer = setTimeout(drawNodes, 250); });
+  wireConsent();
 })();
+
+/* ---------------------------------------------------------------------------
+   Consent, and a decline that actually declines.
+
+   GA4 sets identifiers and reads them back on a later visit. Under the ePrivacy
+   directive that needs consent BEFORE it happens, so the analytics tag is not in the
+   head: it is injected here, from the accept branch only.
+
+   Three states, stored in localStorage rather than a cookie - storing the refusal in a
+   cookie in order to remember that the reader does not want cookies is a joke the
+   regulator has heard:
+
+     null       - not asked yet. Banner shows, nothing loads.
+     'granted'  - the tag is injected on this and every later visit.
+     'denied'   - nothing is ever injected. No request to googletagmanager is made at
+                  all, which is the whole point: a "decline" that still loads the script
+                  and asks it not to count is not a decline.
+
+   The banner is not modal and does not dim the page. Nothing here is behind it, the
+   measurements are the reason someone came, and a full-screen interstitial over a
+   public-interest dataset in order to ask about a page-view counter has the proportions
+   wrong. It sits at the bottom until answered.
+   --------------------------------------------------------------------------- */
+const CONSENT_KEY = 'hovafolyik.consent';
+const GA_ID = 'G-V1FJPKWEY2';
+
+function consentState(){
+  try { return localStorage.getItem(CONSENT_KEY); } catch(e){ return null; }
+}
+function storeConsent(value){
+  // A browser with storage disabled must not break the page. The consequence is that
+  // the reader is asked again next time, which is the safe direction to fail in.
+  try { localStorage.setItem(CONSENT_KEY, value); } catch(e){ /* nothing to do */ }
+}
+
+let analyticsLoaded = false;
+function loadAnalytics(){
+  if(analyticsLoaded) return;
+  analyticsLoaded = true;
+  gtag('js', new Date());
+  gtag('config', GA_ID);
+  const s = document.createElement('script');
+  // `async`, for the same reason the tag always was: a slow or blocked
+  // googletagmanager must never delay a page whose whole point is a number
+  // somebody needs right now.
+  s.async = true;
+  s.src = 'https://www.googletagmanager.com/gtag/js?id=' + GA_ID;
+  document.head.appendChild(s);
+}
+
+function wireConsent(){
+  const state = consentState();
+  if(state === 'granted'){ loadAnalytics(); return; }
+  if(state === 'denied') return;
+
+  const bar = $('consent');
+  if(!bar) return;
+  bar.hidden = false;
+
+  const answer = (value) => {
+    storeConsent(value);
+    bar.hidden = true;
+    if(value === 'granted') loadAnalytics();
+  };
+  const yes = $('consent-yes'), no = $('consent-no');
+  if(yes) yes.addEventListener('click', () => answer('granted'));
+  if(no) no.addEventListener('click', () => answer('denied'));
+}
 </script>
 </body>
 </html>

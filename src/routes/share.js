@@ -5,17 +5,35 @@ const { computeBalance } = require('../domain/balance');
 const { monthlyMedian } = require('../domain/flow-history');
 const { getStation } = require('../config/stations');
 const { asyncRoute } = require('../lib/async-route');
+const { Bitmap } = require('../lib/png');
+const { drawText, drawNumber, numberWidth } = require('../lib/glyphs');
 
 /**
  * The two things that decide whether this project spreads: what a pasted link looks
  * like, and whether a newsroom can put a piece of it inside their own article.
  *
- * SVG, not PNG. A social card is normally rendered with a headless browser or an image
- * library; this project has zero dependencies and adding a rasteriser for one image
- * would be the largest thing in it. Facebook and LinkedIn will not render SVG in a
- * preview - that is a real limitation, stated in the methodology rather than papered
- * over - but Slack, Mastodon, Discord and every RSS reader will, and those are where a
- * link to this actually travels between journalists.
+ * ---------------------------------------------------------------------------
+ * PNG AND SVG, AND THE PNG IS THE ONE THAT COUNTS
+ * ---------------------------------------------------------------------------
+ * This started as SVG only, with a note saying that Facebook and LinkedIn would not
+ * render it and that Slack, Mastodon and Discord would. That was true and it was still
+ * the wrong trade: the three platforms that do not take SVG are the three where a link
+ * travels to people who are not already reading the site, and on all of them the card
+ * was simply absent - a bare URL, no picture.
+ *
+ * So there is a PNG now, rendered by src/lib/png.js and src/lib/glyphs.js: about two
+ * hundred lines, no dependency, no headless browser. Node ships zlib, which is the only
+ * hard part of a PNG.
+ *
+ * The renderer has no font and no path filling, only rectangles, and the card's design
+ * follows from that rather than fighting it. The headline figure is drawn in seven
+ * segments - rectangles, so crisp at any size - and the labels in a 5x7 bitmap face at
+ * sizes where pixel type still reads as type. A card about river gauges that looks like
+ * a gauge is a legitimate design; a card that tried to be a typographic layout with this
+ * renderer would just look broken.
+ *
+ * The SVG stays, at its old URL, because it is sharper where it renders and some feeds
+ * still ask for it. The og:image points at the PNG.
  *
  * Both endpoints are cached hard at the edge. A share card is fetched by a crawler, once
  * per paste, and an embed sits on someone else's page: neither should reach the poller.
@@ -39,6 +57,19 @@ module.exports = function shareRoutes(ctx) {
     res.type('image/svg+xml; charset=utf-8');
     res.set('Cache-Control', 'public, max-age=900, s-maxage=900');
     res.send(nationalCard(b));
+  }));
+
+  /**
+   * GET /share/card.png - the same thing, in the only format the big platforms take.
+   *
+   * This is what og:image points at. Facebook, X and LinkedIn accept PNG, JPEG, GIF and
+   * WebP and nothing else; the SVG above is kept for the readers that prefer it.
+   */
+  router.get('/share/card.png', asyncRoute(async (req, res) => {
+    const b = await balanceNow();
+    res.type('image/png');
+    res.set('Cache-Control', 'public, max-age=900, s-maxage=900');
+    res.send(nationalCardPng(b));
   }));
 
   /**
@@ -128,6 +159,73 @@ function nationalCard(b) {
   }</text>
 </svg>
 `;
+}
+
+/* --- the raster card ------------------------------------------------------ */
+
+/** The same palette as the SVG, as RGB triples for the rectangle renderer. */
+const RGB = {
+  bgTop: [247, 253, 255],
+  bgBottom: [226, 244, 248],
+  ink: [10, 44, 55],
+  soft: [65, 112, 125],
+  faint: [123, 154, 164],
+  rule: [200, 226, 234],
+};
+
+const hexToRgb = (hex) => [
+  parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16),
+];
+
+function nationalCardPng(b) {
+  const inflow = b.inflow.totalM3s;
+  const outflow = b.outflow.totalM3s;
+  const ratio = b.inflow.ratioToSeasonal ?? b.inflow.ratioToMean ?? null;
+  const seasonal = b.inflow.ratioToSeasonal != null;
+  const month = MONTHS[new Date().getUTCMonth()];
+  const colour = hexToRgb(bandColour(ratio));
+
+  const M = 64;                 // margin
+  const CONTENT = W - M * 2;    // every line is given this and may not exceed it
+
+  const bmp = new Bitmap(W, H, RGB.bgTop);
+  bmp.verticalGradient(0, 0, W, H, RGB.bgTop, RGB.bgBottom);
+  bmp.fill(0, 0, W, 12, colour);
+
+  drawText(bmp, 'HOVAFOLYIK.HU', M, 58, 3, RGB.soft, { letterSpacing: 2, maxWidth: CONTENT });
+  drawText(bmp, 'Ennyi víz lép be ma a határon', M, 106, 4, RGB.ink, { maxWidth: CONTENT });
+
+  // The headline, in segments. Measured before drawing so the unit sits against it
+  // rather than at a guessed offset - the SVG hit exactly this bug and fixed it with a
+  // tspan, which is not available here.
+  const value = hu(inflow);
+  const digitsH = 156;
+  const digitsW = numberWidth(value, digitsH);
+  drawNumber(bmp, value, M, 196, digitsH, RGB.ink);
+  drawText(bmp, 'm³/s', M + digitsW + 22, 292, 5, RGB.faint);
+
+  // The comparison, which is the only part of this card that is an opinion about the
+  // number rather than the number. On its own two lines: at the width this renderer
+  // produces, the percentage and its explanation do not fit side by side, and the first
+  // version of this card discovered that by running "(augusztusi mediá" off the edge.
+  if (ratio !== null) {
+    drawText(bmp, `${hu(ratio * 100)}%`, M, 400, 6, colour);
+    drawText(bmp, seasonal ? `az ilyenkor szokásosnak (${month} medián)` : 'az éves átlagnak',
+      M, 470, 3, RGB.soft, { maxWidth: CONTENT });
+  } else {
+    drawText(bmp, 'nincs összehasonlítási alap erre a hónapra', M, 430, 3, RGB.soft,
+      { maxWidth: CONTENT });
+  }
+
+  bmp.fill(M, 516, CONTENT, 2, RGB.rule);
+
+  drawText(bmp, `Távozik ${hu(outflow)} m³/s · ${b.inflow.stationCount} határszelvény élő mérése`,
+    M, 536, 3, RGB.soft, { maxWidth: CONTENT });
+  drawText(bmp, `Forrás: OVF · frissítve ${
+    new Date(b.timestamp).toLocaleString('hu-HU', { timeZone: 'Europe/Budapest', dateStyle: 'short', timeStyle: 'short' })
+  }`, M, 578, 3, RGB.faint, { maxWidth: CONTENT });
+
+  return bmp.toBuffer();
 }
 
 function embedShell(title, body) {

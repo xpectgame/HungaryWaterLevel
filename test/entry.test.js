@@ -336,31 +336,45 @@ test('the frontend is served from the app root', async () => {
     // Resource loads only - <script src>, <link href>, <img src>. An anchor to the data
     // source is a link a reader follows, not something the page needs to render.
     //
-    // Exactly one host is allowed through: the analytics tag. It is listed by name rather
-    // than the rule being relaxed, so adding a second third-party host still fails here
-    // and has to be argued for on its own. The condition for the exemption is the assert
-    // below it - `async`, so a blocked or slow googletagmanager cannot hold up the page.
-    const ALLOWED_THIRD_PARTY = ['www.googletagmanager.com'];
+    // NO third-party host is allowed as a markup resource any more, analytics included.
+    // The analytics tag used to be exempted here by name; it is now injected from script
+    // and only after the reader consents, so there is nothing left to exempt and the
+    // rule is back to being absolute.
     const external = [...html.matchAll(/<(?:script|link|img|iframe)[^>]+(?:src|href)="((?:https?:)?\/\/[^"]+)"/g)]
-      .map((m) => m[1])
-      .filter((url) => !ALLOWED_THIRD_PARTY.some((host) => url.includes(host)));
+      .map((m) => m[1]);
     assert.deepStrictEqual(
       external,
       [],
       'no runtime dependency on a third-party host: the page must work when a CDN does not',
     );
 
-    // The analytics tag must never block rendering. Without `async` a slow or blocked
-    // googletagmanager delays first paint on a page whose whole point is a number
-    // someone needs now - and it is blocked, by extension or by policy, for a large
-    // share of readers.
-    const gtag = html.match(/<script[^>]*googletagmanager[^>]*>/);
-    if (gtag) {
-      assert.match(gtag[0], /\basync\b/, 'the analytics tag must be async, or it delays the page');
-      // Every call goes through the inline stub, so a page that never loads the remote
-      // script still does not throw when the site calls gtag().
+    // ---------------------------------------------------------------------------
+    // Consent before analytics, and this is the assertion that keeps it honest.
+    //
+    // GA4 sets identifiers and reads them back on a later visit, which needs consent
+    // BEFORE it happens. A banner that appears while the request is already in flight is
+    // a notice, not a choice. So the googletagmanager URL must not appear in any markup
+    // that the browser would fetch on load - only inside the script that builds the tag
+    // after the accept branch runs.
+    // ---------------------------------------------------------------------------
+    assert.ok(!/<script[^>]*src="[^"]*googletagmanager/.test(html),
+      'the analytics tag must not be in the markup: it loads only after consent');
+
+    if (html.includes('googletagmanager')) {
+      // It is injected, so: async (a slow or blocked googletagmanager must never delay a
+      // page whose whole point is a number someone needs now)...
+      assert.match(html, /\.async\s*=\s*true/,
+        'the injected analytics tag must be async, or it delays the page');
+      // ...gated on an explicit grant rather than on the banner merely being dismissed...
+      assert.match(html, /'granted'/,
+        'analytics must load only on an explicit grant');
+      // ...and a decline must be storable, so it is remembered and never re-asked into
+      // a load.
+      assert.match(html, /'denied'/, 'a refusal must be recordable');
+      // Every gtag() call on the page has to be safe whether the reader accepted,
+      // declined, or runs an ad blocker.
       assert.match(html, /function\s+gtag\s*\(\)\s*\{\s*dataLayer\.push\(arguments\)\s*;?\s*\}/,
-        'the inline gtag stub must exist, so calls are safe when the script is blocked');
+        'the inline gtag stub must exist, so calls are safe when nothing was loaded');
     }
   } finally {
     server.close();

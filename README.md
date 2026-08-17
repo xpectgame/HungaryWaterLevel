@@ -296,6 +296,22 @@ azt jelenti, hogy a szint a sáv alja **és** a kiindulási érték fölé kerü
 feltétel nélkül egy süllyedő tó „gyógyulást" jelentene, mert a tíz évből számolt mérce
 maga is lesüllyed egy aszálysorozatban.
 
+### 10/b. Sütik: alapból egy sem, és a „nem" tényleg nem
+
+Az oldal **semmilyen külső kérést nem indít**, amíg az olvasó nem válaszol. A Google
+Analytics tagje nincs benne a HTML-ben: a `loadAnalytics()` injektálja, kizárólag az
+elfogadás ágából. Aki nemet mond, annál a googletagmanager felé **egyetlen kérés sem
+megy el** — nem blokkolva, nem elküldve-és-figyelmen-kívül-hagyva, hanem el sem indítva.
+
+A GA4 azonosítót tesz le és olvassa vissza egy későbbi látogatáskor; erre az
+ePrivacy-irányelv szerint **előzetes** hozzájárulás kell. Az a banner, ami akkor jelenik
+meg, amikor a kérés már úton van, nem hozzájárulás, hanem tájékoztatás.
+
+A döntés `localStorage`-ban van, nem sütiben — sütit letenni azért, hogy megjegyezzük,
+hogy az olvasó nem kér sütit, régi vicc. A visszautasítás ugyanakkora, ugyanolyan
+kattintható gomb, mint az elfogadás: ha a „nem" nehezebben megtalálható, az nem választás.
+Az `entry.test.js` őrzi, hogy a googletagmanager URL ne kerülhessen vissza a markupba.
+
 ### 11/b. Rosszabb, mint 2022? — mércét számolunk, nem átlagolunk
 
 2022 az az aszály, amire mindenki emlékszik, és az archívumból megkérdezhető, hogy tényleg

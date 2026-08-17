@@ -32,6 +32,7 @@ const MUST_ROUTE = [
   ['/archive/2026-08-14.json', 'src/routes/archive.js'],
   ['/feed.xml', 'src/routes/alerts.js'],
   ['/share/card.svg', 'src/routes/share.js'],
+  ['/share/card.png', 'src/routes/share.js'],
   ['/embed/station/duna-budapest', 'src/routes/share.js'],
   ['/viz', 'src/routes/watercourse-page.js'],
   ['/viz/rakos-patak', 'src/routes/watercourse-page.js'],
