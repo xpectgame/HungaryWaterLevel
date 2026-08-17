@@ -791,7 +791,13 @@ async function probeSite(baseUrl) {
     console.log(`    card.png       FAIL  ${err.message.split('\n')[0].slice(0, 80)}`);
   }
   try {
-    const html = await fetchRaw(`${base}/viz/rakos-patak`, { timeoutMs: 30000 });
+    // fetchText resolves to { body, contentType, url }, not to the string. Calling
+    // .match on the wrapper threw "html.match is not a function", which the catch below
+    // then reported as a FAILING deployment - the check crying wolf about a page that
+    // was serving correctly. A guard that reports its own bugs as the site's is worse
+    // than no guard, because the next real failure reads the same.
+    const res = await fetchRaw(`${base}/viz/rakos-patak`, { timeoutMs: 30000 });
+    const html = typeof res === 'string' ? res : (res && res.body) || '';
     const title = (html.match(/<title>([^<]*)<\/title>/) || [])[1] || '';
     const named = /Rákos-patak/.test(title);
     record('/viz/:slug', named, `title: ${title.slice(0, 60) || '(none)'}`);
