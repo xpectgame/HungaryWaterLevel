@@ -558,13 +558,31 @@ async function probeSite(baseUrl) {
   const base = baseUrl.replace(/\/+$/, '');
   console.log(`\n########## deployed site: ${base} ##########`);
 
+  // Everything printed below is also collected here and written out as a document.
+  //
+  // This used to be stdout only, which was fine while a session could curl the site
+  // itself. It no longer can - the sandbox's egress policy refuses CONNECT to
+  // hovafolyik.hu and to every vizugy.hu host - so the runner is now the ONLY way to
+  // find out whether a deploy worked, and a verdict that exists only in a job log is a
+  // verdict nobody can read once the log rotates or the API declines to serve it. Which
+  // it did, with a 403, on the first deploy after this became the only route.
+  const verdict = { base, at: new Date().toISOString(), checks: [] };
+  const record = (name, ok, note) => {
+    verdict.checks.push({ name, ok, note });
+    return { ok, note };
+  };
+
   let snapshot;
   try {
     snapshot = await fetchJson(`${base}/api/v1/snapshot`, { timeoutMs: 30000, retries: 1 });
   } catch (err) {
     console.log(`FAILED: ${err.message}`);
+    record('snapshot', false, err.message.split('\n')[0]);
+    verdict.reachable = false;
+    emitDocument('deployed', verdict, 'nothing - this is a report, not configuration');
     return;
   }
+  verdict.reachable = true;
 
   const meta = snapshot._meta || {};
   const balance = snapshot.balance || {};
@@ -724,8 +742,10 @@ async function probeSite(baseUrl) {
     try {
       const body = await fetchJson(`${base}${path}`, { timeoutMs: 30000 });
       const { ok, note } = check(body);
+      record(name, ok, note);
       console.log(`    ${name.padEnd(14)} ${ok ? 'OK  ' : 'EMPTY'}  ${note}`);
     } catch (err) {
+      record(name, false, err.message.split('\n')[0]);
       console.log(`    ${name.padEnd(14)} FAIL  ${err.message.split('\n')[0]}`);
     }
   }
@@ -742,6 +762,7 @@ async function probeSite(baseUrl) {
     try {
       const body = await fetchJson(`${base}${path}`, { timeoutMs: 60000 });
       const n = Array.isArray(body[key]) ? body[key].length : 0;
+      record(name, n > 0, `${n} ${key}`);
       console.log(`    ${name.padEnd(14)} ${n > 0 ? 'OK  ' : 'EMPTY'}  ${n} ${key}`);
     } catch (err) {
       console.log(`    ${name.padEnd(14)} FAIL  ${err.message.split('\n')[0].slice(0, 80)}`);
@@ -761,20 +782,31 @@ async function probeSite(baseUrl) {
     const res = await fetch(`${base}/share/card.png`, { signal: AbortSignal.timeout(30000) });
     const buf = Buffer.from(await res.arrayBuffer());
     const isPng = buf.length > 8 && buf.slice(1, 4).toString('ascii') === 'PNG';
-    console.log(`    card.png       ${isPng ? 'OK  ' : 'FAIL'}  HTTP ${res.status} ` +
-      `${res.headers.get('content-type')} ${buf.length}B` +
-      `${isPng ? '' : ' - og:image is not a PNG, so no preview on Facebook, X or LinkedIn'}`);
+    const note = `HTTP ${res.status} ${res.headers.get('content-type')} ${buf.length}B`
+      + `${isPng ? '' : ' - og:image is not a PNG, so no preview on Facebook, X or LinkedIn'}`;
+    record('card.png', isPng, note);
+    console.log(`    card.png       ${isPng ? 'OK  ' : 'FAIL'}  ${note}`);
   } catch (err) {
+    record('card.png', false, err.message.split('\n')[0].slice(0, 80));
     console.log(`    card.png       FAIL  ${err.message.split('\n')[0].slice(0, 80)}`);
   }
   try {
     const html = await fetchRaw(`${base}/viz/rakos-patak`, { timeoutMs: 30000 });
     const title = (html.match(/<title>([^<]*)<\/title>/) || [])[1] || '';
     const named = /Rákos-patak/.test(title);
+    record('/viz/:slug', named, `title: ${title.slice(0, 60) || '(none)'}`);
     console.log(`    /viz/:slug     ${named ? 'OK  ' : 'FAIL'}  title: ${title.slice(0, 60) || '(none)'}`);
   } catch (err) {
+    record('/viz/:slug', false, err.message.split('\n')[0].slice(0, 80));
     console.log(`    /viz/:slug     FAIL  ${err.message.split('\n')[0].slice(0, 80)}`);
   }
+
+  const failed = verdict.checks.filter((c) => !c.ok);
+  verdict.ok = failed.length === 0;
+  verdict.failedCount = failed.length;
+  console.log(`\n  ${verdict.ok ? 'ALL OK' : `${failed.length} FAILING`}: ${
+    failed.map((c) => c.name).join(', ') || 'nothing'}`);
+  emitDocument('deployed', verdict, 'nothing - this is a report, not configuration');
 }
 
 /**
