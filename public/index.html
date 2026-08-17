@@ -263,6 +263,47 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .sw:hover,.swnode:focus .sw{fill:var(--silt);stroke-width:calc(.9px * var(--mk,1))}
 
 
+
+/* --- the drought chain ----------------------------------------------------
+   A vertical chain rather than a diagram, because the point is that these are LINKS:
+   each step is caused by the one above it and every one of them carries a number this
+   site measured today. A picture with arrows would let a reader skip the numbers, which
+   are the only reason any of it can be asserted. */
+.chain{display:grid;gap:0;margin:16px 0 8px}
+.chain-step{display:grid;grid-template-columns:64px 1fr;gap:14px;align-items:start;
+  padding:14px 0;position:relative}
+.chain-step + .chain-step{border-top:1px solid var(--line)}
+/* The connector: a line down the left, so the eye reads it as one sequence. */
+.chain-step::before{content:"";position:absolute;left:31px;top:0;bottom:0;width:2px;
+  background:linear-gradient(var(--line),var(--line));z-index:0}
+.chain-step:first-child::before{top:50%}
+.chain-step:last-child::before{bottom:50%}
+.chain-n{position:relative;z-index:1;width:62px;height:62px;border-radius:50%;
+  background:var(--card);border:2px solid var(--line);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;line-height:1.05}
+.chain-n b{font-size:17px;font-weight:600;color:var(--deep);font-variant-numeric:tabular-nums}
+/* "424/687" is seven characters and overflowed the circle at the full size. Stepped
+   down rather than shrunk to fit, so the numbers still line up with each other. */
+.chain-n b.long{font-size:13.5px;letter-spacing:-.02em}
+.chain-n b.xlong{font-size:11.5px;letter-spacing:-.03em}
+.chain-n small{font-size:9px;color:var(--ink-faint);letter-spacing:.02em}
+.chain-step.hot .chain-n{border-color:var(--ember);background:#fff6f1}
+.chain-step.hot .chain-n b{color:var(--ember)}
+.chain-step.mute .chain-n{opacity:.55}
+.chain-t{font-size:14.5px;font-weight:650;color:var(--ink);margin-bottom:3px}
+.chain-b{font-size:13.5px;color:var(--ink-soft);line-height:1.55;max-width:62ch}
+.chain-b b{color:var(--ink)}
+.chain-src{font-size:12px;margin-top:5px}
+.chain-src a{color:var(--flow);text-decoration:none;border-bottom:1px solid var(--flow-dim)}
+.chain-src a:hover{border-bottom-color:var(--flow)}
+.chain-none{font-size:12.5px;color:var(--ink-faint);font-style:italic}
+@media (max-width:560px){
+  .chain-step{grid-template-columns:44px 1fr;gap:10px}
+  .chain-n{width:44px;height:44px}
+  .chain-n b{font-size:14px}
+  .chain-step::before{left:21px}
+}
+
 /* --- the household water calculator ---------------------------------------
    Interactive because the model is an assumption and the reader is the one who should
    set it: a fixed "az átlagember 150 litert használ" hides its inputs, a slider shows
@@ -1136,6 +1177,7 @@ footer a{color:var(--ink-soft)}
       <a href="#s-talajnedvesseg">Talajnedvesség</a>
       <a href="#s-aszaly">Talajvíz</a>
       <a href="#s-retegviz">Rétegvíz</a>
+      <a href="#s-kovetkezmeny">Mi lesz ebből</a>
     </div>
     <div class="navgroup" role="group" aria-label="Amit a vízzel csinálunk">
       <span class="navlabel">Terhelés</span>
@@ -1581,6 +1623,63 @@ footer a{color:var(--ink-soft)}
     semmit nem jelent. Amit viszont lehet: minden kutat a <b>saját</b> tíz évéhez mérni, és
     megszámolni, hányban alacsony most a víz. Minden alábbi szám így készült.
   </p>
+</section>
+
+<!-- Placed at the end of the drought group, after every measurement it draws on, so a
+     reader arrives at it having already seen the numbers it assembles. -->
+<section class="card" id="s-kovetkezmeny" style="margin-bottom:18px">
+  <h3>Mi lesz ebből, ha így marad</h3>
+  <p class="lead" style="margin-bottom:8px">
+    Erre a kérdésre a tisztességes válasz nem egy jóslat. Ez az oldal nem készít
+    előrejelzést — de a <b>mechanizmus</b> ismert, és minden egyes láncszeméről van
+    <b>mai mérésünk</b>. Alább a lánc, és hogy hol tart most.
+  </p>
+  <p class="fineprint" style="margin:0 0 4px">
+    Minden szám alatta élő mérés erről az oldalról, nem modellezett jövőkép. Ha egy
+    láncszemhez épp nincs adat, azt a lépés kimondja magáról.
+  </p>
+  <div id="chain-body"></div>
+
+  <div class="explain" style="margin-top:16px">
+    <details>
+      <summary>És mit jelent ez konkrétan egy hétköznapi ember életében?</summary>
+      <p>
+        Három dolgot, és mind a három már most is mérhető, nem a jövőben:
+      </p>
+      <p>
+        <b>1. Korlátozás.</b> A vízhiány-fokozat nem figyelmeztetés, hanem hatósági
+        kihirdetés, ami az adott körzetben <b>jogi következménnyel jár a vízhasználatra</b> —
+        elsőként jellemzően a locsolást, a medencetöltést és a gépjárműmosást érinti. Hogy
+        épp hány körzetben van érvényben, a lánc utolsó eleme mutatja.
+      </p>
+      <p>
+        <b>2. Kút és talajvíz.</b> Ahol a talajvíz a tízéves rekordja alatt van, ott a
+        sekély ásott kutak elapadnak, és a kerti öntözés forrása tűnik el. Ez nem
+        közműprobléma: a vezetékes ivóvíz nagyrészt mélyebb rétegvízből jön, ami lassabban
+        reagál — de ugyanabból a csapadékból töltődik.
+      </p>
+      <p>
+        <b>3. A patak a település alatt.</b> Nyáron egy alföldi csatornában jóformán csak
+        a tisztított szennyvíz folyik. Ez az, ami a horgászvizet, a strandot és a
+        halállományt eltartja — és ez az, ami a lánc ötödik és hatodik lépésében
+        töményedik és melegszik.
+      </p>
+    </details>
+    <details>
+      <summary>Miért nincs itt konkrét évszám, hogy „2050-re ez lesz"?</summary>
+      <p>
+        Mert az ehhez szükséges klímamodellezés nem ennek az oldalnak a műfaja, és egy
+        innen kitalált évszám <b>pontosan úgy nézne ki</b>, mint a többi, mért szám
+        mellette — csak épp semmi nem lenne mögötte.
+      </p>
+      <p>
+        Amit ez az oldal a jövőről mondani tud, az a <b>múltból</b> jön: a tavaknál és a
+        folyóknál ott áll, hogy mikor tért vissza a szint a szokásos sávba azokban az
+        években, amelyek ugyanilyen alacsonyan kezdtek. Nem előrejelzés, hanem az, hogy
+        <b>eddig meddig tartott</b>.
+      </p>
+    </details>
+  </div>
 </section>
 
 <section class="card" id="s-szennyviz" style="margin-bottom:18px">
@@ -2034,6 +2133,12 @@ const feeds = {};
 function noteFeed(name, state, detail){
   feeds[name] = { state, detail, at: Date.now() };
   if(typeof renderSources === 'function') renderSources();
+  // NOT the consequence chain. It was wired here first and it was wrong: noteFeed runs
+  // inside api()'s own .then, which resolves before the loader's .then that assigns the
+  // global, so a redraw scheduled from here reads the previous value. Deferring it a
+  // frame did not fix it either - the last feed to land was still a step short, and the
+  // symptom was five of seven links sitting empty while every global was populated.
+  // The chain is redrawn by each loader instead, after it has assigned its own data.
 }
 
 /**
@@ -3539,6 +3644,7 @@ async function loadRain(){
     $('rain-coverage').textContent = (data.coverage && data.coverage.note) || '';
     $('rain-baseline').textContent = data.baselineNote || '';
     rainGauges = data.gauges || [];
+    chainDirty();
     rainMap = data.gauges || [];
     drawRainNodes();
     // The drought map shows the same gauges and is painted when its own data lands,
@@ -3732,6 +3838,7 @@ async function loadDrought(){
     renderDrought(data);
     // The same payload drives the 687 dots on the drought map.
     droughtData = data;
+    chainDirty();
     drawDroughtMap();
   }catch(err){
     $('dr-head').innerHTML = '';
@@ -4248,6 +4355,7 @@ function loadVizhiany(){
     api('/api/v1/vizhiany', { cache:'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
   ]).then(([g, v]) => {
     vhGeo = g; vhGrades = v;
+    chainDirty();
     vhLoading = false;
     drawDroughtMap();
     renderVizhiany(v);
@@ -4404,7 +4512,7 @@ function loadSewage(){
   sewageLoading = true;
   return api('/api/v1/szennyviz', { cache:'no-store' })
     .then(r => r.ok ? r.json() : null)
-    .then(j => { sewage = j; sewageLoading = false; drawSewage(); renderSewage(j); return j; })
+    .then(j => { sewage = j; sewageLoading = false; drawSewage(); renderSewage(j); chainDirty(); return j; })
     .catch(() => { sewageLoading = false; return null; });
 }
 
@@ -4513,6 +4621,166 @@ function renderSewage(d){
     `<b>nem</b> váltjuk át vízmennyiséggé: az egy feltételezés a napi fejenkénti literről, `+
     `nem mérés. ${missing?`A kapacitás ${fmt((1-d.volumeCapacityShare)*100,0)}%-ára nincs `+
     `mennyiségi adat — köztük ${missing} —, így a fenti m³/s alulbecslés.`:''}</p>`;
+}
+
+/* --- what the shortage does, link by link ----------------------------------
+
+   The section that had to be built most carefully, because the question behind it -
+   "mi lesz, ha ez így marad" - is a request for a forecast, and this project does not
+   make those. What it can do instead is the thing hydrology actually knows: name the
+   MECHANISM, and show where each link of it stands today, measured.
+
+   So every step here is a number this site collected, not a projection. The chain is
+   real physics - less rain, drier soil, lower water table, less water in the river, the
+   same discharge into less of it, warmer water holding less oxygen - and each link is
+   annotated with what it is at this moment. A step whose feed is down says so and
+   stays in place, because a missing link would make the chain look shorter than it is.
+-------------------------------------------------------------------------- */
+
+function chainSteps(){
+  const steps = [];
+  const pct = (a, b) => (b > 0 ? Math.round(100 * a / b) : null);
+
+  // 1. Rain. Counted from the gauges' own bands, so "kevés" means each gauge against
+  //    its own long-term average rather than against a national number.
+  const dryBands = new Set(['extreme-deficit', 'severe-deficit', 'deficit']);
+  const rainDry = rainGauges.filter(g => dryBands.has(g.band)).length;
+  const rainN = rainGauges.filter(g => g.band).length;
+  steps.push({
+    n: rainN ? `${rainDry}/${rainN}` : null, unit: 'mérce',
+    title: 'Kevesebb eső esik, mint amennyi szokott',
+    body: rainN
+      ? `<b>${rainDry}</b> csapadékmérő mért kevesebbet az elmúlt 30 napban, mint amennyi `+
+        `nála ilyenkor szokásos — a ${rainN} összehasonlítható mércéből. Minden mérce a `+
+        `<b>saját</b> sokéves átlagához van mérve, nem egymáshoz.`
+      : null,
+    hot: rainN && rainDry > rainN / 2, href: '#s-csapadek', src: 'Csapadék szekció',
+  });
+
+  // 2. Soil.
+  const so = soil && soil.available ? soil : null;
+  steps.push({
+    n: so ? `${so.dryCount}/${so.rankedCount}` : null, unit: 'állomás',
+    title: 'A talaj kiszárad — itt éri el a növényt',
+    body: so
+      ? `<b>${so.dryCount}</b> talajnedvesség-állomás áll a saját eddigi méréseinek alsó `+
+        `negyedében, ${so.recordLowCount} pedig <b>a saját rekordja alatt</b>. Ez az a víz, `+
+        `amihez a gyökér hozzáfér: ha ez elfogy, a növény akkor is szomjazik, ha `+
+        `két méterrel lejjebb van talajvíz.`
+      : null,
+    hot: so && so.dryCount > so.rankedCount / 2, href: '#s-talajnedvesseg', src: 'Talajnedvesség szekció',
+  });
+
+  // 3. The water table.
+  const dr = droughtData && droughtData.summary ? droughtData.summary : null;
+  steps.push({
+    n: dr ? `${dr.dry}/${dr.comparable}` : null, unit: 'kút',
+    title: 'A talajvíz süllyed, és lassan tér vissza',
+    body: dr
+      ? `<b>${dr.dry}</b> kút áll a szokásosnál alacsonyabban, <b>${dr.deepestOnRecord}</b> `+
+        `mélyebben, mint bármikor ilyenkor az elmúlt tíz évben. A talajvíz nem egy nyári `+
+        `zápor alatt töltődik vissza: ehhez <b>hónapok</b> csapadéka kell, télen, amikor `+
+        `nem párolog el és nem szívja fel a növényzet.`
+      : null,
+    hot: dr && dr.deepestOnRecord > dr.comparable / 4, href: '#s-aszaly', src: 'Talajvíz szekció',
+  });
+
+  // 4. The rivers. The sharpest measured example rather than an average, because an
+  //    average over the Danube and a Great Plain canal describes neither.
+  const lowest = stations
+    .filter(st => st.current && st.current.ratioToMean != null)
+    .sort((a, b) => a.current.ratioToMean - b.current.ratioToMean)[0];
+  steps.push({
+    n: lowest ? `${Math.round(lowest.current.ratioToMean * 100)}%` : null, unit: 'a szokásos',
+    title: 'Kevesebb víz marad a folyókban',
+    body: lowest
+      ? `A legszárazabb figyelt szelvény most a <b>${esc(lowest.name)}</b>: `+
+        `${fmt(lowest.current.flowM3s,0)} m³/s, ami a sokéves átlagának `+
+        `<b>${Math.round(lowest.current.ratioToMean*100)}%-a</b>. Ez nem egyszerűen `+
+        `„kevesebb víz": a folyó hígító képessége csökken ugyanennyivel.`
+      : null,
+    hot: lowest && lowest.current.ratioToMean < 0.5, href: '#s-vizallas', src: 'Vízállás szekció',
+  });
+
+  // 5. The same discharge into less water. This is the link that turns a quantity
+  //    problem into a quality one, and the register lets it be shown per river.
+  const worst = (sewage && sewage.byReceivingWater || [])
+    .filter(g => g.shareOfFlow != null)
+    .sort((a, b) => b.shareOfFlow - a.shareOfFlow)[0];
+  steps.push({
+    n: worst ? `${fmt(worst.shareOfFlow*100,1)}%` : null, unit: 'a folyóból',
+    title: 'Ugyanannyi szennyvíz kevesebb vízbe kerül',
+    body: worst
+      ? `A tisztított szennyvíz mennyisége nem csökken attól, hogy szárazság van — a `+
+        `befogadóé igen. A <b>${esc(worst.water)}</b> vizének most `+
+        `<b>${fmt(worst.shareOfFlow*100,1)}%-a</b> tisztított szennyvíz. Ugyanaz a `+
+        `nitrogén és foszfor kevesebb vízben <b>töményebb</b>.`
+      : `A szennyvíz mennyisége nem csökken a szárazságtól, a befogadó folyóé igen — `+
+        `ugyanaz a terhelés kevesebb vízben töményebb. Az aránynak élő vízhozam kell `+
+        `ahhoz a szelvényhez, ami most nem érhető el.`,
+    hot: worst && worst.shareOfFlow > 0.05, href: '#s-szennyviz', src: 'Szennyvíz szekció',
+  });
+
+  // 6. Temperature, which is the multiplier on all of it.
+  const warm = stations
+    .filter(st => st.current && Number.isFinite(st.current.waterTempC))
+    .sort((a, b) => b.current.waterTempC - a.current.waterTempC)[0];
+  steps.push({
+    n: warm ? `${fmt(warm.current.waterTempC,1)}°C` : null, unit: 'vízhő',
+    title: 'A meleg víz kevesebb oxigént tud megkötni',
+    body: warm
+      ? `A legmelegebb mért szelvény most a <b>${esc(warm.name)}</b>: `+
+        `<b>${fmt(warm.current.waterTempC,1)} °C</b>. Minél melegebb a víz, annál kevesebb `+
+        `oldott oxigént bír el — miközben a tápanyagtól felpörgő alga lebomlása épp `+
+        `oxigént von el. Kevés víz, meleg víz és tápanyag együtt: ez a halpusztulás receptje.`
+      : null,
+    hot: warm && warm.current.waterTempC >= 24, href: '#s-vizallas', src: 'Vízállás szekció',
+  });
+
+  // 7. And the consequence that is already a legal fact rather than a mechanism.
+  const vh = vhGrades && vhGrades.summary ? vhGrades.summary : null;
+  steps.push({
+    n: vh ? `${vh.atOrAboveThird}/${vh.total}` : null, unit: 'körzet',
+    title: 'És ez már korlátozás, nem előrejelzés',
+    body: vh
+      ? `<b>${vh.atOrAboveThird}</b> vízhiány-körzetben van érvényben legalább III. fokú `+
+        `vízhiány, ${vh.atExtraordinary}-ben <b>rendkívüli</b>. Ezt nem mi állapítottuk meg: `+
+        `a vízügyi igazgatóság <b>hirdette ki</b>, és a fokozat jogi következményekkel jár `+
+        `a vízhasználatra abban a körzetben.`
+      : null,
+    hot: vh && vh.atExtraordinary > vh.total / 2, href: '#s-vizhiany', src: 'Vízhiány szekció',
+  });
+
+  return steps;
+}
+
+/* Coalesced to one redraw per frame: six loaders finish within milliseconds of each
+   other and each one marks the chain dirty. */
+let chainPending = false;
+function chainDirty(){
+  if(chainPending || typeof renderChain !== 'function') return;
+  chainPending = true;
+  requestAnimationFrame(() => { chainPending = false; renderChain(); });
+}
+
+function renderChain(){
+  const box = $('chain-body');
+  if(!box) return;
+  const steps = chainSteps();
+  box.innerHTML = `<div class="chain">${steps.map((st, i) => {
+    const has = st.n != null && st.body;
+    return `<div class="chain-step ${has && st.hot ? 'hot' : ''} ${has ? '' : 'mute'}">
+      <div class="chain-n">${has
+        ? `<b class="${String(st.n).length > 6 ? 'xlong' : String(st.n).length > 4 ? 'long' : ''}">`+
+          `${st.n}</b><small>${esc(st.unit)}</small>`
+        : `<b>${i+1}.</b>`}</div>
+      <div><div class="chain-t">${esc(st.title)}</div>
+        <div class="chain-b">${has ? st.body
+          : `<span class="chain-none">Ehhez a lépéshez most nincs élő adat — `+
+            `a „Mi felelt most" táblázat megmondja, melyik forrás néma.</span>`}</div>
+        ${has ? `<div class="chain-src">→ <a href="${st.href}">${esc(st.src)}</a></div>` : ''}
+      </div></div>`;
+  }).join('')}</div>`;
 }
 
 /* --- household water use --------------------------------------------------
@@ -4684,7 +4952,7 @@ function loadSoil(){
   soilLoading = true;
   return api('/api/v1/talajnedvesseg', { cache:'no-store' })
     .then(r => r.ok ? r.json() : null)
-    .then(j => { soil = j; soilLoading = false; renderSoil(j); drawDroughtMap(); return j; })
+    .then(j => { soil = j; soilLoading = false; renderSoil(j); drawDroughtMap(); chainDirty(); return j; })
     .catch(() => { soilLoading = false; renderSoil(null); return null; });
 }
 
@@ -6115,6 +6383,7 @@ function tick(){
   // the place a reader goes when a section is empty, and an empty panel would be the
   // same failure one level up.
   renderSources();
+  renderChain();
   initNav();
   initMapKeys();
   initMapZoom();
