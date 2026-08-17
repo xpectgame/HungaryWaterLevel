@@ -157,6 +157,34 @@ function compareYears({ month, reference = REFERENCE_YEAR, document } = {}) {
   const years = [...yearSet].sort((a, b) => a - b);
   const comparable = stations.filter((s) => s.comparable);
   const latestYear = years.length ? years[years.length - 1] : null;
+
+  // ---------------------------------------------------------------------------
+  // Why the current year may have no column, stated rather than left to be inferred.
+  //
+  // `years` is the years that have THIS month. In August 2026 that stops at 2025,
+  // because August 2026 is 17 days old and the bake's 20-day guard correctly refuses to
+  // publish it as August. All correct - and completely opaque to a reader looking at a
+  // table headed 2016-2025 in the middle of 2026, who reasonably concludes the archive
+  // has not been updated in a year.
+  //
+  // So the payload carries the whole archive's range separately from this month's, plus
+  // whether the current year is in the archive at all and how much of it is complete.
+  // A page can then say "2026 is here, August just is not finished" instead of silently
+  // ending at 2025.
+  // ---------------------------------------------------------------------------
+  const archiveYearSet = new Set();
+  const currentYear = new Date().getUTCFullYear();
+  let currentYearMonths = 0;
+  for (const byYear of Object.values(yearly)) {
+    for (const [year, series] of Object.entries(byYear)) {
+      if (!Array.isArray(series) || !series.some((v) => Number.isFinite(v))) continue;
+      archiveYearSet.add(Number(year));
+      if (Number(year) === currentYear) {
+        currentYearMonths = Math.max(currentYearMonths, series.filter((v) => Number.isFinite(v)).length);
+      }
+    }
+  }
+  const archiveYears = [...archiveYearSet].sort((a, b) => a - b);
   const belowReference = comparable.filter((s) => s.latest
     && s.latest.year === latestYear && s.latest.value < s.referenceValue);
 
@@ -168,6 +196,16 @@ function compareYears({ month, reference = REFERENCE_YEAR, document } = {}) {
     reference,
     latestYear,
     years,
+    // The archive's own range, which is NOT the same as `years` once the running month
+    // is under way: the archive reaches 2026, this month's column list stops at 2025.
+    archiveYears,
+    currentYear,
+    currentYearInArchive: archiveYears.includes(currentYear),
+    currentYearMonthsComplete: currentYearMonths,
+    // The reason there is no column for the current year, in a field rather than in
+    // prose a consumer would have to reconstruct.
+    currentYearMissingReason: years.includes(currentYear) ? null
+      : (archiveYears.includes(currentYear) ? 'month-not-complete' : 'year-not-baked'),
     stations,
     summary: {
       stations: stations.length,

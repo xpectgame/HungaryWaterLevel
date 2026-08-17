@@ -5203,23 +5203,17 @@ function renderDroughtYears(d){
   // `monthAdjHu` comes from the API rather than being built here as monthHu + 'i': that
   // rule is right for eight months and wrong for four (január → januári).
   const adj = d.monthAdjHu || d.monthHu;
-  summary.innerHTML =
-    `<div class="dy-fact${below ? ' hot' : ''}"><b>${below} / ${d.summary.comparable}</b>` +
-    `<span>ennyi mércén volt kisebb a ${latest}-ös ${esc(adj)} medián vízhozam, mint ${ref}-ben</span></div>` +
-    (worstYear ? `<div class="dy-fact"><b>${worstYear.year}</b>` +
-      `<span>ez az év tartja a legkisebb ${esc(adj)} vízhozam rekordját a legtöbb mércén (${worstYear.count} db)</span></div>` : '') +
-    `<div class="dy-fact"><b>${d.years.length} év</b>` +
-    `<span>${d.years[0]}–${d.years[d.years.length-1]}, havi medián vízhozamokból</span></div>`;
 
-  // The running month, when the day-resolved archive is deployed. Its own block above
-  // the table, never a column in it: those are whole months and this is a part-month,
-  // and putting seventeen days in the August column is the one mistake this section is
-  // built to avoid.
+  // The running month goes FIRST. It was third, after two cards about the last complete
+  // year, on a page being read in the middle of the year it is about - so the section
+  // opened with "2025" three times over and a reader had to get past all of it to reach
+  // the only figure that describes now.
+  let cards = '';
   const run = d.running;
   if(run && run.available && run.summary.comparable > 0){
     const rec = (run.summary.lowestByYear[0] || {}).year === run.year
       ? run.summary.lowestByYear[0].count : 0;
-    summary.innerHTML +=
+    cards +=
       `<div class="dy-fact dy-run${run.summary.belowReference ? ' hot' : ''}">` +
       `<b>${run.summary.belowReference} / ${run.summary.comparable}</b>` +
       `<span>ennyi mércén folyik <b>most</b> kevesebb víz, mint ${run.reference} ugyanezen ` +
@@ -5227,6 +5221,23 @@ function renderDroughtYears(d){
       (rec ? `. Ebből <b>${rec} mércén ez a legszárazabb ilyen időszak</b> az egész archívumban.` : '.') +
       `</span></div>`;
   }
+
+  cards +=
+    `<div class="dy-fact${below ? ' hot' : ''}"><b>${below} / ${d.summary.comparable}</b>` +
+    // "az utolsó teljes", not just the year: in mid-2026 a bare "2025" reads as stale
+    // data rather than as the most recent finished August.
+    `<span>ennyi mércén volt kisebb az <b>utolsó teljes</b> ${esc(adj)} (${latest}) medián ` +
+    `vízhozama, mint ${ref}-ben</span></div>` +
+    (worstYear ? `<div class="dy-fact"><b>${worstYear.year}</b>` +
+      `<span>ez az év tartja a legkisebb ${esc(adj)} vízhozam rekordját a legtöbb mércén (${worstYear.count} db)</span></div>` : '') +
+    // The ARCHIVE's range, not this month's column list. They differ once the running
+    // month is under way, and printing the column list here said "2016–2025" in the
+    // middle of 2026 - which reads as an archive that has not been updated in a year.
+    `<div class="dy-fact"><b>${(d.archiveYears || d.years).length} év</b>` +
+    `<span>${(d.archiveYears || d.years)[0]}–${(d.archiveYears || d.years).slice(-1)[0]} az archívumban, ` +
+    `havi medián vízhozamokból</span></div>`;
+
+  summary.innerHTML = cards;
 
   const years = d.years;
   const head = '<tr><th class="n">Mérce</th>' +
@@ -5256,7 +5267,20 @@ function renderDroughtYears(d){
   table.innerHTML = head + rows;
 
   if(note){
-    note.innerHTML =
+    // Why the current year has no column. Without this the table simply stops at last
+    // year in the middle of this one, and the only available reading is that nobody has
+    // updated the data - which is the opposite of what happened.
+    let missing = '';
+    if(d.currentYearMissingReason === 'month-not-complete'){
+      missing = `<b>${d.currentYear} azért nincs az oszlopok között</b>, mert a ${esc(d.monthHu)} ` +
+        `még nem telt el — egy rész-hónap nem vethető össze teljes hónapokkal. Az archívumban ` +
+        `bent van, ${d.currentYearMonthsComplete} lezárt hónappal; amit ${d.currentYear}-ról ` +
+        `mondani lehet, az a fenti, pirossal keretezett sáv (azonos napszakasz minden évben). `;
+    } else if(d.currentYearMissingReason === 'year-not-baked'){
+      missing = `<b>${d.currentYear} még nincs az archívumban</b> — a következő sütés hozza be. `;
+    }
+
+    note.innerHTML = missing +
       `A <b>▼</b> azt jelöli, hogy az adott év ${esc(adj)} medián vízhozama kisebb volt, mint ` +
       `${ref}-ben; a bekeretezett cella a mérce eddigi legkisebb ${esc(adj)} ` +
       `medián vízhozama. <b>Országos összeg nincs</b>: a Duna 1500 m³/s, a Fehér-Körös 0,09 — ` +

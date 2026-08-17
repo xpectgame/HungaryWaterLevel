@@ -290,3 +290,45 @@ test('a drop entirely inside the floor is not counted as a drop', () => {
   const w = compareWindow({ month: 7, throughDay: 17, document: daily });
   assert.equal(w.summary.belowReference, 0, '0.05 to 0 is noise, not a finding');
 });
+
+test('the archive range is reported separately from this month column list', () => {
+  // In August 2026 the August columns stop at 2025, correctly - August 2026 is not a
+  // finished month. Printing that column list as the archive's range said "2016-2025"
+  // in the middle of 2026, which reads as an archive nobody has updated in a year.
+  const doc = {
+    'duna-budapest': {
+      2022: month(AUG, 1249),
+      2025: month(AUG, 1629),
+      // The current year exists, with months up to July but not August.
+      [THIS_YEAR]: [10, 10, 10, 10, 10, 10, 10, null, null, null, null, null],
+    },
+  };
+  const b = compareYears({ month: AUG, document: doc });
+  assert.deepEqual(b.years, [2022, 2025], 'no August column for the running year');
+  assert.ok(b.archiveYears.includes(THIS_YEAR), 'but the archive does reach it');
+  assert.equal(b.currentYearInArchive, true);
+  assert.equal(b.currentYearMonthsComplete, 7);
+  // And the reason is a field, not something the page has to reconstruct.
+  assert.equal(b.currentYearMissingReason, 'month-not-complete');
+});
+
+test('a year genuinely absent from the archive is distinguished from an unfinished month', () => {
+  // Two very different situations that look identical in the table: "the bake has not
+  // run" and "the month is not over". Only one of them is anybody's fault.
+  const doc = { 'duna-budapest': { 2022: month(AUG, 1249), 2025: month(AUG, 1629) } };
+  const b = compareYears({ month: AUG, document: doc });
+  assert.equal(b.currentYearInArchive, false);
+  assert.equal(b.currentYearMissingReason, 'year-not-baked');
+});
+
+test('a complete month in the current year does get its column', () => {
+  const doc = {
+    'duna-budapest': {
+      2022: month(0, 100),
+      [THIS_YEAR]: month(0, 40),
+    },
+  };
+  const b = compareYears({ month: 0, document: doc });
+  assert.ok(b.years.includes(THIS_YEAR), 'January is finished, so it has a column');
+  assert.equal(b.currentYearMissingReason, null);
+});

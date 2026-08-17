@@ -357,6 +357,14 @@ naptári napok**. Ehhez napi felbontás kell, ezért süt a probe egy harmadik d
 Ez a válasz külön kulcson (`running`), saját `basis`-szal érkezik, soha nem az évoszlopok
 között: azok teljes hónapok, ez egy rész-hónap.
 
+Ebből viszont az következik, hogy **a futó év oszlopa hiányzik a táblából** — 2026
+augusztusában az augusztus-oszlopok 2025-tel érnek véget, mert augusztus 2026 még nem
+hónap. Ez helyes, de magyarázat nélkül úgy néz ki, mintha egy éve nem frissült volna az
+archívum. Ezért a válasz külön közli az **archívum** évhatárait (`archiveYears`) az adott
+hónap oszloplistája mellett, és megnevezi a hiány okát: `month-not-complete` (bent van az
+év, a hónap nincs kész) vagy `year-not-baked` (az év még nincs lesütve). A kettő nagyon
+különböző helyzet, és a táblában egyformán néz ki.
+
 Mai állás: **22 mércén folyik most kevesebb víz, mint 2022 ugyanezen napjaiban**, és
 ugyancsak 22-n ez a legszárazabb augusztus 1–16. az egész archívumban.
 
