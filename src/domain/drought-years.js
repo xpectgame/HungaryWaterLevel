@@ -281,6 +281,23 @@ function stationAcrossMonths(id, { reference = REFERENCE_YEAR, document } = {}) 
  */
 const MIN_WINDOW_COVERAGE = 0.8;
 
+/**
+ * The resolution floor of the daily archive, in m3/s.
+ *
+ * The day-resolved document is stored to one decimal, so a value of 0 means "below
+ * 0.05", not "nothing". On the small border rivers that matters constantly: the
+ * Fehér-Körös at Gyula reads 0 for weeks at a time in August, in 2022 and 2025 as well
+ * as this year.
+ *
+ * A ratio taken across that floor is arithmetic on noise. 0.35 against 0 comes out as
+ * "0% of 2022" - a precise-looking figure for two numbers that both mean "almost no
+ * water", and it sorted that gauge to the top of the table as the worst-hit in the
+ * country. The comparison is still made, because a river that WAS at 0.35 and is now
+ * below the floor really is drier; what is withheld is the percentage, because the
+ * percentage is the part that is not supported.
+ */
+const RESOLUTION_FLOOR = 0.1;
+
 function compareWindow({ month, throughDay, reference = REFERENCE_YEAR, document } = {}) {
   const daily = document !== undefined ? document : loadDaily();
   if (!daily || !Object.keys(daily).length) {
@@ -328,6 +345,11 @@ function compareWindow({ month, throughDay, reference = REFERENCE_YEAR, document
       .map(([year, v]) => ({ year: Number(year), value: v }));
     const thisYear = present.find((p) => p.year === now.getUTCFullYear()) || null;
 
+    // Either side sitting on the archive's resolution floor makes the RATIO unusable,
+    // not the comparison. See RESOLUTION_FLOOR.
+    const atFloor = (Number.isFinite(referenceValue) && referenceValue < RESOLUTION_FLOOR)
+      || (thisYear && thisYear.value < RESOLUTION_FLOOR);
+
     stations.push({
       id,
       name: station ? station.name : id,
@@ -337,15 +359,22 @@ function compareWindow({ month, throughDay, reference = REFERENCE_YEAR, document
       referenceValue: Number.isFinite(referenceValue) ? referenceValue : null,
       comparable: Number.isFinite(referenceValue) && referenceValue > 0 && !!thisYear,
       thisYear,
+      // So a page can say "at or below the measuring floor" instead of printing 0%.
+      atFloor: Boolean(atFloor),
+      floor: RESOLUTION_FLOOR,
       lowest: present.length
         ? present.reduce((a, b) => (b.value < a.value ? b : a))
         : null,
-      vsReference: thisYear && Number.isFinite(referenceValue) && referenceValue > 0
+      vsReference: thisYear && Number.isFinite(referenceValue) && referenceValue > 0 && !atFloor
         ? round(thisYear.value / referenceValue, 3)
         : null,
     });
   }
 
+  // Sorted by the ratio, so the gauges with an unusable ratio fall to the bottom rather
+  // than to the top. Before the floor was handled, the Fehér-Körös sorted FIRST - "0% of
+  // 2022", the worst-hit river in the country - on the strength of two numbers that both
+  // mean "almost no water".
   stations.sort((a, b) => {
     const av = a.vsReference, bv = b.vsReference;
     if (av === null && bv === null) return a.name.localeCompare(b.name, 'hu');
@@ -355,7 +384,9 @@ function compareWindow({ month, throughDay, reference = REFERENCE_YEAR, document
   });
 
   const comparable = stations.filter((s) => s.comparable);
-  const below = comparable.filter((s) => s.thisYear.value < s.referenceValue);
+  // A drop that is entirely within the floor is not a drop. Everywhere else, less water
+  // is less water, floor or no floor.
+  const below = comparable.filter((s) => s.referenceValue - s.thisYear.value >= RESOLUTION_FLOOR);
 
   return {
     available: true,
@@ -412,5 +443,5 @@ function round(v, digits) {
 
 module.exports = {
   buildDroughtYears, compareYears, compareWindow, stationAcrossMonths, monthSeries,
-  REFERENCE_YEAR, MONTHS_HU, MONTHS_ADJ_HU, MIN_WINDOW_COVERAGE,
+  REFERENCE_YEAR, MONTHS_HU, MONTHS_ADJ_HU, MIN_WINDOW_COVERAGE, RESOLUTION_FLOOR,
 };

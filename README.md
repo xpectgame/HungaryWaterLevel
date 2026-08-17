@@ -348,6 +348,25 @@ Az eredmény augusztusra: **2022 tartja a rekordot 13 mércén**, de 2025 már *
 alatta van — a Körös-rendszeren és az alsó Tiszán a legutóbbi teljes augusztus kevesebb
 vizet hozott, mint 2022 augusztusa.
 
+**A futó hónap is összehasonlítható, csak nem a havi táblában.** Augusztus 17-én a
+17 nap nem augusztus, és a bake 20 napos küszöbe pontosan ezt akadályozza meg. De
+augusztus 1–16. összevethető minden év augusztus 1–16-ával: **egyforma ablak, azonos
+naptári napok**. Ehhez napi felbontás kell, ezért süt a probe egy harmadik dokumentumot
+(`flow-daily.json`) — ugyanazokból a sorokból, **nulla plusz lekérdezéssel**.
+
+Ez a válasz külön kulcson (`running`), saját `basis`-szal érkezik, soha nem az évoszlopok
+között: azok teljes hónapok, ez egy rész-hónap.
+
+Mai állás: **22 mércén folyik most kevesebb víz, mint 2022 ugyanezen napjaiban**, és
+ugyancsak 22-n ez a legszárazabb augusztus 1–16. az egész archívumban.
+
+Egy dolgot visszatart: **a százalékot ott, ahol a mérés felbontásán ülünk.** A napi
+archívum egy tizedesre kerekít, tehát a 0 azt jelenti: „0,05 alatt". A Fehér-Körös
+Gyulánál hetekig 0-t ír augusztusban — 2022-ben és 2025-ben is. A 0,35 és a 0 hányadosa
+„a 2022-es érték 0%-a", ami precíznek látszó szám két olyanból, ami mindkettő azt jelenti,
+hogy nincs víz — és ez a mércét az ország legrosszabbjaként a lista élére sorolta. Az
+összehasonlítás megmarad (0,35-ről a küszöb alá tényleg szárazabb), a **százalék nem**.
+
 ### 12. Hova folyik? — a lánc a nyilvántartásból jön, nem a térképről
 
 A vízrajzi alaptérkép 15 566 szakaszából **13 249 megnevezi a befogadóját** — azt a vizet,

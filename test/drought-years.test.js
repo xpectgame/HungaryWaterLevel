@@ -252,3 +252,41 @@ test('the payload attaches the window under its own key, never in the year colum
   const koros = b.stations.find((s) => s.id === 'feher-koros-gyula');
   assert.ok(!(String(THIS_YEAR) in koros.values) || koros.values[String(THIS_YEAR)] === undefined);
 });
+
+test('a ratio is withheld where either side sits on the archive resolution floor', () => {
+  // The daily archive is stored to one decimal, so 0 means "below 0.05", not "nothing".
+  // The Fehér-Körös reads 0 for weeks every August, in 2022 and 2025 as well as now.
+  // 0.35 against 0 came out as "0% of 2022" and sorted that gauge FIRST - the worst-hit
+  // river in the country, on two numbers that both mean "almost no water".
+  const daily = {
+    'feher-koros-gyula': {
+      2022: augDays(17, 0.35),
+      [THIS_YEAR]: augDays(17, 0),
+    },
+    'duna-budapest': {
+      2022: augDays(17, 1000),
+      [THIS_YEAR]: augDays(17, 700),
+    },
+  };
+  const w = compareWindow({ month: 7, throughDay: 17, document: daily });
+  const koros = w.stations.find((s) => s.id === 'feher-koros-gyula');
+  const duna = w.stations.find((s) => s.id === 'duna-budapest');
+
+  assert.equal(koros.atFloor, true);
+  assert.equal(koros.vsReference, null, 'no percentage across the floor');
+  // The comparison itself survives: 0.35 to below 0.05 really is drier.
+  assert.ok(w.summary.belowReferenceIds.includes('feher-koros-gyula'));
+
+  assert.equal(duna.atFloor, false);
+  assert.equal(duna.vsReference, 0.7);
+  // And the gauge with the unusable ratio sorts last, not first.
+  assert.equal(w.stations[w.stations.length - 1].id, 'feher-koros-gyula');
+});
+
+test('a drop entirely inside the floor is not counted as a drop', () => {
+  const daily = {
+    'tiny-gauge': { 2022: augDays(17, 0.05), [THIS_YEAR]: augDays(17, 0) },
+  };
+  const w = compareWindow({ month: 7, throughDay: 17, document: daily });
+  assert.equal(w.summary.belowReference, 0, '0.05 to 0 is noise, not a finding');
+});

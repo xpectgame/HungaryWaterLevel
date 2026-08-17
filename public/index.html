@@ -610,6 +610,10 @@ svg.map text{user-select:none;-webkit-user-select:none}
    about now rather than about a finished year, and it is a part-month - the border says
    "this one is a different kind of thing" before the caption has to. */
 .dy-fact.dy-run{border-color:#9c2b16;border-left-width:4px;flex-basis:100%}
+/* Inside the caption `b` marks a phrase, not a heading. Without this it inherits the
+   23px of the big number above it and the card ends up with three things competing to
+   be read first. */
+.dy-fact span b{display:inline;font-size:inherit;color:#9c2b16}
 table.dy{width:100%;border-collapse:collapse;font-size:13px}
 table.dy th,table.dy td{padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
 table.dy th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-faint);
@@ -5213,11 +5217,15 @@ function renderDroughtYears(d){
   // built to avoid.
   const run = d.running;
   if(run && run.available && run.summary.comparable > 0){
+    const rec = (run.summary.lowestByYear[0] || {}).year === run.year
+      ? run.summary.lowestByYear[0].count : 0;
     summary.innerHTML +=
       `<div class="dy-fact dy-run${run.summary.belowReference ? ' hot' : ''}">` +
       `<b>${run.summary.belowReference} / ${run.summary.comparable}</b>` +
-      `<span><b>Eddig ${run.year}-ben</b> (${esc(run.monthHu)} 1–${run.throughDay}.): ennyi mércén ` +
-      `folyik kevesebb víz, mint ${run.reference} ugyanezen napjaiban</span></div>`;
+      `<span>ennyi mércén folyik <b>most</b> kevesebb víz, mint ${run.reference} ugyanezen ` +
+      `napjaiban — ${esc(run.monthHu)} 1–${run.throughDay}., ${run.year}` +
+      (rec ? `. Ebből <b>${rec} mércén ez a legszárazabb ilyen időszak</b> az egész archívumban.` : '.') +
+      `</span></div>`;
   }
 
   const years = d.years;
