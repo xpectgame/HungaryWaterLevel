@@ -38,6 +38,7 @@ ki valósként. Az éles bekötéshez lásd: [Éles üzem előtt](#éles-üzem-e
 | `GET /api/v1/vizhiany` | **Elrendelt vízhiány-fokozat** 85 körzetre — a hatóság saját kihirdetése |
 | `GET /api/v1/szennyviz` | 732 szennyvíztisztító telep — kapacitás, kibocsátás, befogadó vízfolyás |
 | `GET /api/v1/ipari` | 424 ipari és egyéb bevezetés ágazatonként — hely és befogadó, **mennyiség nélkül** |
+| `GET /api/v1/aszalyevek` | **Rosszabb, mint 2022?** Egy naptári hónap, minden év az archívumból, mércénként |
 | `GET /api/v1/viz?q=` | Névkeresés a **15 065 vízfolyás** között |
 | `GET /api/v1/viz/:slug` | Egy vízfolyás: **hova folyik** (lánc a befogadóin át), mi kerül bele, mi folyik bele |
 | `GET /api/v1/events` | Miből mi következik + **`arrivals`**: mi van úton a folyón lefelé |
@@ -294,6 +295,23 @@ alacsonyan indultak — mikor tértek vissza a szokásos sávba. Sosem átlagolv
 azt jelenti, hogy a szint a sáv alja **és** a kiindulási érték fölé került; a második
 feltétel nélkül egy süllyedő tó „gyógyulást" jelentene, mert a tíz évből számolt mérce
 maga is lesüllyed egy aszálysorozatban.
+
+### 11/b. Rosszabb, mint 2022? — mércét számolunk, nem átlagolunk
+
+2022 az az aszály, amire mindenki emlékszik, és az archívumból megkérdezhető, hogy tényleg
+az volt-e a legrosszabb. **Havi középvízhozamok**, azonos naptári hónapok között — a mai
+pillanatnyi érték nem kerülhet ebbe a táblába, mert az egy 09:15-kor mért műszerállás, a
+többi meg 31 napra átlagolt szám, és egymás mellé téve ugyanolyannak látszanának.
+
+**Országos szám nincs, és nem is lesz.** 28 mérce négy nagyságrendet fog át: a Duna
+1500 m³/s, a Fehér-Körös 0,09. Összeadva a Duna kalapban; az arányokat átlagolva egy
+határszéli ér ugyanannyit nyom, mint a folyó, ami az ország vizének nagy részét viszi.
+Ami helyette szerepel, az **darabszám**: hány mércén volt kevesebb, mint a referenciaévben.
+Számolni összemérhetetlen dolgok fölött is korrekt művelet.
+
+Az eredmény augusztusra: **2022 tartja a rekordot 13 mércén**, de 2025 már **8 mércén**
+alatta van — a Körös-rendszeren és az alsó Tiszán a legutóbbi teljes augusztus kevesebb
+vizet hozott, mint 2022 augusztusa.
 
 ### 12. Hova folyik? — a lánc a nyilvántartásból jön, nem a térképről
 

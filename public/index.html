@@ -545,6 +545,43 @@ svg.map text{user-select:none;-webkit-user-select:none}
    heading and the hint left over - about 195px, which cut the placeholder off mid-word
    at "Keresd meg a saját pata" and made the search look broken before it was used. The
    basis is wider than the leftover on purpose: it wraps onto its own line instead. */
+/* "Rosszabb, mint 2022?" — one row per gauge, one column per year.
+   The bar is drawn with a background gradient rather than an element per cell: 28 rows
+   times 10 years is 280 cells, and 280 extra nodes to draw a line each is a lot of DOM
+   for a table that never animates. */
+.dy-summary{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px}
+.dy-fact{flex:1 1 190px;border:1px solid var(--line);border-radius:10px;padding:10px 13px;
+  background:var(--paper)}
+.dy-fact b{display:block;font-size:23px;line-height:1.15;font-variant-numeric:tabular-nums}
+.dy-fact span{font-size:12.5px;color:var(--ink-soft);display:block;margin-top:2px}
+/* #9c2b16 and #a8501a are the page's existing record-low and very-low tones - see
+   .hb-record-low below. A new warm variable was tried here and silently resolved to
+   nothing, because --warm belongs to the standalone /viz page's palette and does not
+   exist on this one: the cells rendered with no colour at all and only the ▼ gave the
+   meaning away. Reusing the established pair also keeps one vocabulary of "low" across
+   the page instead of two that nearly match. */
+.dy-fact.hot b{color:#9c2b16}
+table.dy{width:100%;border-collapse:collapse;font-size:13px}
+table.dy th,table.dy td{padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.dy th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-faint);
+  font-weight:650;text-align:right}
+table.dy th.n,table.dy td.n{text-align:left}
+table.dy td{text-align:right;font-variant-numeric:tabular-nums}
+table.dy td.ref{font-weight:700}
+/* The cell for the reference year, and any year that went below it. Colour is the only
+   thing separating them, so both also carry a text marker for anyone who cannot use it. */
+table.dy td.below{color:#a8501a;font-weight:650}
+table.dy td.below::after{content:" ▼";font-size:9px;vertical-align:2px}
+/* The record low. An outline was tried first and is almost invisible at 13px inside a
+   dense table - it reads as a rendering artifact rather than as a mark. A tint is the
+   thing the eye actually finds when scanning a grid, and the title attribute carries the
+   same fact for anyone not reading by colour. */
+table.dy td.rec{background:#fbeae5;color:#9c2b16;font-weight:700}
+table.dy tr.worse td.n{font-weight:650}
+/* The scroll container is `.tablewrap`, already defined further down for the other wide
+   tables on this page - ten year-columns need it for the same reason they do. */
+@media (max-width:640px){ table.dy{font-size:12px} table.dy th,table.dy td{padding:4px} }
+
 /* "A te vized" — a plain GET form, so it works before any script runs and after any
    script fails. Nothing here is wired to JavaScript on purpose. */
 .wsearch{display:flex;gap:8px;flex-wrap:wrap;margin:0}
@@ -1191,6 +1228,7 @@ footer a{color:var(--ink-soft)}
     </div>
     <div class="navgroup" role="group" aria-label="Szárazság">
       <span class="navlabel">Szárazság</span>
+      <a href="#s-2022">Rosszabb, mint 2022?</a>
       <a href="#s-vizhiany">Vízhiány</a>
       <a href="#s-csapadek">Csapadék</a>
       <a href="#s-talajnedvesseg">Talajnedvesség</a>
@@ -1543,6 +1581,37 @@ footer a{color:var(--ink-soft)}
   <h3>Az elmúlt 48 óra</h3>
   <svg class="spark" id="spark" viewBox="0 0 800 120" preserveAspectRatio="none"></svg>
   <p id="spark-note">&nbsp;</p>
+</section>
+
+<!-- ---------------------------------------------------------------------------
+     Rosszabb, mint 2022?
+
+     The site can already say a river is at the 8th percentile of its decade. That is
+     precise and it lands on nobody: a percentile has no memory attached to it. What
+     people remember is 2022 - the summer the Tisza was walkable in places and it was on
+     the news for a month.
+
+     The archive answers it directly, and the answer turned out to be more interesting
+     than "no": 2022 still holds the record on more gauges than any other year, but on a
+     real fraction of them a later August has already gone lower.
+
+     A count of gauges rather than any national figure, because 28 gauges spanning four
+     orders of magnitude - the Danube at 1 500 m3/s, the Fehér-Körös at 0.09 - cannot be
+     averaged into a number anyone should read.
+     --------------------------------------------------------------------------- -->
+<section class="card" id="s-2022" style="margin-bottom:18px">
+  <div class="cardhead">
+    <h3>Rosszabb, mint 2022?</h3>
+    <div class="sortbar" role="group" aria-label="Hónap"><span id="dy-month"></span></div>
+  </div>
+  <p class="lead" style="margin-bottom:10px">
+    2022 az az aszály, amire mindenki emlékszik. Az archívumból megkérdezhető, hogy tényleg
+    az volt-e a legrosszabb — <b>mércénként</b>, ugyanannak a naptári hónapnak a
+    középvízhozamával. Nem a mai pillanatnyi értékkel: az egy műszerállás, nem havi közép.
+  </p>
+  <div id="dy-summary" class="dy-summary"></div>
+  <div class="tablewrap"><table class="dy" id="dy-table"></table></div>
+  <p class="note" id="dy-note" style="margin:10px 0 0"></p>
 </section>
 
 <section class="card" id="s-vizhiany" style="margin-bottom:18px">
@@ -5025,6 +5094,90 @@ function rangeOptions(lo, hi, current){
 
 /* --- soil moisture --------------------------------------------------------- */
 
+/* ---------------------------------------------------------------------------
+   Rosszabb, mint 2022?
+
+   One calendar month, every year in the archive, per gauge. The comparison is between
+   MONTHLY MEANS - the endpoint says so in `basis` and the note repeats it - because
+   putting today's instantaneous reading in this table would sit a number measured at
+   09:15 beside numbers averaged over 31 days and make them look like the same thing.
+   --------------------------------------------------------------------------- */
+let droughtYears = null, droughtYearsLoading = false;
+
+function loadDroughtYears(){
+  if(droughtYears || droughtYearsLoading) return Promise.resolve(droughtYears);
+  droughtYearsLoading = true;
+  return api('/api/v1/aszalyevek', { cache:'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { droughtYears = j; droughtYearsLoading = false; renderDroughtYears(j); return j; })
+    .catch(() => { droughtYearsLoading = false; renderDroughtYears(null); return null; });
+}
+
+function renderDroughtYears(d){
+  const summary = $('dy-summary'), table = $('dy-table'), note = $('dy-note'), month = $('dy-month');
+  if(!summary || !table) return;
+
+  if(!d || !d.available){
+    summary.innerHTML = '';
+    table.innerHTML = '';
+    if(note) note.textContent = 'A vízhozam-archívum most nem érhető el.';
+    return;
+  }
+
+  if(month) month.textContent = d.monthHu;
+
+  const ref = d.reference, latest = d.latestYear;
+  const worstYear = (d.summary.lowestByYear || [])[0];
+  const below = d.summary.belowReference;
+
+  // `monthAdjHu` comes from the API rather than being built here as monthHu + 'i': that
+  // rule is right for eight months and wrong for four (január → januári).
+  const adj = d.monthAdjHu || d.monthHu;
+  summary.innerHTML =
+    `<div class="dy-fact${below ? ' hot' : ''}"><b>${below} / ${d.summary.comparable}</b>` +
+    `<span>ennyi mércén volt kisebb a ${latest}-ös ${esc(adj)} középvízhozam, mint ${ref}-ben</span></div>` +
+    (worstYear ? `<div class="dy-fact"><b>${worstYear.year}</b>` +
+      `<span>ez az év tartja a legkisebb ${esc(adj)} vízhozam rekordját a legtöbb mércén (${worstYear.count} db)</span></div>` : '') +
+    `<div class="dy-fact"><b>${d.years.length} év</b>` +
+    `<span>${d.years[0]}–${d.years[d.years.length-1]}, havi középvízhozamokból</span></div>`;
+
+  const years = d.years;
+  const head = '<tr><th class="n">Mérce</th>' +
+    years.map(y => `<th${y===ref ? ' style="color:var(--ink)"' : ''}>${y}</th>`).join('') + '</tr>';
+
+  const rows = d.stations.map(s => {
+    const worse = s.comparable && s.latest && s.latest.year === latest
+      && s.latest.value < s.referenceValue;
+    const cells = years.map(y => {
+      const v = s.values[String(y)];
+      if(v === null || v === undefined) return '<td>·</td>';
+      const cls = [];
+      const why = [];
+      if(y === ref){ cls.push('ref'); why.push(`${ref}, az összehasonlítás alapja`); }
+      // Below the reference year, and separately: the lowest of the whole record.
+      else if(s.comparable && v < s.referenceValue){ cls.push('below'); why.push(`kevesebb, mint ${ref}-ben`); }
+      if(s.lowest && s.lowest.year === y){ cls.push('rec'); why.push('a mérce eddigi legkisebb havi közepe'); }
+      // Colour and a glyph are both used above; the title says the same in words, because
+      // a table where the meaning is only in the styling is a table half the readers
+      // cannot use.
+      const t = why.length ? ` title="${esc(`${s.name}, ${y}. ${adj}: ${why.join(' — ')}`)}"` : '';
+      return `<td class="${cls.join(' ')}"${t}>${fmt(v, v < 10 ? 2 : v < 100 ? 1 : 0)}</td>`;
+    }).join('');
+    return `<tr class="${worse ? 'worse' : ''}"><td class="n">${esc(s.name)}</td>${cells}</tr>`;
+  }).join('');
+
+  table.innerHTML = head + rows;
+
+  if(note){
+    note.innerHTML =
+      `A <b>▼</b> azt jelöli, hogy az adott év ${esc(adj)} középvízhozama kisebb volt, mint ` +
+      `${ref}-ben; a bekeretezett cella a mérce eddigi legkisebb ${esc(adj)} ` +
+      `középvízhozama. <b>Országos összeg nincs</b>: a Duna 1500 m³/s, a Fehér-Körös 0,09 — ` +
+      `ezeket összeadni vagy átlagolni értelmetlen, ezért mércét számolunk. ` +
+      `${esc(d.basisNote)}`;
+  }
+}
+
 let soil = null, soilLoading = false;
 
 function loadSoil(){
@@ -6383,6 +6536,7 @@ async function refresh(){
     // can click one.
     loadIndustry();
     loadSoil();
+    loadDroughtYears();
     loadWaterUse();
     // loadDrought() is called on its own further down and now feeds the map as well.
     loadVizhiany();

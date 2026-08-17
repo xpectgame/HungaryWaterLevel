@@ -392,6 +392,56 @@ paths:
         "200": { description: Sector counts, receiving waters and the outfalls }
         "503": { description: The register has not been baked into this deployment }
 
+  /aszalyevek:
+    get:
+      tags: [hydrology]
+      summary: One calendar month, every year in the archive, per gauge
+      description: |
+        "Is it worse than 2022?" - the question a percentile cannot answer. This site can
+        say a river is at the 8th percentile of its decade, which is precise and lands on
+        nobody; 2022 is the summer people remember.
+
+        MONTHLY MEANS ONLY, one calendar month against the same month in other years.
+        `basis` says so in the payload. Today's live reading must not be plotted on this
+        axis: it is an instantaneous discharge, and putting it beside numbers averaged
+        over 31 days would make them look like the same kind of measurement.
+
+        There is NO national total and there will not be one. 28 gauges spanning four
+        orders of magnitude - the Danube at 1 500 m3/s, the Fehér-Körös at 0.09 - cannot
+        be summed (the Danube would be the whole answer) or ratio-averaged (a border
+        creek would weigh the same as the river carrying most of the country's water).
+        `summary.belowReference` is a COUNT of gauges instead, and `summary.lowestByYear`
+        tallies how many gauges saw their record low in each year.
+
+        Per gauge, `worseYears` lists every year that ran below the reference, not only
+        the latest - otherwise a reader cannot tell whether the reference year was ever
+        the worst on that river at all, which on several of them it was not.
+
+        A gauge with no reference-year figure is returned with `comparable: false` rather
+        than dropped, so the table's own coverage is visible.
+
+        `monthAdjHu` carries the Hungarian adjectival month ("augusztusi", "januári"),
+        because appending -i to `monthHu` is right for eight months and wrong for four.
+      parameters:
+        - name: honap
+          in: query
+          description: Calendar month 1-12. Defaults to the current month.
+          schema: { type: integer, minimum: 1, maximum: 12 }
+        - name: ev
+          in: query
+          description: Reference year to compare against. Defaults to 2022.
+          schema: { type: integer }
+        - name: merce
+          in: query
+          description: >
+            Also return this one gauge walked across all twelve months, which separates
+            "a dry August" from "a dry year".
+          schema: { type: string }
+      responses:
+        "200": { description: The per-gauge table, the year list and the counts }
+        "400": { description: honap outside 1-12, or a non-integer ev }
+        "503": { description: The flow archive has not been baked into this deployment }
+
   /viz:
     get:
       tags: [hydrology]
