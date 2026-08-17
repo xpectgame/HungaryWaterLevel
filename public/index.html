@@ -462,6 +462,76 @@ svg.map text{user-select:none;-webkit-user-select:none}
 .wu-bar i.u-shower{background:#0e8f9e}.wu-bar i.u-toilet{background:#37b7c3}
 .wu-bar i.u-tap{background:#7fc9d2}.wu-bar i.u-washing{background:#a9843f}
 .wu-bar i.u-garden{background:#7aa05a}
+
+/* ---------------------------------------------------------------------------
+   Where it goes: the household as a cutaway, animated from the reader's own numbers.
+
+   The calculator already tells you how many litres you use. This says what happens to
+   them, and it earns its place by teaching something the bar chart cannot: four of the
+   five streams end up in the same sewer and come back to a watercourse a few kilometres
+   below your town, and the fifth - the garden - does not. That water soaks in and
+   evaporates. It is the one line on this page where you can SEE that the water you put
+   on the lawn is the water that does not come back.
+
+   Every width here is proportional to a number the reader set. Nothing is decorative
+   except the motion itself, and the motion carries one honest signal: more water, faster
+   flow. Under prefers-reduced-motion the whole thing holds still and stays readable,
+   because the widths - not the animation - are what carry the data.
+   --------------------------------------------------------------------------- */
+.flowfig{margin:18px 0 0;background:linear-gradient(180deg,#f8fcfd,#eef7f9);
+  border:1px solid var(--line);border-radius:14px;padding:12px 12px 6px;overflow:hidden}
+.flowfig svg{width:100%;height:auto;display:block}
+/* Scenery, and explicitly not a target: the house rect covers most of the area the
+   branch rows pass through, and being drawn first it was swallowing every hover aimed at
+   the gap between a label and its pipe. */
+.flow-house,.flow-roof,.flow-soil,.flow-river{pointer-events:none}
+.flow-house{fill:#fff;stroke:#b9d2da;stroke-width:1.5}
+.flow-roof{fill:#d3e6eb;stroke:#b9d2da;stroke-width:1.5;stroke-linejoin:round}
+/* An invisible grab area per branch, so the whole row is hoverable and tappable. Aiming
+   at a four-pixel pipe is not a thing to ask of anyone, least of all on a phone. */
+.flowfig .hit{fill:transparent;pointer-events:all}
+.flow-lab{font-size:10.5px;fill:var(--ink-soft);font-family:var(--sans)}
+.flow-lab.strong{fill:var(--ink);font-weight:600}
+.flow-num{font-family:var(--mono);font-size:10.5px;fill:var(--ink-soft)}
+.flow-pipe{fill:none;stroke-linecap:round}
+/* The dashed overlay is the moving water. The solid stroke underneath is the pipe, so a
+   still frame still shows the route and the volume. */
+.flow-move{fill:none;stroke-linecap:round;stroke-dasharray:7 11;opacity:.85;
+  animation:flowdash 1.1s linear infinite}
+@keyframes flowdash{to{stroke-dashoffset:-18}}
+.flow-works{fill:#fff;stroke:var(--flow);stroke-width:1.5}
+.flow-soil{fill:#e7efdd;stroke:#bcd0a4;stroke-width:1}
+.flow-river{fill:#cfeaf0}
+.flowfig figcaption{font-size:12.5px;color:var(--ink-soft);margin:8px 4px 4px;line-height:1.5}
+.flowfig figcaption b{color:var(--ink)}
+@media (prefers-reduced-motion:reduce){ .flow-move{animation:none;stroke-dasharray:none;opacity:.55} }
+
+/* ---------------------------------------------------------------------------
+   Arriving.
+
+   Twenty-eight thousand pixels of page, and every part of it was already finished
+   before you got there. A section that fades and lifts as it comes into view is not
+   decoration here - it is the only feedback the page gives that you are moving through
+   something rather than falling past it.
+
+   The hidden state is applied BY SCRIPT (js-reveal on <html>), never in the base CSS.
+   That way a page whose JavaScript failed, or whose observer never fires, shows
+   everything - the failure mode of a reveal animation must be "visible", never "blank".
+   --------------------------------------------------------------------------- */
+.js-reveal .reveal{opacity:0;transform:translateY(14px);
+  transition:opacity .55s cubic-bezier(.2,.7,.3,1),transform .55s cubic-bezier(.2,.7,.3,1)}
+.js-reveal .reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .js-reveal .reveal{opacity:1;transform:none;transition:none}
+}
+
+/* A branch of the flow diagram, lit on hover or tap. The others drop back rather than
+   the hovered one jumping forward - the widths are the data, and scaling one up would
+   make it read as more water than the reader asked for. */
+.flowfig svg g.branch{cursor:pointer}
+.flowfig svg.dimmed g.branch{opacity:.22;transition:opacity .18s}
+.flowfig svg.dimmed g.branch.lit{opacity:1}
+.flowfig .flow-tip{font-family:var(--sans);font-size:11px;fill:var(--ink);font-weight:600}
 .wu-legend{display:flex;flex-wrap:wrap;gap:5px 15px;font-size:12px;color:var(--ink-soft)}
 .wu-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
 .wu-legend i.u-shower{background:#0e8f9e}.wu-legend i.u-toilet{background:#37b7c3}
@@ -5389,6 +5459,7 @@ function renderWaterUseOutputs(){
     `<div class="alt">Ez <b>${fmt(m3,0)} m³ egy évben</b> — ennyi jelenik meg a vízszámlán.</div></div>`+
 
     `<div class="wu-bar">${bar}</div><div class="wu-legend">${legend}</div>`+
+    flowFigure(lines, total)+
 
     (m ? `<div class="warnbox" style="margin-top:16px"><b>Mihez képest sok ez?</b> `+
       `A szennyvíz-nyilvántartásban <b>${fmt(m.plants,0)} telep</b> közli a rákötött `+
@@ -5403,6 +5474,129 @@ function renderWaterUseOutputs(){
     `<div class="tablewrap"><table class="tbl wu-save"><thead><tr><th>Változtatás</th>`+
     `<th class="num">Naponta</th><th class="num">Évente</th>`+
     `<th class="num">A fogyasztásod</th></tr></thead><tbody>${saveRows}</tbody></table></div>`;
+
+  wireFlowFigure();
+}
+
+/**
+ * Pick out one branch of the flow diagram.
+ *
+ * Dimming the others rather than growing the hovered one, because the widths ARE the
+ * data: scaling a branch up would show more water than the reader asked for. Keyboard
+ * reachable and touch-friendly - on a phone the same tap that lights a branch lights it
+ * for as long as it is focused.
+ */
+function wireFlowFigure(){
+  const svg = document.querySelector('.flowfig svg');
+  if(!svg) return;
+  const branches = svg.querySelectorAll('g.branch');
+  const lite = (el) => {
+    for(const b of branches) b.classList.toggle('lit', b === el);
+    svg.classList.toggle('dimmed', !!el);
+  };
+  for(const b of branches){
+    b.addEventListener('pointerenter', () => lite(b));
+    b.addEventListener('focus', () => lite(b));
+    b.addEventListener('blur', () => lite(null));
+  }
+  svg.addEventListener('pointerleave', () => lite(null));
+}
+
+/**
+ * The household as a cutaway, with the reader's own litres running through it.
+ *
+ * Four of the five streams end in the same sewer and come back to a watercourse a few
+ * kilometres below the town. The fifth does not: garden water soaks in and evaporates.
+ * That asymmetry is the whole reason this drawing exists - it is the one place on the
+ * page where you can see that the water you put on the lawn is the water that does not
+ * come back, and no amount of bar chart says it.
+ *
+ * Every width is proportional to a number the reader set. The animation carries exactly
+ * one signal - more water, faster and thicker - and nothing else is implied by it.
+ */
+function flowFigure(lines, total){
+  if(!total || total <= 0) return '';
+  const by = Object.fromEntries(lines.map(l => [l.u.id, l.litres]));
+  const COLOUR = { shower:'#0e8f9e', toilet:'#37b7c3', tap:'#7fc9d2', washing:'#a9843f', garden:'#7aa05a' };
+  const NAME   = { shower:'Zuhany', toilet:'WC', tap:'Csap', washing:'Mosógép', garden:'Kert' };
+
+  const drains = ['shower','toilet','tap','washing'].filter(id => (by[id]||0) > 0);
+  const sewage = drains.reduce((n,id) => n + by[id], 0);
+  const garden = by.garden || 0;
+
+  // Stroke width from litres, square-rooted: at a linear scale a 15 l/day tap beside a
+  // 200 l/day shower is a hairline beside a slab, and the small one stops reading as a
+  // pipe at all.
+  const W = (l) => Math.max(2, Math.min(17, 2 + Math.sqrt(l) * 1.05));
+  const speed = (l) => `${Math.max(.45, Math.min(2.4, 26 / Math.max(6, l))).toFixed(2)}s`;
+
+  // Four fixtures down the left, into a stack, out to the works, out to the stream.
+  const rows = drains.map((id, i) => {
+    const y = 34 + i * 27;
+    const w = W(by[id]);
+    const d = `M78 ${y} H150 Q168 ${y} 168 ${y + 18} V${129}`;
+    return `<g class="branch" data-branch="${id}" tabindex="0" role="button"
+              aria-label="${esc(NAME[id])}: ${fmt(by[id],0)} liter naponta, a háztartás vizének ${fmt(100*by[id]/total,0)} százaléka">
+      <rect class="hit" x="8" y="${y - 12}" width="176" height="26"/>
+      <text class="flow-lab" x="72" y="${y + 3.5}" text-anchor="end">${esc(NAME[id])}</text>
+      <text class="flow-num" x="72" y="${y + 15}" text-anchor="end">${fmt(by[id],0)} l</text>
+      <path class="flow-pipe" d="${d}" stroke="${COLOUR[id]}" stroke-width="${w}" opacity=".28"/>
+      <path class="flow-move" d="${d}" stroke="${COLOUR[id]}" stroke-width="${w}"
+            style="animation-duration:${speed(by[id])}"/>
+    </g>`;
+  }).join('');
+
+  const sewerW = W(sewage);
+  const sewerD = 'M168 129 V150 H322';
+  const outD   = 'M404 150 H470';
+  const gardenD = 'M78 196 H150 Q170 196 170 214 V232';
+
+  // The canvas ends where the drawing does. Without a garden branch the bottom third is
+  // empty, and a figure with a band of nothing under it reads as something failing to load.
+  const H = garden > 0 ? 258 : 192;
+  return `<figure class="flowfig">
+    <svg viewBox="0 0 520 ${H}" role="img"
+         aria-label="A háztartás vize: ${esc(drains.map(id=>NAME[id]).join(', '))} a csatornába, összesen ${fmt(sewage,0)} liter naponta, onnan a szennyvíztisztítóba és vissza egy vízfolyásba. A locsolóvíz, ${fmt(garden,0)} liter, nem a csatornába megy, hanem elszivárog és elpárolog.">
+      <rect class="flow-house" x="86" y="20" width="86" height="114" rx="6"/>
+      <path class="flow-roof" d="M74 21 L129 2 L184 21 Z"/>
+      ${rows}
+      ${sewage > 0 ? `
+        <path class="flow-pipe" d="${sewerD}" stroke="#3f7f8c" stroke-width="${sewerW}" opacity=".26"/>
+        <path class="flow-move" d="${sewerD}" stroke="#3f7f8c" stroke-width="${sewerW}"
+              style="animation-duration:${speed(sewage)}"/>
+        <text class="flow-lab strong" x="244" y="141" text-anchor="middle">csatorna</text>
+        <text class="flow-num" x="244" y="168" text-anchor="middle">${fmt(sewage,0)} l/nap</text>
+        <rect class="flow-works" x="322" y="126" width="82" height="48" rx="7"/>
+        <text class="flow-lab strong" x="363" y="146" text-anchor="middle">szennyvíz-</text>
+        <text class="flow-lab strong" x="363" y="159" text-anchor="middle">tisztító</text>
+        <path class="flow-pipe" d="${outD}" stroke="#0e8f9e" stroke-width="${sewerW}" opacity=".26"/>
+        <path class="flow-move" d="${outD}" stroke="#0e8f9e" stroke-width="${sewerW}"
+              style="animation-duration:${speed(sewage)}"/>
+        <path class="flow-river" d="M462 128 q14 22 0 44 q-14 22 0 44 l24 0 q-14 -22 0 -44 q14 -22 0 -44 Z"/>
+        <text class="flow-lab strong" x="486" y="120" text-anchor="middle">patak</text>` : ''}
+      ${garden > 0 ? `
+        <g class="branch" data-branch="garden" tabindex="0" role="button"
+           aria-label="${esc(NAME.garden)}: ${fmt(garden,0)} liter naponta, ami nem a csatornába megy">
+        <rect class="hit" x="8" y="186" width="176" height="30"/>
+        <text class="flow-lab" x="72" y="199.5" text-anchor="end">${esc(NAME.garden)}</text>
+        <text class="flow-num" x="72" y="211" text-anchor="end">${fmt(garden,0)} l</text>
+        <path class="flow-pipe" d="${gardenD}" stroke="${COLOUR.garden}" stroke-width="${W(garden)}" opacity=".28"/>
+        <path class="flow-move" d="${gardenD}" stroke="${COLOUR.garden}" stroke-width="${W(garden)}"
+              style="animation-duration:${speed(garden)}"/>
+        <rect class="flow-soil" x="120" y="232" width="120" height="20" rx="4"/>
+        <text class="flow-lab" x="180" y="246" text-anchor="middle">elszivárog, elpárolog</text>
+        </g>` : ''}
+    </svg>
+    <figcaption>${
+      sewage > 0
+        ? `Ebből <b>${fmt(sewage,0)} liter</b> megy naponta a csatornába, és néhány kilométerrel a település alatt kerül vissza egy vízfolyásba.`
+        : 'A beállításaid szerint semmi nem megy a csatornába.'
+    }${
+      garden > 0
+        ? ` A locsolásra menő <b>${fmt(garden,0)} liter</b> viszont <b>nem</b> — az elszivárog és elpárolog, vagyis nem tér vissza a vizeinkbe.`
+        : ' A locsolóvíz nem a csatornába megy: az elszivárog és elpárolog — állítsd el a „Kert" csúszkát, és megjelenik ez az ág is.'
+    }</figcaption>
+  </figure>`;
 }
 
 /* Coalesced: a slider fires on every pixel and this rebuilds a table. Only #wu-out is
@@ -7110,7 +7304,45 @@ function tick(){
   addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer = setTimeout(drawNodes, 250); });
   wireConsent();
   hideEmptyCaveats();
+  wireReveal();
 })();
+
+/**
+ * Fade sections in as they arrive.
+ *
+ * The hidden state is added here rather than in the stylesheet, so a page whose script
+ * died still shows all of its content. A reveal animation that fails closed is a blank
+ * page, and this one carries the only measurements of their kind in the country.
+ */
+function wireReveal(){
+  if(!('IntersectionObserver' in window)) return;
+  // Sections and chapters only. Anything rendered inside them later - the flow figure,
+  // the tables - arrives with its section and needs no observer of its own; adding one
+  // at boot would observe an element that does not exist yet and silently never fire.
+  const targets = document.querySelectorAll('.chapter, section.card');
+  if(!targets.length) return;
+
+  document.documentElement.classList.add('js-reveal');
+  for(const el of targets) el.classList.add('reveal');
+
+  const io = new IntersectionObserver((entries) => {
+    for(const e of entries){
+      if(!e.isIntersecting) continue;
+      e.target.classList.add('in');
+      io.unobserve(e.target);   // arriving is a one-off; nothing re-hides on the way back
+    }
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.04 });
+
+  for(const el of targets) io.observe(el);
+
+  // Anything already on screen at load should not wait for a scroll that may never come.
+  requestAnimationFrame(() => {
+    for(const el of targets){
+      const r = el.getBoundingClientRect();
+      if(r.top < innerHeight && r.bottom > 0){ el.classList.add('in'); io.unobserve(el); }
+    }
+  });
+}
 
 /* A "Mit nem mond ez a szám?" that opens onto nothing is a broken promise. Sections whose
    caveats are entirely script-filled - rainfall, groundwater - have empty ones whenever
