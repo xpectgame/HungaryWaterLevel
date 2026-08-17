@@ -873,8 +873,17 @@ table.dy tr.worse td.n{font-weight:650}
 /* --- cards --- */
 .grid{display:grid;gap:12px;margin-bottom:18px}
 .g3{grid-template-columns:repeat(auto-fit,minmax(238px,1fr))}
+/* The box got quieter and the gaps got bigger.
+   Twenty-seven white cards, each with a border AND a two-layer shadow, stacked 18px
+   apart, is a wall of boxes: the containers were competing with what was inside them.
+   A hairline and a whisper of shadow is enough to say "this is one thing", and the
+   space between them now does more of that work than the borders do. */
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
-  padding:clamp(16px,2.2vw,26px);box-shadow:var(--shadow)}
+  padding:clamp(16px,2.2vw,26px);box-shadow:0 1px 2px rgba(6,32,41,.035)}
+section.card{margin-bottom:clamp(18px,2.4vw,30px)}
+/* Long prose does not need a container. These two sections are pages of explanation,
+   and boxing them says "here is a widget" about something that is simply text. */
+.card.plain{background:none;border:0;box-shadow:none;padding-inline:0}
 
 /* ---------------------------------------------------------------------------
    Section headings are headings again.
@@ -1595,7 +1604,7 @@ footer a{color:var(--ink-soft)}
      had to scroll all the way back up to click the next one. A map you can only use
      once per trip down the page is not a map. Here the answer appears where the
      question was asked, and picking a second gauge costs nothing. -->
-<section class="card" style="margin-bottom:18px" id="detailcard">
+<section class="card" id="detailcard">
   <div class="cardhead">
     <h3>Egy szelvény közelről</h3>
     <button type="button" id="det-close" class="det-close" hidden>bezár</button>
@@ -1666,7 +1675,7 @@ footer a{color:var(--ink-soft)}
   </div>
 </section>
 
-<section class="card" id="s-rendszerek" style="margin-bottom:18px">
+<section class="card" id="s-rendszerek">
   <h3>Folyórendszerek</h3>
   <div id="systems" class="systems"></div>
   <p style="font-size:13px;color:var(--ink-soft);margin-top:12px">
@@ -1676,7 +1685,7 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
-<section class="card" id="s-mennyi" style="margin-bottom:18px">
+<section class="card" id="s-mennyi">
   <h3>Mire elég ennyi víz?</h3>
   <div id="scale" class="scale"></div>
 </section>
@@ -1685,7 +1694,7 @@ footer a{color:var(--ink-soft)}
      map and the headline numbers, because "mennyi folyik át az országon" and "mennyit
      használok én" are the same question at two scales, and the second is the one most
      people came for. -->
-<section class="card" id="s-vizhasznalat" style="margin-bottom:18px">
+<section class="card" id="s-vizhasznalat">
   <h3>Mennyi vizet használsz — és mire</h3>
   <p class="lead" style="margin-bottom:10px">
     Az oldal többi része az országról szól. Ez rólad. Állítsd be, hogy nálatok hogy megy —
@@ -1721,7 +1730,7 @@ footer a{color:var(--ink-soft)}
   <div id="wu-body"></div>
 </section>
 
-<section class="card" id="s-vizallas" style="margin-bottom:18px">
+<section class="card" id="s-vizallas">
   <h3>Vízállás — hol tart a folyó a saját történetéhez képest</h3>
   <div id="levels" class="levels"></div>
   <div class="lvl-legend">
@@ -1739,7 +1748,7 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
-<section class="card" id="s-tavak" style="margin-bottom:18px">
+<section class="card" id="s-tavak">
   <h3>Tavaink</h3>
   <p id="lakes-lead" style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">&nbsp;</p>
   <div id="lakes" class="lakes"></div>
@@ -1752,7 +1761,7 @@ footer a{color:var(--ink-soft)}
   </p>
 </section>
 
-<section class="card" id="s-hirek" style="margin-bottom:18px">
+<section class="card" id="s-hirek">
   <h3>Mi történik, és miért</h3>
   <p style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">
     Honnan hiányzik a víz — a beáramlás a határon túli forrásvidék szerint bontva, aszerint
@@ -1774,7 +1783,7 @@ footer a{color:var(--ink-soft)}
   <p style="font-size:12.5px;color:var(--ink-faint);margin-top:14px" id="feed-note"></p>
 </section>
 
-<section class="card" id="s-elozmeny" style="margin-bottom:18px">
+<section class="card" id="s-elozmeny">
   <h3>Az elmúlt 48 óra</h3>
   <svg class="spark" id="spark" viewBox="0 0 800 120" preserveAspectRatio="none"></svg>
   <p id="spark-note">&nbsp;</p>
@@ -1803,7 +1812,7 @@ footer a{color:var(--ink-soft)}
   <div class="rule"></div>
 </section>
 
-<section class="card" id="s-2022" style="margin-bottom:18px">
+<section class="card" id="s-2022">
   <div class="cardhead">
     <h3>Rosszabb, mint 2022?</h3>
     <div class="sortbar" role="group" aria-label="Hónap"><span id="dy-month"></span></div>
@@ -1819,7 +1828,7 @@ footer a{color:var(--ink-soft)}
   <p class="note" id="dy-note" style="margin:10px 0 0"></p>
 </section>
 
-<section class="card" id="s-vizhiany" style="margin-bottom:18px">
+<section class="card" id="s-vizhiany">
   <h3>Elrendelt vízhiány — amit a hatóság mond</h3>
   <p class="lead" style="margin-bottom:6px">
     Az oldalon minden más szám a mi számításunk mások méréseiből. <b>Ez nem az.</b> Az
@@ -1876,7 +1885,7 @@ footer a{color:var(--ink-soft)}
   <div id="vh-body"></div>
 </section>
 
-<section class="card" id="s-csapadek" style="margin-bottom:18px">
+<section class="card" id="s-csapadek">
   <div class="cardhead">
     <h3>Csapadék — mennyi esett, és mennyi szokott</h3>
     <div class="sortbar" role="group" aria-label="Időszak">
@@ -1896,7 +1905,7 @@ footer a{color:var(--ink-soft)}
 <!-- Above the water table, because that is the order the water is in: rain lands on
      the soil, what the soil does not hold reaches the shallow table, and what that does
      not hold reaches the deep one. -->
-<section class="card" id="s-talajnedvesseg" style="margin-bottom:18px">
+<section class="card" id="s-talajnedvesseg">
   <h3>Mennyi víz van a talajban</h3>
   <p class="lead" style="margin-bottom:10px">
     Ez az egyetlen szám ezen az oldalon, ami <b>közvetlenül a földben lévő vizet</b> méri —
@@ -1908,7 +1917,7 @@ footer a{color:var(--ink-soft)}
   <div id="soil-body"></div>
 </section>
 
-<section class="card" id="s-aszaly" style="margin-bottom:18px">
+<section class="card" id="s-aszaly">
   <h3>Mennyire száraz a föld?</h3>
   <p class="lead" style="margin-bottom:6px">
     A csapadék azt mondja meg, mennyi víz <b>érkezett</b> — azt nem, hogy mennyi maradt.
@@ -1929,7 +1938,7 @@ footer a{color:var(--ink-soft)}
   <p class="fineprint" id="dr-not" style="margin-top:8px"></p>
 </section>
 
-<section class="card" id="s-retegviz" style="margin-bottom:18px">
+<section class="card" id="s-retegviz">
   <h3>A víz, ami nem látszik</h3>
   <p class="lead" style="margin-bottom:6px">
     A folyó és a tó a felszínen van. Alattuk <b>rétegvíz</b>: a mélyebb, lezárt vízadó, amiből
@@ -1960,7 +1969,7 @@ footer a{color:var(--ink-soft)}
 
 <!-- Placed at the end of the drought group, after every measurement it draws on, so a
      reader arrives at it having already seen the numbers it assembles. -->
-<section class="card" id="s-kovetkezmeny" style="margin-bottom:18px">
+<section class="card" id="s-kovetkezmeny">
   <h3>Mi lesz ebből, ha így marad</h3>
   <p class="lead" style="margin-bottom:8px">
     Erre a kérdésre a tisztességes válasz nem egy jóslat. Ez az oldal nem készít
@@ -2022,7 +2031,7 @@ footer a{color:var(--ink-soft)}
   <div class="rule"></div>
 </section>
 
-<section class="card" id="s-szennyviz" style="margin-bottom:18px">
+<section class="card" id="s-szennyviz">
   <h3>Ahol a víz visszatér</h3>
   <p class="lead" style="margin-bottom:6px">
     Amit elhasználunk, nem tűnik el. Lemegy a lefolyón, elmegy a csatornán a
@@ -2096,7 +2105,7 @@ footer a{color:var(--ink-soft)}
 <!-- Directly after the municipal works, because it is the same subject seen from the
      other side, and a reader who has just understood LE is the reader who should meet
      the 424 outfalls that have no LE at all. -->
-<section class="card" id="s-ipari" style="margin-bottom:18px">
+<section class="card" id="s-ipari">
   <h3>Az ipar vize</h3>
   <p class="lead" style="margin-bottom:6px">
     A szennyvíztisztító telepek mellett van egy másik, sokkal kevésbé ismert lista is:
@@ -2136,13 +2145,13 @@ footer a{color:var(--ink-soft)}
   <div id="ind-body"></div>
 </section>
 
-<section class="card" id="s-aram" style="margin-bottom:18px">
+<section class="card" id="s-aram">
   <h3>Honnan jön az áram most</h3>
   <div id="mix" class="mixbar"></div>
   <div id="mixlegend" class="mixlegend"></div>
 </section>
 
-<section class="card" id="s-eromuvek" style="margin-bottom:18px">
+<section class="card" id="s-eromuvek">
   <h3>Erőművek és hűtővizük</h3>
   <div id="plantlist" class="bars"></div>
   <p style="font-size:13px;color:var(--ink-soft);margin-top:10px">
@@ -2160,7 +2169,7 @@ footer a{color:var(--ink-soft)}
   <div class="rule"></div>
 </section>
 
-<section class="card" id="s-forrasok" style="margin-bottom:18px">
+<section class="card plain" id="s-forrasok">
   <h3>Mi felelt most, és mi nem</h3>
   <p class="lead" style="margin-bottom:10px">
     Az oldal minden szekciója <b>külön adatforrásból</b> dolgozik, és külön-külön el is tud
@@ -2171,7 +2180,7 @@ footer a{color:var(--ink-soft)}
   <div id="src-body"></div>
 </section>
 
-<section class="card" id="s-modszertan" style="margin-bottom:18px">
+<section class="card plain" id="s-modszertan">
   <h3>Módszertan — mit számolunk, és mit nem</h3>
   <div class="method">
     <details open><summary>Mi a „mérleg”?</summary>
