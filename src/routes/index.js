@@ -12,6 +12,7 @@ const soilRoutes = require('./soil');
 const waterUseRoutes = require('./water-use');
 const sewageRoutes = require('./sewage');
 const industryRoutes = require('./industry');
+const watercourseRoutes = require('./watercourse');
 const vizhianyRoutes = require('./vizhiany');
 const eventRoutes = require('./events');
 const alertRoutes = require('./alerts');
@@ -46,6 +47,7 @@ function createRouter(ctx) {
   router.use(waterUseRoutes(ctx));
   router.use(sewageRoutes(ctx));
   router.use(industryRoutes(ctx));
+  router.use(watercourseRoutes(ctx));
   router.use(vizhianyRoutes(ctx));
   router.use(eventRoutes(ctx));
   router.use(alertRoutes(ctx));

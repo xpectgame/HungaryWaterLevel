@@ -12,7 +12,9 @@
     { "source": "/archive/(.*)", "destination": "/api/index" },
     { "source": "/feed.xml", "destination": "/api/index" },
     { "source": "/share/(.*)", "destination": "/api/index" },
-    { "source": "/embed/(.*)", "destination": "/api/index" }
+    { "source": "/embed/(.*)", "destination": "/api/index" },
+    { "source": "/viz", "destination": "/api/index" },
+    { "source": "/viz/(.*)", "destination": "/api/index" }
   ],
   "headers": [
     {

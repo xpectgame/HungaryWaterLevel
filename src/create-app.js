@@ -24,6 +24,7 @@ const { TtlCache } = require('./lib/cache');
 const { createRouter } = require('./routes');
 const { feedRoute } = require('./routes/alerts');
 const shareRoutes = require('./routes/share');
+const watercoursePageRoutes = require('./routes/watercourse-page');
 const archiveRoutes = require('./routes/archive');
 const { createCronHandler } = require('./jobs/cron-handler');
 
@@ -104,6 +105,11 @@ function createApp(ctx) {
   // site framing a gauge are not API calls, and both URLs have to outlive an API
   // version bump - an embed lives in someone else's published article.
   app.use(shareRoutes(ctx));
+
+  // /viz/:slug, at the root for the same reason as the two above: it exists to be
+  // pasted. A link to a stream has to carry the stream's name in the URL and in the
+  // preview, and both have to still resolve when the API is on v2.
+  app.use(watercoursePageRoutes(ctx));
 
   // The archive, at the root and outside the API version. A dated URL published today
   // has to still resolve in ten years - that is the entire point of it - and /api/v1/

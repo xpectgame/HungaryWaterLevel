@@ -38,6 +38,8 @@ ki valósként. Az éles bekötéshez lásd: [Éles üzem előtt](#éles-üzem-e
 | `GET /api/v1/vizhiany` | **Elrendelt vízhiány-fokozat** 85 körzetre — a hatóság saját kihirdetése |
 | `GET /api/v1/szennyviz` | 732 szennyvíztisztító telep — kapacitás, kibocsátás, befogadó vízfolyás |
 | `GET /api/v1/ipari` | 424 ipari és egyéb bevezetés ágazatonként — hely és befogadó, **mennyiség nélkül** |
+| `GET /api/v1/viz?q=` | Névkeresés a **15 065 vízfolyás** között |
+| `GET /api/v1/viz/:slug` | Egy vízfolyás: **hova folyik** (lánc a befogadóin át), mi kerül bele, mi folyik bele |
 | `GET /api/v1/events` | Miből mi következik + **`arrivals`**: mi van úton a folyón lefelé |
 | `GET /api/v1/geojson` | Térképkész FeatureCollection |
 | `GET /api/v1/meta/sources` | Adatforrások, licenc, **ismert korlátok** |
@@ -292,6 +294,37 @@ alacsonyan indultak — mikor tértek vissza a szokásos sávba. Sosem átlagolv
 azt jelenti, hogy a szint a sáv alja **és** a kiindulási érték fölé került; a második
 feltétel nélkül egy süllyedő tó „gyógyulást" jelentene, mert a tíz évből számolt mérce
 maga is lesüllyed egy aszálysorozatban.
+
+### 12. Hova folyik? — a lánc a nyilvántartásból jön, nem a térképről
+
+A vízrajzi alaptérkép 15 566 szakaszából **13 249 megnevezi a befogadóját** — azt a vizet,
+amelybe folyik. Ezt láncba fűzve megkapjuk az útvonalat: Ilona-patak → Parádi-Tarna →
+Tarna → Zagyva. Ezt nem mi rakjuk össze, a nyilvántartás mondja.
+
+Három módon ér véget a lánc, és a válasz megkülönbözteti őket, mert **három különböző
+állítás**:
+
+| Vég | Mit jelent |
+|---|---|
+| `gauged` | Elért egy folyót, amit ezen az oldalon mérünk — az utolsó láncszemen ott a mai szám. |
+| `trunk` | Elért egy főfolyót (Duna, Tisza, Zagyva…), amit a kisvízfolyás-réteg hivatkozik, de nem tartalmaz. |
+| `unknown` | **A nyilvántartás nem adja meg a következő befogadót.** A nevek 15%-ánál ez a helyzet. |
+
+Nincs negyedik mód, amiben a hiányzó láncszemet geometriából találjuk ki. Két vonal, ami
+egy 1:100 000-es térképen majdnem összeér, **nem bizonyíték torkolatra**.
+
+A két bevezetési nyilvántartás nem ugyanazt a névrendszert használja: a szennyvízregiszter
+vízfolyást nevez meg („Galga patak"), az ipari **víztestet** („Béci- és Zajki-patakok",
+„Duna Szob-Baja között"). Pontos egyezéssel 47%, illetve 36% találat. Névegyeztetéssel —
+központozás, „felső/alsó", „és vízgyűjtője", és az elhagyott magyar összetétel kibontása —
+82%, illetve 67%. **Fuzzy illesztés nincs**: nincs szerkesztési távolság, nincs
+prefix-pontozás, semmi, ami a Kis-Dunát a Dunához párosítaná. Minden találat egy
+elolvasható szabály, és minden bevezetés mellett ott van, melyik fogta meg
+(`exact` / `normalised` / `waterBody`).
+
+A hosszadat a jegyzék **folyamkilométer-adata**, nem lemért csatornahossz, és a szakaszok
+átfedik egymást ott, ahol a jegyzék újramér egy szelvényt — ezért `lengthKmMax` és
+`segmentKmSum` szerepel a válaszban, `lengthKm` nem.
 
 ---
 

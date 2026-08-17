@@ -392,6 +392,82 @@ paths:
         "200": { description: Sector counts, receiving waters and the outfalls }
         "503": { description: The register has not been baked into this deployment }
 
+  /viz:
+    get:
+      tags: [hydrology]
+      summary: Search the 15 065 named watercourses
+      description: |
+        Name search over the Hungarian hydrographic register, for finding the slug that
+        /viz/{slug} takes. Matching is accent- and punctuation-insensitive, so "gaja"
+        finds "Gaja-patak" and "galga patak" finds "Galga-patak".
+
+        Ranking is by the LENGTH OF THE WATERCOURSE, not the length of its name. Sorting
+        by name length is the obvious choice and it is wrong: it puts a 2.4 km ditch
+        called "Rákosi" above the 44.6 km Rákos-patak that runs through Budapest.
+
+        A query shorter than two characters returns an empty list and a `hint` rather
+        than scanning fifteen thousand names.
+      parameters:
+        - name: q
+          in: query
+          description: Name fragment. Fewer than two characters returns nothing.
+          schema: { type: string }
+        - name: limit
+          in: query
+          description: Maximum results, default 20, capped at 100.
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        "200": { description: Matching watercourses with their slugs }
+        "503": { description: The register has not been baked into this deployment }
+
+  /viz/{slug}:
+    get:
+      tags: [hydrology]
+      summary: One watercourse - where its water goes, and what goes into it
+      description: |
+        The question the site is named after. 13 249 of the register's 15 566 segments
+        name the water they flow into, so `downstream.steps` walks that from one name to
+        the next: Ilona-patak to Parádi-Tarna to Tarna to Zagyva.
+
+        `downstream.endsWith` distinguishes THREE different endings, because rendering
+        them alike would claim the first one everywhere:
+          * `gauged`  - reached a river this site measures; the last step carries the gauges.
+          * `trunk`   - reached a main river the small-watercourse layer references but
+                        does not carry (Duna, Tisza, Zagyva).
+          * `unknown` - the register does not record a receiving water. 15% of names.
+                        NOT "it flows nowhere". There is no geometric fallback: two lines
+                        that nearly touch on a 1:100 000 map are not a confluence.
+        A fourth value, `loop`, appears where the register records two braided segments
+        as each other's receiving water.
+
+        `discharges` joins the two discharge registers, which do not share a naming
+        system - the sewage one names a watercourse, the industrial one names a Water
+        Framework Directive water body ("Béci- és Zajki-patakok", "Duna Szob-Baja
+        között"). Every hit carries `match`: `exact`, `normalised` (punctuation and
+        reach qualifiers folded) or `waterBody` (an elided Hungarian compound expanded).
+        No fuzzy matching of any kind, so no hit here is a guess.
+
+        `sewageM3Year` sums only the sewage register, which reports volumes. The
+        industrial register has none on any row, and a combined total would read as
+        though the industrial share were known.
+
+        LENGTH: `lengthKmMax` and `segmentKmSum`, never `lengthKm`. The register's
+        segments overlap where it re-measures a reach, so the sum over-counts and the max
+        is a river-kilometre extent rather than a measured channel length.
+
+        `trunk: true` marks a main river, which has a page but no row of its own in this
+        layer - no geometry, no length, no receiving water. Without the flag it would look
+        like a stream with every field empty.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Accent-folded name, e.g. `hosszureti-patak`. See /viz?q=.
+          schema: { type: string }
+      responses:
+        "200": { description: The watercourse, its downstream chain, its discharges and its tributaries }
+        "404": { description: No such name, with `suggestions` from the search }
+
   /events:
     get:
       tags: [hydrology]

@@ -545,6 +545,24 @@ svg.map text{user-select:none;-webkit-user-select:none}
    heading and the hint left over - about 195px, which cut the placeholder off mid-word
    at "Keresd meg a saját pata" and made the search look broken before it was used. The
    basis is wider than the leftover on purpose: it wraps onto its own line instead. */
+/* "A te vized" — a plain GET form, so it works before any script runs and after any
+   script fails. Nothing here is wired to JavaScript on purpose. */
+.wsearch{display:flex;gap:8px;flex-wrap:wrap;margin:0}
+.wsearch input{flex:1 1 240px;min-width:0;font:inherit;font-size:14px;padding:9px 13px;
+  border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink)}
+.wsearch input:focus{outline:2px solid var(--flow);outline-offset:1px}
+.wsearch button{font:inherit;font-size:14px;font-weight:600;padding:9px 17px;cursor:pointer;
+  border:1px solid var(--flow);border-radius:9px;background:var(--flow);color:#fff}
+.wsearch button:hover{filter:brightness(1.08)}
+.wexamples{display:flex;flex-wrap:wrap;gap:7px;list-style:none;margin:11px 0 0;padding:0}
+.wexamples a{display:inline-block;font-size:13px;padding:4px 11px;text-decoration:none;
+  border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--ink-soft)}
+.wexamples a:hover{border-color:var(--flow);color:var(--flow)}
+/* The "adatlap" link inside a search result. It sits in the muted right-hand column, so
+   it needs to be legible without competing with the name it belongs to. */
+.mapsearch .qsheet{color:var(--flow);text-decoration:none;font-weight:600}
+.mapsearch .qsheet:hover{text-decoration:underline}
+
 .mapsearch{position:relative;margin-top:9px;max-width:460px;flex:1 1 300px}
 .mapsearch input{width:100%;font:inherit;font-size:13px;padding:8px 12px;
   border:1px solid var(--line);border-radius:99px;background:#fff;color:var(--ink)}
@@ -1163,6 +1181,7 @@ footer a{color:var(--ink-soft)}
     <div class="navgroup" role="group" aria-label="Mennyi víz van most">
       <span class="navlabel">Most</span>
       <a href="#s-terkep">Térkép</a>
+      <a href="#s-tevized">A te vized</a>
       <a href="#s-rendszerek">Folyók</a>
       <a href="#s-vizhasznalat">Te mennyit?</a>
       <a href="#s-vizallas">Vízállás</a>
@@ -1351,6 +1370,46 @@ footer a{color:var(--ink-soft)}
 </section>
 
 <section class="grid g3" id="cards"></section>
+
+<!-- ---------------------------------------------------------------------------
+     A te vized.
+
+     The site is called hovafolyik.hu and for a year it could only answer that for the
+     fourteen rivers with a gauge on them. The drainage links were in the map file the
+     whole time: 13 249 of the 15 566 segments name the water they flow into. Follow that
+     from one name to the next and you get the route the water takes out of the country.
+
+     This section is the front door to it. The form is a real GET to a real URL so that
+     it works with JavaScript off, and every result is a page that can be pasted into a
+     group chat with the stream's name in the preview - which is the whole reason it is
+     a separate page rather than a panel here.
+     --------------------------------------------------------------------------- -->
+<section class="card" id="s-tevized">
+  <div class="cardhead"><h3>A te vized: hova folyik a patakod?</h3></div>
+  <p class="lead" style="margin:0 0 12px">
+    15 065 vízfolyás a magyar vízrajzi jegyzékből. Írd be a nevét, és megmutatjuk,
+    <b>hova folyik</b> — láncban, a befogadóján át a mért folyóig —, <b>mi kerül bele</b>
+    a szennyvíz- és ipari nyilvántartás szerint, és <b>mi folyik bele</b>.
+  </p>
+  <form class="wsearch" action="/viz" method="get">
+    <label class="visually-hidden" for="wq">Vízfolyás neve</label>
+    <input id="wq" name="q" type="search" autocomplete="off" spellcheck="false"
+           placeholder="Például: Rákos-patak, Gaja, Zagyva…">
+    <button type="submit">Megnézem</button>
+  </form>
+  <ul class="wexamples">
+    <li><a href="/viz/rakos-patak">Rákos-patak</a></li>
+    <li><a href="/viz/gaja-patak">Gaja-patak</a></li>
+    <li><a href="/viz/ilona-patak">Ilona-patak</a></li>
+    <li><a href="/viz/zagyva">Zagyva</a></li>
+    <li><a href="/viz/tisza">Tisza</a></li>
+  </ul>
+  <p class="note" style="margin:12px 0 0">
+    A láncot a nyilvántartás mondja meg, nem mi rakjuk össze a térképről: ahol nem adja
+    meg a befogadót — a nevek 15%-ánál —, ott az oldal azt írja ki, hogy nem tudjuk.
+    Kitalált láncszem nincs benne.
+  </p>
+</section>
 
 <section class="grid" id="s-szelvenyek" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
   <div class="card">
@@ -4088,9 +4147,21 @@ function searchIndex(){
                note: `${fmt(p.capacityPe,0)} LE` });
   for(const f of (waters && waters.features) || [])
     if(f.n) out.push({ name: f.n, kind: f.km >= 25 ? 'folyó' : 'vízfolyás', pts: f.p, rank: f.km,
+                       slug: slugifyWater(f.n),
                        note: `${fmt(f.km,1)} km${f.b ? ' → ' + f.b : ''}` });
   return out;
 }
+
+/* Must produce the same slug as src/domain/watercourse.js, or the "adatlap" link on a
+   search result lands on a 404. The rule is deliberately simple on both sides - fold the
+   nine Hungarian accented vowels, then everything that is not a-z0-9 becomes a hyphen -
+   precisely so that two implementations in two languages can agree. `fold` above cannot
+   be reused: it decomposes with NFD, which leaves the combining marks to be stripped as
+   a separate step, and the two functions disagree on ő and ű often enough to matter. */
+const WATER_ACCENTS = { 'á':'a','é':'e','í':'i','ó':'o','ö':'o','ő':'o','ú':'u','ü':'u','ű':'u' };
+const slugifyWater = (name) => (name || '').toString().toLowerCase()
+  .replace(/[áéíóöőúüű]/g, (c) => WATER_ACCENTS[c])
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
 /** Best matches: a name that starts with the query beats one that merely contains it. */
 function searchFor(q){
@@ -4165,7 +4236,12 @@ function wireSearch(){
     } else {
       list.innerHTML = items.map((it,i) =>
         `<li role="option" data-i="${i}" aria-selected="${i===cursor}">`+
-        `<b>${it.name}</b><span class="kind">${it.note ? it.note+' · ' : ''}${it.kind}</span></li>`).join('');
+        `<b>${it.name}</b><span class="kind">${it.note ? it.note+' · ' : ''}${it.kind}`+
+        // The row still flies the map to the water; this is the second thing a reader
+        // wants from a stream they just found, and it is a real link so it can be
+        // middle-clicked, copied and shared.
+        (it.slug ? ` · <a class="qsheet" href="/viz/${it.slug}">adatlap</a>` : '')+
+        `</span></li>`).join('');
     }
     list.hidden = false;
     box.setAttribute('aria-expanded','true');
@@ -4193,6 +4269,10 @@ function wireSearch(){
   });
 
   list.addEventListener('click', (e) => {
+    // The "adatlap" link is a navigation, not a map command. Without this the flyTo runs
+    // first and the reader watches the map pan for a fraction of a second before the
+    // page they actually asked for replaces it.
+    if(e.target.closest('a.qsheet')) { close(); return; }
     const li = e.target.closest('li[data-i]');
     if(!li) return;
     flyTo(items[Number(li.dataset.i)]);
