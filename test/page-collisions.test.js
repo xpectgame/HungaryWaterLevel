@@ -109,3 +109,48 @@ test('every element the script reaches for by id exists in the markup', () => {
   const missing = [...wanted].filter((id) => !ids.has(id));
   assert.deepStrictEqual(missing, [], `$() reaches for ids that are not in the page: ${missing.join(', ')}`);
 });
+
+/**
+ * A control must not be rebuilt while somebody is dragging it.
+ *
+ * The water-use sliders could be stepped but not dragged - exactly one notch per
+ * gesture, whichever direction you pushed. The cause: the `input` handler called a
+ * redraw that rewrote the whole panel with innerHTML, so one animation frame into the
+ * drag the range input under the reader's finger was destroyed and replaced by an
+ * identical new one. Pointer capture was left on a node that no longer existed, which
+ * ended the drag; the focus() that followed put the caret on the replacement, which is
+ * why the arrow keys still worked and made it look like a slider that only stepped.
+ *
+ * Measured, before and after, with a real pointer drag in Chromium: the value moved by 2
+ * with the panel being rebuilt, and by 20 without it.
+ *
+ * The invariant is simple and static, so it is checked by reading the file: nothing that
+ * rebuilds the CONTROLS may be reachable from an input handler. Only the derived output
+ * gets to re-render, and it lives in its own container.
+ */
+test('the slider input handler does not rebuild the controls', () => {
+  const start = script.indexOf('function renderWaterUse(');
+  assert.ok(start > 0, 'renderWaterUse is gone - has the section been renamed?');
+
+  // The handler runs from the `input` listener down to the end of that callback.
+  const listener = script.indexOf("slider.addEventListener('input'", start);
+  assert.ok(listener > 0, 'no input listener on the water-use slider');
+  const body = script.slice(listener, script.indexOf('if(sel)', listener));
+
+  assert.ok(!/renderWaterUse\s*\(/.test(body),
+    'the input handler calls renderWaterUse, which rewrites the sliders mid-drag');
+  assert.ok(/wuOutputsDirty\s*\(/.test(body),
+    'the input handler should refresh only the derived output');
+});
+
+test('the controls and the derived output are written to different containers', () => {
+  // If both went into the same element, any output refresh would take the sliders with
+  // it and the bug returns without the guard above ever firing.
+  assert.match(script, /box\.innerHTML\s*=\s*`<div class="wu-grid">/,
+    'the controls should be written into #wu-body once');
+  assert.match(script, /const out = \$\('wu-out'\)/,
+    'the outputs should render into their own #wu-out container');
+  const outputs = script.slice(script.indexOf('function renderWaterUseOutputs('));
+  assert.ok(!/box\.innerHTML/.test(outputs.slice(0, outputs.indexOf('\n}\n'))),
+    'the output renderer must not write to the controls container');
+});

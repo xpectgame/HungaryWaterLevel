@@ -5306,6 +5306,48 @@ function renderWaterUse(){
     </div>`;
   }).join('');
 
+  // The CONTROLS are written once and never replaced while anyone is touching them.
+  // Everything derived from them lives in #wu-out and is rewritten freely.
+  box.innerHTML = `<div class="wu-grid">${rows}</div><div id="wu-out"></div>`;
+
+  for(const u of waterUse.uses){
+    const slider = $(`wu-${u.id}`), sel = $(`wu-${u.id}-r`);
+    if(slider) slider.addEventListener('input', (e) => {
+      wuInput[u.id] = { ...(wuInput[u.id]||{}), q: Number(e.target.value) };
+      const v = $(`wu-${u.id}-v`);
+      if(v) v.textContent = `${fmt(Number(e.target.value),0)} ${u.unit}`;
+      wuOutputsDirty();
+    });
+    if(sel) sel.addEventListener('change', (e) => {
+      wuInput[u.id] = { ...(wuInput[u.id]||{}), rate: Number(e.target.value) };
+      // The select already holds the reader's choice; rebuilding it would only throw
+      // that DOM away and put an identical one back.
+      wuOutputsDirty();
+    });
+  }
+
+  renderWaterUseOutputs();
+}
+
+/**
+ * The totals, the bar, the anchor and the savings table.
+ *
+ * Separate from the controls above, and that separation is the whole fix. This used to
+ * be one function that rewrote #wu-body wholesale on every `input` event - which meant
+ * that one animation frame into a drag, the range input under the reader's finger was
+ * destroyed and replaced by an identical new one. The browser's pointer capture was on
+ * the element that no longer existed, so the drag ended there; the focus() call put the
+ * caret on the replacement, so the arrow keys still worked.
+ *
+ * The result was a slider that could be stepped but not dragged - exactly one notch per
+ * gesture - which is a strange enough symptom that the old comment claiming the redraw
+ * was safe "so the slider does not lose focus mid-gesture" had it precisely backwards.
+ * Focus was the one thing being restored; the drag was what was lost.
+ */
+function renderWaterUseOutputs(){
+  const out = $('wu-out');
+  if(!out || !waterUse || !waterUse.uses) return;
+
   const lines = waterUse.uses.map(u => {
     const { q, rate } = wuState(u);
     return { u, litres: wuLitres(u, q, rate) };
@@ -5341,9 +5383,7 @@ function renderWaterUse(){
 
   const m = waterUse.measured;
 
-  box.innerHTML =
-    `<div class="wu-grid">${rows}</div>`+
-
+  out.innerHTML =
     `<div class="wu-total"><div><span class="big">${fmt(total,0)}</span> `+
     `<span class="unit">liter naponta</span></div>`+
     `<div class="alt">Ez <b>${fmt(m3,0)} m³ egy évben</b> — ennyi jelenik meg a vízszámlán.</div></div>`+
@@ -5363,36 +5403,15 @@ function renderWaterUse(){
     `<div class="tablewrap"><table class="tbl wu-save"><thead><tr><th>Változtatás</th>`+
     `<th class="num">Naponta</th><th class="num">Évente</th>`+
     `<th class="num">A fogyasztásod</th></tr></thead><tbody>${saveRows}</tbody></table></div>`;
-
-  for(const u of waterUse.uses){
-    const slider = $(`wu-${u.id}`), sel = $(`wu-${u.id}-r`);
-    if(slider) slider.addEventListener('input', (e) => {
-      wuInput[u.id] = { ...(wuInput[u.id]||{}), q: Number(e.target.value) };
-      // Only the readout moves on drag; the whole panel redraws after, so the slider
-      // does not lose focus under the reader's finger mid-gesture.
-      const v = $(`wu-${u.id}-v`);
-      if(v) v.textContent = `${fmt(Number(e.target.value),0)} ${u.unit}`;
-      wuRedraw();
-    });
-    if(sel) sel.addEventListener('change', (e) => {
-      wuInput[u.id] = { ...(wuInput[u.id]||{}), rate: Number(e.target.value) };
-      renderWaterUse();
-    });
-  }
 }
 
-/* Coalesced, because a slider fires on every pixel and this rebuilds a table. */
+/* Coalesced: a slider fires on every pixel and this rebuilds a table. Only #wu-out is
+   touched, so the control being dragged is never in the replaced subtree. */
 let wuPending = false;
-function wuRedraw(){
+function wuOutputsDirty(){
   if(wuPending) return;
   wuPending = true;
-  requestAnimationFrame(() => {
-    wuPending = false;
-    const active = document.activeElement && document.activeElement.id;
-    renderWaterUse();
-    // Put the reader back on the control they were dragging.
-    if(active && $(active)) $(active).focus();
-  });
+  requestAnimationFrame(() => { wuPending = false; renderWaterUseOutputs(); });
 }
 
 /** The rates a reader might plausibly have, from the published range. */
