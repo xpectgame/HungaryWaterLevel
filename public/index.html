@@ -1360,6 +1360,44 @@ section.card{margin-bottom:clamp(18px,2.4vw,30px)}
 .warnbox{border-left:3px solid var(--ember);background:#fff;border-radius:0 8px 8px 0;
   padding:9px 12px;margin-left:16px !important}
 
+/* ---------------------------------------------------------------------------
+   "Mit nem mond ez a szám?" - the limits, folded away but never deleted.
+
+   Nearly every section carried two or three grey paragraphs of caveat under its
+   content: which directorates have no station, that a bigger number means deeper
+   water, that the ten-year normal is itself from ten dry years. Every one of those
+   changes how the number above should be read, so none of them can go.
+
+   But stacked in the reading flow they did two bad things. They buried the finding
+   under the disclaimer - the reader met three sentences about what the data does not
+   say before they had taken in what it does - and en masse they gave the whole page a
+   defensive register, a site apologising in advance to a critic nobody had sent.
+
+   Folded, they are one line until asked for. The rule is strict and worth writing
+   down: a caveat may move in here, it may be shortened, it may be merged with a
+   duplicate of itself - it may not be dropped. Anything that would change a reader's
+   reading of a number stays on the page, one click away, in a place they can find
+   because every section puts it in the same place with the same words.
+   --------------------------------------------------------------------------- */
+.caveat{margin:14px 0 0;border-top:1px solid var(--line);padding-top:10px}
+.caveat summary{cursor:pointer;list-style:none;font-size:13px;color:var(--ink-soft);
+  display:inline-flex;align-items:center;gap:7px;padding:2px 0}
+.caveat summary::-webkit-details-marker{display:none}
+.caveat summary::before{content:'+';display:inline-block;width:15px;height:15px;
+  line-height:14px;text-align:center;border:1px solid var(--line);border-radius:50%;
+  color:var(--flow);font-weight:700;font-size:12px;flex:0 0 auto}
+.caveat[open] summary::before{content:'−'}
+.caveat summary:hover{color:var(--ink)}
+.caveat > p{font-size:13.5px;color:var(--ink-soft);margin:9px 0 0 22px;line-height:1.6;max-width:72ch}
+.caveat > p + p{margin-top:7px}
+/* Several of these paragraphs are filled by script and are empty when their section has
+   no data. An empty line inside the fold is only untidy; a fold whose paragraphs are ALL
+   empty is worse than no fold - it promises a limitation and delivers a blank. The rule
+   below hides the empty lines, and hideEmptyCaveats() further down hides the whole
+   disclosure when there is nothing left in it. */
+.caveat > p:empty{display:none}
+.caveat b{color:var(--ink)}
+
 /* --- station detail --- */
 .det-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
 .det-val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:30px;font-weight:600;color:var(--flow)}
@@ -1763,24 +1801,32 @@ footer a{color:var(--ink-soft)}
 
 <section class="card" id="s-hirek">
   <h3>Mi történik, és miért</h3>
-  <p style="font-size:13.5px;color:var(--ink-soft);margin:0 0 14px">
+  <p class="lead" style="margin:0 0 14px">
     Honnan hiányzik a víz — a beáramlás a határon túli forrásvidék szerint bontva, aszerint
-    rendezve, hogy hol marad el a legtöbb m³/s a sokéves átlagtól. Ez nem elmélet arról,
-    hogy mi az oka: ez az, amit a határszelvényeinken mérünk.
+    rendezve, hogy hol marad el a legtöbb m³/s a sokéves átlagtól.
   </p>
   <div id="regions" class="regions"></div>
 
   <h4 class="subhead">Ami úton van</h4>
   <p class="lead" style="margin-bottom:10px">
-    Nincs hivatalos előrejelzés ebben az adatforrásban, de az van, hogy hol tart most a víz.
-    Ami ma elhalad Komárom alatt, az holnap ér Budapestre — ez nem modell, hanem ugyanaz a víz
-    és a szakasz futásideje.
+    Ami ma elhalad Komárom alatt, az holnap ér Budapestre. Ez nem modell, hanem ugyanaz a
+    víz és a szakasz futásideje.
   </p>
   <div id="arrivals" class="arrivals"></div>
-  <p class="fineprint" id="arrivals-note"></p>
 
   <div id="feed" class="feed" style="margin-top:18px"></div>
-  <p style="font-size:12.5px;color:var(--ink-faint);margin-top:14px" id="feed-note"></p>
+
+  <details class="caveat">
+    <summary>Mit nem mond ez a szám?</summary>
+    <p>A fenti bontás <b>nem magyarázat</b>, hanem mérés: azt mondja meg, melyik
+      forrásvidék felől érkezik kevesebb víz, nem azt, hogy miért. Az okra ez az oldal nem
+      következtet — a külső magyarázatok a szerkesztői jegyzetek közt vannak, forrással.</p>
+    <p>Előrejelzés sincs benne: ez az adatforrás egyáltalán nem közöl olyat. A futásidő a
+      folyamkilométer-távolságból és a folyóra jellemző hullámsebességből számolt érkezés,
+      nem előrejelzett vízhozam.</p>
+    <p id="arrivals-note"></p>
+    <p id="feed-note"></p>
+  </details>
 </section>
 
 <section class="card" id="s-elozmeny">
@@ -1820,8 +1866,7 @@ footer a{color:var(--ink-soft)}
   <p class="lead" style="margin-bottom:10px">
     2022 az az aszály, amire mindenki emlékszik. Az archívumból megkérdezhető, hogy tényleg
     az volt-e a legrosszabb — <b>mércénként</b>, ugyanannak a naptári hónapnak a
-    <b>medián</b> vízhozamával. Nem átlaggal, és nem a mai pillanatnyi értékkel: az egy
-    műszerállás.
+    <b>medián</b> vízhozamával.
   </p>
   <div id="dy-summary" class="dy-summary"></div>
   <div class="tablewrap"><table class="dy" id="dy-table"></table></div>
@@ -1898,8 +1943,12 @@ footer a{color:var(--ink-soft)}
   <div id="rain-regions" class="regions"></div>
   <div id="rain-gauges" class="rainlist"></div>
   <p style="margin:12px 0 0"><button type="button" class="linkish" id="rain-more"></button></p>
-  <p class="fineprint" id="rain-coverage"></p>
-  <p class="fineprint" id="rain-baseline"></p>
+
+  <details class="caveat">
+    <summary>Mit nem mond ez a szám?</summary>
+    <p id="rain-coverage"></p>
+    <p id="rain-baseline"></p>
+  </details>
 </section>
 
 <!-- Above the water table, because that is the order the water is in: rain lands on
@@ -1926,16 +1975,19 @@ footer a{color:var(--ink-soft)}
     gyökér elér és a kerti kút ad.
   </p>
   <p class="fineprint" style="margin:0 0 14px">
-    Az OVF országos talajvíz-észlelőhálózatának mérései, mind a 12 vízügyi igazgatóság
-    területéről. Minden állomás a <b>saját</b> tízéves, azonos havi eloszlásához mérve —
-    a mélység állomásonként mást jelent, a rangsor nem.
+    Minden állomás a <b>saját</b> tízéves, azonos havi eloszlásához mérve — a mélység
+    állomásonként mást jelent, a rangsor nem.
   </p>
 
   <p id="dr-health" class="dr-health" hidden></p>
   <div id="dr-head" class="gw-head"></div>
   <div id="dr-regions" class="dr-regions"></div>
-  <p class="fineprint" id="dr-coverage" style="margin-top:14px"></p>
-  <p class="fineprint" id="dr-not" style="margin-top:8px"></p>
+
+  <details class="caveat">
+    <summary>Mit nem mond ez a szám?</summary>
+    <p id="dr-coverage"></p>
+    <p id="dr-not"></p>
+  </details>
 </section>
 
 <section class="card" id="s-retegviz">
@@ -1945,9 +1997,11 @@ footer a{color:var(--ink-soft)}
     az ivóvizünk nagy része jön, és ami nem egy esőtől töltődik újra, hanem évtizedek alatt.
     Ezt a legnehezebb észrevenni, mert nem látszik rajta, ha fogy.
   </p>
+  <!-- This one sentence does NOT fold away. Confusing rétegvíz with talajvíz is the
+       single most likely misreading on the page, and a reader who makes it will
+       misread every number below without ever knowing. -->
   <p class="fineprint" style="margin:0 0 14px">
-    Ez nem a talajvíz — nem a kerti kút vize, hanem az alatta lévő réteg. A talajvízszintet
-    ez az adatforrás egyáltalán nem közli, semmilyen kóddal, egyetlen kútnál sem.
+    <b>Ez nem a talajvíz</b> — nem a kerti kút vize, hanem az alatta lévő, lezárt réteg.
   </p>
 
   <div id="gw-head" class="gw-head"></div>
@@ -1956,31 +2010,38 @@ footer a{color:var(--ink-soft)}
     <button type="button" id="gw-more" class="det-close" hidden></button>
   </p>
 
-  <p class="fineprint" id="gw-coverage" style="margin-top:14px"></p>
-  <p class="fineprint" id="gw-why" style="margin-top:8px">
-    Itt nincs országos átlag, és ez szándékos. Minden kút a saját nullpontjához méri a
-    mélységet, és a hálózat nem ugyanabban az egységben teszi: van, ahol méterben, van, ahol
-    centiméterben, néhol pedig fordított előjellel. Ezeket a számokat összeátlagolni annyit
-    tenne, mint métert és centimétert összeadni — kijönne belőle egy tizedesjegyes szám, ami
-    semmit nem jelent. Amit viszont lehet: minden kutat a <b>saját</b> tíz évéhez mérni, és
-    megszámolni, hányban alacsony most a víz. Minden alábbi szám így készült.
-  </p>
+  <details class="caveat">
+    <summary>Mit nem mond ez a szám?</summary>
+    <p id="gw-coverage"></p>
+    <p><b>Országos átlag nincs, és ez szándékos.</b> Minden kút a saját nullpontjához méri
+      a mélységet, és a hálózat nem ugyanabban az egységben teszi — van, ahol méterben, van,
+      ahol centiméterben, néhol fordított előjellel. Ezeket összeátlagolni annyi lenne, mint
+      métert és centimétert összeadni. Amit lehet: minden kutat a <b>saját</b> tíz évéhez
+      mérni, és megszámolni, hányban alacsony most a víz. Minden fenti szám így készült.</p>
+    <p>A <b>talajvíz</b> szintjét ez az adatforrás egyáltalán nem közli — semmilyen kóddal,
+      egyetlen kútnál sem. Amit a Talajvíz szekció mutat, az egy másik hálózat.</p>
+  </details>
 </section>
 
 <!-- Placed at the end of the drought group, after every measurement it draws on, so a
      reader arrives at it having already seen the numbers it assembles. -->
 <section class="card" id="s-kovetkezmeny">
   <h3>Mi lesz ebből, ha így marad</h3>
-  <p class="lead" style="margin-bottom:8px">
-    Erre a kérdésre a tisztességes válasz nem egy jóslat. Ez az oldal nem készít
-    előrejelzést — de a <b>mechanizmus</b> ismert, és minden egyes láncszeméről van
-    <b>mai mérésünk</b>. Alább a lánc, és hogy hol tart most.
-  </p>
-  <p class="fineprint" style="margin:0 0 4px">
-    Minden szám alatta élő mérés erről az oldalról, nem modellezett jövőkép. Ha egy
-    láncszemhez épp nincs adat, azt a lépés kimondja magáról.
+  <!-- Two paragraphs said "this is not a forecast" in slightly different words, one
+       under the other. Once, in the sentence that also says what it IS. -->
+  <p class="lead" style="margin-bottom:10px">
+    Erre a tisztességes válasz nem jóslat. A <b>mechanizmus</b> viszont ismert, és minden
+    egyes láncszeméről van <b>mai mérésünk</b> — alább a lánc, és hogy hol tart most.
   </p>
   <div id="chain-body"></div>
+
+  <details class="caveat">
+    <summary>Mit nem mond ez a lánc?</summary>
+    <p>Nem azt, hogy mi <b>fog</b> történni, és nem is azt, hogy mikor. A láncszemek
+      közötti összefüggés a szakirodalomból ismert, a rajta lévő számok viszont mind mai
+      mérések erről az oldalról — nem modellezett jövőkép.</p>
+    <p>Ha egy láncszemhez épp nincs adat, azt a lépés kimondja magáról, üres helyett.</p>
+  </details>
 
   <div class="explain" style="margin-top:16px">
     <details>
@@ -3893,6 +3954,7 @@ function renderFeed(data){
       `<div class="ev ${i.note?'note':'sev-'+(i.sev||1)}">${i.html}</div>`).join('');
   }
   $('feed-note').textContent = data.note || '';
+  caveatsDirty();
 }
 
 /**
@@ -4015,6 +4077,7 @@ async function loadRain(){
     // unmeasured rather than dry, and the baseline is a recent decade, not a normal.
     $('rain-coverage').textContent = (data.coverage && data.coverage.note) || '';
     $('rain-baseline').textContent = data.baselineNote || '';
+    caveatsDirty();
     rainGauges = data.gauges || [];
     chainDirty();
     rainMap = data.gauges || [];
@@ -4103,6 +4166,7 @@ function drawGroundwaterList(){
   el.innerHTML = shown.map(w => {
     const hp = historyPhrase(w.rank);
     const age = w.ageDays==null ? '' : w.ageDays<=1 ? 'ma' : `${w.ageDays} napja`;
+  caveatsDirty();
     return `<div class="gw-row${w.rank.band==='record-low'?' rec':''}">`+
       `<div class="nm">${w.name}<small>${w.settlement||''}</small></div>`+
       `<div class="verdict ${hp?hp.cls:''}">${hp?hp.text:''}</div>`+
@@ -4202,6 +4266,7 @@ function renderDrought(data){
     `<a href="https://aszalymonitoring.vizugy.hu/" rel="noopener">Aszálymonitoring</a> `+
     `szolgálata más módszerrel számol saját aszályindexet (HDI), és azt nem tudjuk beolvasni: `+
     `a szolgáltatás állomásonként, szerveroldalon rajzolja ki a számait, adatvégpont nélkül.`;
+  caveatsDirty();
 }
 
 async function loadDrought(){
@@ -4238,6 +4303,7 @@ function renderArrivals(data){
   if(!data || !data.arrivals || !data.arrivals.length){
     el.innerHTML = '<p class="lead" style="margin:0">Még nincs elég előzmény ahhoz, hogy megmondjuk, mi van úton.</p>';
     $('arrivals-note').textContent='';
+    caveatsDirty();
     return;
   }
 
@@ -4254,6 +4320,7 @@ function renderArrivals(data){
   }).join('');
 
   $('arrivals-note').textContent = data.disclaimer + ' ' + data.method;
+  caveatsDirty();
 }
 
 /* --- lakes -------------------------------------------------------------- */
@@ -5454,12 +5521,17 @@ function renderDroughtYears(d){
       missing = `<b>${d.currentYear} még nincs az archívumban</b> — a következő sütés hozza be. `;
     }
 
-    note.innerHTML = missing +
+    // The legend stays in the flow - a reader cannot use the table without knowing what
+    // the marks mean. Everything that is a LIMIT rather than a key goes in the fold.
+    note.innerHTML =
       `A <b>▼</b> azt jelöli, hogy az adott év ${esc(adj)} medián vízhozama kisebb volt, mint ` +
-      `${ref}-ben; a bekeretezett cella a mérce eddigi legkisebb ${esc(adj)} ` +
-      `medián vízhozama. <b>Országos összeg nincs</b>: a Duna 1500 m³/s, a Fehér-Körös 0,09 — ` +
-      `ezeket összeadni vagy átlagolni értelmetlen, ezért mércét számolunk. ` +
-      `${esc(d.basisNote)}`;
+      `${ref}-ben; a bekeretezett cella a mérce eddigi legkisebb ${esc(adj)} medián vízhozama.` +
+      `<details class="caveat"><summary>Mit nem mond ez a tábla?</summary>` +
+      (missing ? `<p>${missing}</p>` : '') +
+      `<p><b>Országos összeg nincs</b>: a Duna 1500 m³/s, a Fehér-Körös 0,09 — ezeket ` +
+      `összeadni vagy átlagolni értelmetlen, ezért mércét számolunk.</p>` +
+      `<p>${esc(d.basisNote)}</p></details>`;
+    caveatsDirty();
   }
 }
 
@@ -7018,7 +7090,28 @@ function tick(){
   let resizeTimer = null;
   addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer = setTimeout(drawNodes, 250); });
   wireConsent();
+  hideEmptyCaveats();
 })();
+
+/* A "Mit nem mond ez a szám?" that opens onto nothing is a broken promise. Sections whose
+   caveats are entirely script-filled - rainfall, groundwater - have empty ones whenever
+   that section has no data, which is exactly when a reader is most likely to click. */
+/* Debounced, and called from every renderer that writes into a caveat - the same shape
+   as chainDirty() next door, and for the same reason: these paragraphs arrive from five
+   different fetches at five different times, so a single check at boot would hide a fold
+   that is about to be filled. */
+let caveatTimer = null;
+function caveatsDirty(){
+  clearTimeout(caveatTimer);
+  caveatTimer = setTimeout(hideEmptyCaveats, 0);
+}
+
+function hideEmptyCaveats(){
+  for(const d of document.querySelectorAll('details.caveat')){
+    const filled = [...d.querySelectorAll('p')].some(p => (p.textContent||'').trim().length > 0);
+    d.hidden = !filled;
+  }
+}
 
 /* ---------------------------------------------------------------------------
    Consent, and a decline that actually declines.
