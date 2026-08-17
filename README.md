@@ -260,6 +260,23 @@ megismétli.
 | **Belvíz** | Nincs rá mérőkód. A belvizet elöntött területként (hektár) jelentik, nem idősorként. |
 | **Árvíz- és belvízkockázat (AKK)** | A geoportál `AKK` mappájában 42 szolgáltatás van elöntési, védett területi és kockázati térképekkel. **Mind a 24 MapServer üres réteglistával válaszol**: érvényes JSON, `maxRecordCount`, hibaüzenet nélkül — és nulla lekérdezhető réteg. Ezek térképképként vannak publikálva, nem adatként; nincs mit lekérni belőlük. (A többi `ImageServer`, ami raszter.) |
 | **Cégnév bármelyik bevezetésnél** | Nincs. Sem a szennyvíz-, sem az ipari nyilvántartás nem rögzít üzemeltetőt: a sor a helyet, a befogadó víztestet és — az ipari lapon — az ágazatot tartalmazza. Ezért nem szerepel az oldalon egyetlen akkumulátorgyár sem néven; ami odaírható volna, az becslés lenne, nem adat. |
+| **Ökológiai állapot (VGT)** | **A réteg eltűnt a geoportálról.** A `VGT_1/05_01_05/MapServer/3` (felszíni folyóvíztestek minősítése) 2026. augusztus 14-én még időtúllépéssel válaszolt, 17-én pedig már üresen: se név, se mező, se sor. A `VGT_1` mappa ekkorra **egyetlen szolgáltatást** publikál, a `00_alapterkep`-et. A builder (`scripts/build-ecology.js`) és a 8 tesztje bent marad a repóban arra az esetre, ha visszakerül — de jelenleg nincs mit betölteni. |
+| **Az ipari nyilvántartás újrasütése** | Ugyanez: a `VGT_1/02_00/MapServer` is üresen válaszol. A `src/config/industry.json` **már nem építhető újra a forrásból** — ami megvan belőle, az az, amit 2026. augusztus 14-én lementettünk. Ezért nem törölhető és nem „frissíthető": ez az egyetlen példány. |
+
+**Ami viszont él, és eddig nem néztük meg: a `VIR` mappa.** 17 szolgáltatás, és — az
+`AKK`-val ellentétben — **nem üres a réteglistájuk**, tehát nem térképképek:
+
+| Szolgáltatás | Rétegek | Ami érdekes benne |
+|---|---|---|
+| `VIR/Belviz_fokok` | 15 | `Belvízvédelmi szakasz`, `Ártéri öblözetek`, `Vízjárta terület` |
+| `VIR/Arviz_fokok` | 14 | `Vízmércék`, `Ártéri öblözetek`, `Vízjárta terület` |
+| `VIR/Vizminoseg_fokozatok` | 5 | **`Vízminőség káresemények` (pontszerű és vonalas), `Vízfolyás szennyezett`** |
+| `VIR/Jeg_kesz` | 14 | Jégjelenségek, jégtorlasz a Tiszán, jégtörő hajók pozíciója |
+
+A vízminőségi **káresemények** nem azonosak azzal a szonda-idősorral, amit fentebb
+negatívként lezártunk: az mérés lett volna, ez bejelentett szennyezés. Hogy van-e mögötte
+lekérdezhető sor és fokozat-attribútum, még nincs megnézve — a réteglista megléte csak azt
+mondja, hogy **érdemes** megnézni, nem azt, hogy van benne adat.
 
 ### 11/a. Ami létezik, de túl vékony ahhoz, hogy szekciót kapjon
 
