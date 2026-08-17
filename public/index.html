@@ -1652,7 +1652,8 @@ footer a{color:var(--ink-soft)}
   <p class="lead" style="margin-bottom:10px">
     2022 az az aszály, amire mindenki emlékszik. Az archívumból megkérdezhető, hogy tényleg
     az volt-e a legrosszabb — <b>mércénként</b>, ugyanannak a naptári hónapnak a
-    középvízhozamával. Nem a mai pillanatnyi értékkel: az egy műszerállás, nem havi közép.
+    <b>medián</b> vízhozamával. Nem átlaggal, és nem a mai pillanatnyi értékkel: az egy
+    műszerállás.
   </p>
   <div id="dy-summary" class="dy-summary"></div>
   <div class="tablewrap"><table class="dy" id="dy-table"></table></div>
@@ -5196,11 +5197,11 @@ function renderDroughtYears(d){
   const adj = d.monthAdjHu || d.monthHu;
   summary.innerHTML =
     `<div class="dy-fact${below ? ' hot' : ''}"><b>${below} / ${d.summary.comparable}</b>` +
-    `<span>ennyi mércén volt kisebb a ${latest}-ös ${esc(adj)} középvízhozam, mint ${ref}-ben</span></div>` +
+    `<span>ennyi mércén volt kisebb a ${latest}-ös ${esc(adj)} medián vízhozam, mint ${ref}-ben</span></div>` +
     (worstYear ? `<div class="dy-fact"><b>${worstYear.year}</b>` +
       `<span>ez az év tartja a legkisebb ${esc(adj)} vízhozam rekordját a legtöbb mércén (${worstYear.count} db)</span></div>` : '') +
     `<div class="dy-fact"><b>${d.years.length} év</b>` +
-    `<span>${d.years[0]}–${d.years[d.years.length-1]}, havi középvízhozamokból</span></div>`;
+    `<span>${d.years[0]}–${d.years[d.years.length-1]}, havi medián vízhozamokból</span></div>`;
 
   const years = d.years;
   const head = '<tr><th class="n">Mérce</th>' +
@@ -5231,9 +5232,9 @@ function renderDroughtYears(d){
 
   if(note){
     note.innerHTML =
-      `A <b>▼</b> azt jelöli, hogy az adott év ${esc(adj)} középvízhozama kisebb volt, mint ` +
+      `A <b>▼</b> azt jelöli, hogy az adott év ${esc(adj)} medián vízhozama kisebb volt, mint ` +
       `${ref}-ben; a bekeretezett cella a mérce eddigi legkisebb ${esc(adj)} ` +
-      `középvízhozama. <b>Országos összeg nincs</b>: a Duna 1500 m³/s, a Fehér-Körös 0,09 — ` +
+      `medián vízhozama. <b>Országos összeg nincs</b>: a Duna 1500 m³/s, a Fehér-Körös 0,09 — ` +
       `ezeket összeadni vagy átlagolni értelmetlen, ezért mércét számolunk. ` +
       `${esc(d.basisNote)}`;
   }

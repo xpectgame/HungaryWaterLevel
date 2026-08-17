@@ -54,8 +54,14 @@ test('the comparison counts gauges rather than averaging them', () => {
 
 test('the payload names its basis, so nobody plots a live reading on this axis', () => {
   const b = compareYears({ month: AUG, document: FIXTURE });
-  assert.equal(b.basis, 'monthly-mean');
-  assert.match(b.basisNote, /Nem a mai pillanatnyi/);
+  // MEDIAN, not mean. The bake writes percentileOf(daily, 50); this module called it a
+  // mean in four places, which came out in Hungarian as "középvízhozam" - a defined
+  // hydrological term (KÖQ) meaning precisely the arithmetic mean. That is not loose
+  // wording, it is a wrong statement about which statistic the reader is looking at.
+  assert.equal(b.basis, 'monthly-median');
+  assert.match(b.basisNote, /mediánja/);
+  assert.match(b.basisNote, /Nem átlag/);
+  assert.match(b.basisNote, /Nem .*a mai pillanatnyi/);
 });
 
 test('the worst-hit gauge sorts first', () => {

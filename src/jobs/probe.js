@@ -1917,6 +1917,9 @@ async function probeFlowHistory(args = []) {
   // do". That is not a forecast, it is what happened before from here, and it is the
   // only forward-looking sentence this project can make honestly.
   const yearly = {};
+  // Third document, at day resolution: station -> year -> "MM-DD" -> daily mean. Built
+  // from the same rows as the two above, so it adds no requests. See where it is filled.
+  const daily = {};
 
   for (const station of stations) {
     const external = EXTERNAL_IDS[station.id];
@@ -1927,7 +1930,18 @@ async function probeFlowHistory(args = []) {
     const yearsIn = Array.from({ length: 12 }, () => new Set());
     let failures = 0;
 
-    for (let back = 1; back <= YEARS; back += 1) {
+    // `back = 0`, so the CURRENT year is fetched too.
+    //
+    // It used to start at 1, which quietly meant the year-by-year table could never say
+    // anything about the year the reader is standing in - "is it worse than 2022?" with
+    // this year missing from the columns entirely. The data was always there upstream;
+    // the loop just never asked for it.
+    //
+    // Nothing about the percentile envelope changes: the MIN_DAYS_IN_MONTH guard below
+    // drops any month that has not mostly happened yet, so the running month contributes
+    // to neither document until it is over. A partial August must not be published as
+    // August, and this is where that is enforced rather than in the consumers.
+    for (let back = 0; back <= YEARS; back += 1) {
       const year = now.getUTCFullYear() - back;
       const from = new Date(Date.UTC(year, 0, 1));
       const to = new Date(Date.UTC(year + 1, 0, 1));
@@ -1988,6 +2002,28 @@ async function probeFlowHistory(args = []) {
         if (yearMonths.some((v) => v !== null)) {
           (yearly[station.id] = yearly[station.id] || {})[year] = yearMonths;
         }
+
+        // ---------------------------------------------------------------------------
+        // Third document from the SAME fetch, at day resolution, and it costs nothing.
+        //
+        // The two documents above cannot answer "is it worse than 2022 right now",
+        // because on the 17th of August the only honest comparison is against the 1st
+        // to 17th of August in the other years - and a monthly figure has thrown the
+        // days away. The 20-day guard is correct and must stay: a partial month is not
+        // the month. But that guard is about publishing a MONTH, and comparing an equal
+        // window across years is a different question that the same rows already answer.
+        //
+        // No extra requests: `byDay` is built above from rows that were fetched anyway.
+        // Keyed MM-DD so a window is a string range and 29 February needs no special
+        // case. Rounded to one decimal - the discharge curve carries 5-10% error, so a
+        // second decimal is noise stored 100 000 times.
+        const days = {};
+        for (const [day, bucket] of byDay) {
+          days[day.slice(5)] = round1(bucket.sum / bucket.n);
+        }
+        if (Object.keys(days).length) {
+          (daily[station.id] = daily[station.id] || {})[year] = days;
+        }
       } catch (err) {
         failures += 1;
         if (failures === 1) console.log(`  ${station.id}: ${err.message}`);
@@ -2018,6 +2054,7 @@ async function probeFlowHistory(args = []) {
     // than nothing, because the alternative is asking for all 300 again.
     writeDocument('flow-history', out);
     writeDocument('flow-yearly', yearly);
+    writeDocument('flow-daily', daily);
   }
 
   const complete = Object.values(out).filter((e) => e.months.every(Boolean)).length;
@@ -2028,6 +2065,13 @@ async function probeFlowHistory(args = []) {
   const yearCount = Object.values(yearly).reduce((n, y) => n + Object.keys(y).length, 0);
   console.log(`\n${Object.keys(yearly).length} stations x ${yearCount} station-years of monthly medians`);
   emitDocument('flow-yearly', yearly, 'src/config/flow-yearly.json');
+
+  const dayCount = Object.values(daily)
+    .reduce((n, y) => n + Object.values(y).reduce((m, d) => m + Object.keys(d).length, 0), 0);
+  console.log(`\n${Object.keys(daily).length} stations x ${dayCount} daily means, day-resolved`);
+  console.log('  this is what lets the running month be compared against the SAME days of');
+  console.log('  earlier years - the monthly documents above have thrown the days away.');
+  emitDocument('flow-daily', daily, 'src/config/flow-daily.json');
 }
 
 /**
@@ -2541,6 +2585,13 @@ function percentileOf(sorted, q) {
 
 function round2(v) {
   return v === null || v === undefined ? null : Math.round(v * 100) / 100;
+}
+
+/* One decimal, for the day-resolved archive. The rating curve carries 5-10% error on a
+   good river, so the second decimal is noise - and this document stores a hundred
+   thousand of them, where noise is measured in hundreds of kilobytes. */
+function round1(v) {
+  return v === null || v === undefined ? null : Math.round(v * 10) / 10;
 }
 
 /**

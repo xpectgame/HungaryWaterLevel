@@ -14,15 +14,16 @@ const { getStation } = require('../config/stations');
  * remember is 2022: the summer the Tisza was walkable in places and it was on the news
  * for a month. "Worse than 2022" is a sentence with a picture behind it.
  *
- * The archive answers it. flow-yearly.json holds monthly means per gauge per year since
- * 2016, and comparing one August to another August is arithmetic, not modelling.
+ * The archive answers it. flow-yearly.json holds, per gauge per year, the MEDIAN of that
+ * calendar month's daily mean discharges - and comparing one August to another August is
+ * arithmetic, not modelling.
  *
  * ---------------------------------------------------------------------------
  * WHAT IS COMPARED, AND WHAT IS NOT
  * ---------------------------------------------------------------------------
- * MONTHLY MEANS ONLY, one calendar month against the same calendar month in other years.
+ * MONTHLY MEDIANS ONLY, one calendar month against the same calendar month in other years.
  * That is the only comparison the archive supports, and the restriction matters: today's
- * live reading is an instantaneous discharge, and placing it in a table of monthly means
+ * live reading is an instantaneous discharge, and placing it in a table of monthly medians
  * would put a number measured at 09:15 next to numbers averaged over 31 days. It would
  * look like the same kind of thing and it is not. Today's reading against the decade's
  * distribution is a different question, already answered by flow-history.
@@ -180,9 +181,15 @@ function compareYears({ month, reference = REFERENCE_YEAR, document } = {}) {
       lowestByYear: countLowestByYear(comparable),
     },
     // Said in the payload rather than left to the page, because a consumer that plotted
-    // a live reading on this axis would be comparing an instant to a monthly mean.
-    basis: 'monthly-mean',
-    basisNote: 'Havi középvízhozamok, azonos naptári hónapok között. Nem a mai pillanatnyi érték.',
+    // a live reading on this axis would be comparing an instant to a monthly median.
+    //
+    // `monthly-median`, not `monthly-mean`. The bake writes percentileOf(daily, 50) and
+    // this file called it a mean in four places, which in Hungarian came out as
+    // "középvízhozam" - a defined hydrological term (KÖQ) that means precisely the
+    // arithmetic mean. Naming a median with it is not loose wording, it is a wrong
+    // statement about which statistic the reader is looking at.
+    basis: 'monthly-median',
+    basisNote: 'A havi napi vízhozamok mediánja, azonos naptári hónapok között. Nem átlag, és nem a mai pillanatnyi érték.',
   };
 }
 

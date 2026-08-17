@@ -332,7 +332,9 @@ Az `entry.test.js` őrzi, hogy a googletagmanager URL ne kerülhessen vissza a m
 ### 11/b. Rosszabb, mint 2022? — mércét számolunk, nem átlagolunk
 
 2022 az az aszály, amire mindenki emlékszik, és az archívumból megkérdezhető, hogy tényleg
-az volt-e a legrosszabb. **Havi középvízhozamok**, azonos naptári hónapok között — a mai
+az volt-e a legrosszabb. **A havi napi vízhozamok mediánja** (nem átlag: a bake
+`percentileOf(napi, 50)`-et ír, és a „középvízhozam" a KÖQ-t jelenti, ami definíció
+szerint átlag), azonos naptári hónapok között — a mai
 pillanatnyi érték nem kerülhet ebbe a táblába, mert az egy 09:15-kor mért műszerállás, a
 többi meg 31 napra átlagolt szám, és egymás mellé téve ugyanolyannak látszanának.
 
