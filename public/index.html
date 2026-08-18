@@ -544,6 +544,76 @@ svg.map text{user-select:none;-webkit-user-select:none}
 }
 
 /* ---------------------------------------------------------------------------
+   The rain gauge, and falling rain.
+
+   A measuring cylinder that fills to the last window's rainfall, with the "normal" line
+   marked across it, and drops falling in at a rate set by how wet the period was. Honest
+   because it is a CUMULATIVE measure - the drops are not "it is raining now", they are
+   the 30 days of rain the number already reports, and the caption says the window.
+
+   The normal line sits at a fixed height (62%) rather than at the top, so an above-normal
+   month has somewhere to go and a dry one is visibly short of the mark. Same device as
+   the horizontal region bars, turned upright.
+   --------------------------------------------------------------------------- */
+.raincol{display:flex;gap:18px;align-items:stretch;margin:2px 0 18px;flex-wrap:wrap}
+.raincol .fig{flex:0 0 132px;position:relative}
+.raincol svg{display:block;width:100%;height:auto;overflow:visible}
+.rg-glass{fill:#f2f9fb;stroke:#bcd6dd;stroke-width:2}
+.rg-fill{fill:#8fd0da}
+.rg-fill.wet{fill:#5cb9c6}.rg-fill.dry{fill:#cdb98f}
+.rg-surface{fill:#bfe6ec}
+.rg-normal{stroke:#0b5566;stroke-width:1.5;stroke-dasharray:4 4}
+.rg-normlab{font-family:var(--sans);font-size:9.5px;font-weight:600;fill:var(--deep)}
+.rain-drop{stroke:#7fc9d2;stroke-width:2;stroke-linecap:round;opacity:0;
+  animation:raindrop 1.3s linear infinite}
+@keyframes raindrop{0%{opacity:0;transform:translateY(-4px)}12%{opacity:.85}
+  70%{opacity:.85}100%{opacity:0;transform:translateY(46px)}}
+.raincol .say{flex:1 1 220px;align-self:center;font-size:14px;color:var(--ink-soft);line-height:1.55}
+.raincol .say b{color:var(--ink)}
+.raincol .say .pct{font-family:var(--mono);font-weight:600;font-size:22px;display:block;
+  color:var(--ink);margin-bottom:2px}
+@media (prefers-reduced-motion:reduce){ .rain-drop{animation:none;opacity:0} }
+
+/* ---------------------------------------------------------------------------
+   Twenty-three soil columns, each filled within its OWN range.
+
+   This is the section's honest claim made visible: every station is measured against
+   itself, never against the others. So each little column fills not to its moisture
+   percent - which would be meaningless across different soils - but to WHERE today sits
+   between that station's own lowest and highest reading ever. A near-empty column is a
+   station near its own record low; a full one is as wet as that ground gets.
+
+   Csongrád at 5% and Hódmezővásárhely at 27% can stand side by side and neither is
+   "wetter": they fill to their own band position, and the colour carries the band.
+   --------------------------------------------------------------------------- */
+.soilcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(30px,1fr));
+  gap:7px 6px;margin:2px 0 16px;align-items:end}
+.soilcol{position:relative;cursor:default}
+.soilcol .tube{position:relative;height:74px;border-radius:5px 5px 3px 3px;
+  background:linear-gradient(180deg,#f1ede4,#e7e0d2);overflow:hidden;border:1px solid #dcd3c2}
+.soilcol .wet{position:absolute;left:0;right:0;bottom:0;height:0;border-radius:0 0 3px 3px;
+  transition:height 1.05s cubic-bezier(.25,.8,.3,1)}
+.js-reveal .soilcol .wet{height:0 !important}
+.js-reveal .soilcols.in .soilcol .wet{height:var(--h) !important}
+.soilcol .cap{font-size:9px;color:var(--ink-faint);text-align:center;margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.soilcol .pc{font-family:var(--mono);font-size:10px;text-align:center;color:var(--ink-soft);
+  margin-top:1px;font-variant-numeric:tabular-nums}
+.soilcol .wet.s-record-low{background:#7a3b17}.soilcol .wet.s-very-low{background:#b06a24}
+.soilcol .wet.s-low{background:#cf9a4a}.soilcol .wet.s-middle{background:#7fb3bf}
+.soilcol .wet.s-high{background:#4f9e8a}.soilcol .wet.s-record-high{background:#2f7f68}
+.soilcol:hover .tube{outline:2px solid var(--flow);outline-offset:1px}
+.soilcol .tip{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  background:var(--ink);color:#fff;font-size:11px;line-height:1.35;padding:6px 9px;border-radius:7px;
+  white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s;z-index:5;
+  box-shadow:0 6px 18px rgba(6,32,41,.28)}
+.soilcol:hover .tip,.soilcol:focus-within .tip{opacity:1}
+.soilcol .tip b{color:#bfe6ec}
+@media (prefers-reduced-motion:reduce){
+  .js-reveal .soilcols .soilcol .wet,.js-reveal .soilcols.in .soilcol .wet{height:var(--h) !important;transition:none}
+}
+
+/* ---------------------------------------------------------------------------
    Arriving.
 
    Twenty-eight thousand pixels of page, and every part of it was already finished
@@ -2047,6 +2117,7 @@ footer a{color:var(--ink-soft)}
     </div>
   </div>
   <p class="lead" id="rain-headline">&nbsp;</p>
+  <div id="rain-fig"></div>
   <div id="rain-regions" class="regions"></div>
   <div id="rain-gauges" class="rainlist"></div>
   <p style="margin:12px 0 0"><button type="button" class="linkish" id="rain-more"></button></p>
@@ -2070,6 +2141,7 @@ footer a{color:var(--ink-soft)}
     az a vidék, ahol a szárazság a legsúlyosabb.
   </p>
   <div id="soil-head" class="gw-head"></div>
+  <div id="soil-columns"></div>
   <div id="soil-body"></div>
 </section>
 
@@ -4175,6 +4247,73 @@ function renderRainRegions(regions){
   }).join('');
 }
 
+/**
+ * A rain gauge filling to the window's rainfall, normal marked across it.
+ *
+ * The national figure is the regions weighted by how many gauges each holds, so a region
+ * with two stations does not count the same as one with thirty. Purely a summary of the
+ * numbers already on the page - nothing here is fetched, and the drops are the rain the
+ * period already recorded, not weather happening now.
+ */
+function renderRainFigure(regions){
+  const box = $('rain-fig');
+  if(!box) return;
+  const usable = (regions||[]).filter(r => r.ratioToNormal != null && r.gaugeCount > 0);
+  if(!usable.length){ box.innerHTML=''; return; }
+
+  const n = usable.reduce((a,r)=>a+r.gaugeCount,0);
+  const actual = usable.reduce((a,r)=>a + r.meanMm*r.gaugeCount, 0)/n;
+  const normal = usable.reduce((a,r)=>a + r.normalMm*r.gaugeCount, 0)/n;
+  const ratio = normal>0 ? actual/normal : null;
+  if(ratio == null){ box.innerHTML=''; return; }
+
+  // Geometry: normal sits at 62% of the glass height, and the fill scales to that, so a
+  // dry month is visibly short of the dashed line and a wet one rises above it. Capped so
+  // a freak-wet region cannot overflow the cylinder.
+  const GX=26, GW=80, GTOP=8, GH=150, GBOT=GTOP+GH;
+  const normalY = GTOP + GH*(1-0.62);
+  const fillFrac = Math.min(1, 0.62 * ratio);
+  const fillY = GTOP + GH*(1-fillFrac);
+  const fillH = GBOT - fillY;
+  const band = ratio>=1.15 ? 'wet' : ratio<=0.6 ? 'dry' : '';
+
+  // Drop rate follows wetness: a wetter window rains harder. Deterministic x positions so
+  // the picture is stable across redraws.
+  const drops = Math.max(3, Math.min(9, Math.round(3 + ratio*4)));
+  const dropSvg = Array.from({length:drops}, (_,i)=>{
+    const x = GX + 10 + (i*67 % (GW-20));
+    const delay = ((i*137)%100)/100 * 1.3;
+    return `<line class="rain-drop" x1="${x}" y1="${GTOP-6}" x2="${x}" y2="${GTOP+2}"
+              style="animation-delay:${delay.toFixed(2)}s"/>`;
+  }).join('');
+
+  const dry = (v)=>fmt(v,0);
+  box.innerHTML = `<div class="raincol">
+    <div class="fig"><svg viewBox="0 0 132 176" role="img"
+      aria-label="Az elmúlt ${rainDays} nap csapadéka ${dry(actual)} milliméter, a szokásos ${dry(normal)} — a szokásos ${fmt(ratio*100,0)} százaléka.">
+      <clipPath id="rgclip"><rect x="${GX}" y="${GTOP}" width="${GW}" height="${GH}" rx="9"/></clipPath>
+      <rect class="rg-glass" x="${GX}" y="${GTOP}" width="${GW}" height="${GH}" rx="10"/>
+      <g clip-path="url(#rgclip)">
+        <rect class="rg-fill ${band}" x="${GX}" y="${GBOT}" width="${GW}" height="0">
+          <animate attributeName="y" from="${GBOT}" to="${fillY.toFixed(1)}" dur="1.1s"
+                   begin="0s" fill="freeze" calcMode="spline" keySplines="0.25 0.8 0.3 1" keyTimes="0;1" values="${GBOT};${fillY.toFixed(1)}"/>
+          <animate attributeName="height" from="0" to="${fillH.toFixed(1)}" dur="1.1s"
+                   begin="0s" fill="freeze" calcMode="spline" keySplines="0.25 0.8 0.3 1" keyTimes="0;1" values="0;${fillH.toFixed(1)}"/>
+        </rect>
+      </g>
+      ${dropSvg}
+      <line class="rg-normal" x1="${GX-3}" y1="${normalY.toFixed(1)}" x2="${GX+GW+3}" y2="${normalY.toFixed(1)}"/>
+      <text class="rg-normlab" x="${GX+GW}" y="${(normalY-5).toFixed(1)}" text-anchor="end">szokásos</text>
+    </svg></div>
+    <div class="say">
+      <span class="pct">${fmt(ratio*100,0)}%</span>
+      az elmúlt <b>${rainDays} nap</b> csapadéka a szokásoshoz képest —
+      <b>${dry(actual)} mm</b> a jellemző <b>${dry(normal)}</b> helyett,
+      az ${usable.reduce((a,r)=>a+r.gaugeCount,0)} mért állomás átlagában.
+    </div>
+  </div>`;
+}
+
 async function loadRain(){
   try{
     const data = await api('/api/v1/rainfall?days='+rainDays,{cache:'no-store'}).then(r=>r.json());
@@ -4184,6 +4323,7 @@ async function loadRain(){
       return;
     }
     $('rain-headline').textContent = (data.headline && data.headline.text) || '';
+    renderRainFigure(data.regions);
     renderRainRegions(data.regions);
     renderRainGauges(data.gauges);
     // The two caveats that cannot be derived from the numbers: an empty Dunántúl is
@@ -5852,6 +5992,72 @@ function trendCell(t){
  * different soils. So the section leads with that, and every figure in it is a station
  * against itself.
  */
+/**
+ * The soil columns: one per station, filled within its own record range.
+ *
+ * Height is NOT the moisture percent. It is where today sits between this station's own
+ * lowest and highest reading, because that is the only comparison the section makes -
+ * every station against itself. Colour carries the band; hover names the station and
+ * gives the real percent with the range it sits in, so the honest detail is one gesture
+ * away without cluttering the strip.
+ *
+ * The fill rises on reveal, driven by a CSS variable and an `in` class added when the
+ * strip scrolls into view - same fail-open contract as the section reveal: if the
+ * observer never fires, the columns are shown full rather than empty.
+ */
+function renderSoilColumns(d){
+  const box = $('soil-columns');
+  if(!box) return;
+  const stations = (d.stations||[])
+    .filter(s => s.current && s.current.history
+             && Number.isFinite(s.current.history.min) && Number.isFinite(s.current.history.max))
+    .sort((a,b) => (a.current.history.bandOrder ?? 9) - (b.current.history.bandOrder ?? 9)
+                 || a.name.localeCompare(b.name,'hu'));
+  if(!stations.length){ box.innerHTML=''; return; }
+
+  box.innerHTML = `<div class="soilcols" id="soilcols">` + stations.map(s => {
+    const h = s.current.history, pc = s.current.percent;
+    const span = h.max - h.min;
+    // Clamped: a fresh record low or high can sit a hair outside the stored range, and a
+    // column overflowing its tube would misread as an error rather than as "off the scale".
+    // Floored at a thin sliver so a station sitting on its own record low still shows its
+    // band COLOUR rather than an empty tube that reads as missing data. The number below
+    // carries the real value; this is only so the colour is never invisible.
+    const raw = span > 0 ? Math.max(0, Math.min(1, (pc - h.min)/span)) : 0.5;
+    const frac = 0.06 + raw*0.94;
+    const shortName = esc(s.name.split(' ')[0]);
+    return `<div class="soilcol" tabindex="0">
+      <div class="tip"><b>${esc(s.name)}</b><br>most ${fmt(pc,1)}% · eddig ${fmt(h.min,1)}–${fmt(h.max,1)}%<br>${esc(h.bandHu)}</div>
+      <div class="tube"><div class="wet s-${h.band}" style="--h:${(frac*100).toFixed(1)}%"></div></div>
+      <div class="cap" title="${esc(s.name)}">${shortName}</div>
+      <div class="pc">${fmt(pc,0)}%</div>
+    </div>`;
+  }).join('') + `</div>
+    <p class="fineprint" style="margin:-2px 0 14px">Minden oszlop a saját állomása
+      <b>eddigi legkisebb és legnagyobb</b> mért értéke között tölt fel — nem egymáshoz mérve.
+      Egy majdnem üres oszlop a saját rekordja közelében áll.</p>`;
+
+  soilColsDirty();
+}
+
+/* Fill the columns when the strip scrolls into view, once. Same fail-open reveal as the
+   sections: no observer, or reduced motion, means shown-full immediately. */
+let soilColsPlayed = false;
+function soilColsDirty(){
+  const strip = $('soilcols');
+  if(!strip) return;
+  const show = () => strip.classList.add('in');
+  if(soilColsPlayed || !('IntersectionObserver' in window)){ show(); return; }
+  const io = new IntersectionObserver((es) => {
+    for(const e of es){ if(e.isIntersecting){ soilColsPlayed = true; show(); io.disconnect(); } }
+  }, { threshold: 0.2 });
+  io.observe(strip);
+  requestAnimationFrame(() => {
+    const r = strip.getBoundingClientRect();
+    if(r.top < innerHeight && r.bottom > 0){ show(); io.disconnect(); }
+  });
+}
+
 function renderSoil(d){
   const head = $('soil-head'), body = $('soil-body');
   if(!head || !body) return;
@@ -5865,6 +6071,8 @@ function renderSoil(d){
   const stat = (n, unit, lbl, cls='') =>
     `<div class="gw-stat ${cls}"><div class="n">${n}${unit?`<small> ${unit}</small>`:''}</div>`+
     `<div class="lbl">${lbl}</div></div>`;
+
+  renderSoilColumns(d);
 
   head.innerHTML =
     stat(fmt(d.measuredCount,0), `/ ${fmt(d.count,0)}`, 'állomás jelentett az elmúlt órákban')+
