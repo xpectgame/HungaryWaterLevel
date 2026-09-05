@@ -1384,7 +1384,7 @@ async function probeOmszStation(args = []) {
     const url = `https://odp.met.hu/climate/observations_hungary/daily/recent/HABP_1D_${id}_akt.zip`;
     console.log(`\n=== ${id}  ${url}`);
     try {
-      const buf = await fetchBuffer(url, { timeoutMs: 40000 });
+      const buf = (await fetchBuffer(url, { timeoutMs: 40000 })).buffer;
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'omsz-'));
       const zipPath = path.join(tmp, 'f.zip');
       fs.writeFileSync(zipPath, buf);
