@@ -1278,6 +1278,69 @@ async function probeGroundwater() {
  * a normal to compare it against. If the same gauge can be asked for the same weeks in
  * earlier years, the normal is measured rather than hardcoded from a yearbook.
  */
+/**
+ * Is Budapest rainfall reachable from HungaroMet's open data, and in what shape?
+ *
+ * The OVF network this whole section runs on has no station in the capital - confirmed
+ * live: 0 met gauges in directorate 2 and 0 river-post rain gauges anywhere. HungaroMet
+ * (OMSZ) does measure Budapest, but it is a DIFFERENT provider, so before mixing it into
+ * an OVF-sourced page this asks three questions and answers them from the wire rather
+ * than from memory: is the open-data host fetchable at all, does it carry precipitation
+ * for a Budapest station, and is there enough archive to build a "vs usual" normal.
+ *
+ * Purely investigative. It fetches directory listings and prints what it finds; it does
+ * not decide anything. The point is to replace a guess about odp.met.hu with the actual
+ * bytes it serves.
+ */
+async function probeOmsz() {
+  console.log('\n########## OMSZ / HungaroMet open data ##########');
+  const { fetchText } = require('../lib/http');
+
+  const tryGet = async (url) => {
+    try {
+      const { body, contentType } = await fetchText(url, { timeoutMs: 30000, retries: 1 });
+      return { ok: true, body, contentType, len: body.length };
+    } catch (err) {
+      return { ok: false, error: (err && err.message ? err.message : String(err)).split('\n')[0] };
+    }
+  };
+
+  // Candidate roots, most-likely first. The open portal is odp.met.hu; the paths below
+  // are the ones HungaroMet has historically published station observations under.
+  const roots = [
+    'https://odp.met.hu/',
+    'https://odp.met.hu/climate/observations_hungary/daily/historical/',
+    'https://odp.met.hu/climate/observations_hungary/daily/recent/',
+    'https://odp.met.hu/climate/observations_hungary/hourly/recent/',
+    'https://odp.met.hu/weather/weather_reports/synoptic/hungary/csv/',
+  ];
+
+  const report = { generated: new Date().toISOString(), roots: [] };
+
+  for (const url of roots) {
+    const r = await tryGet(url);
+    console.log(`\n=== ${url}`);
+    if (!r.ok) { console.log(`  FAILED: ${r.error}`); report.roots.push({ url, ok: false, error: r.error }); continue; }
+    console.log(`  ${r.contentType}  ${r.len} bytes`);
+    // An Apache-style autoindex is links; a CSV is commas. Pull hrefs either way.
+    const hrefs = [...r.body.matchAll(/href="([^"?][^"]*)"/g)].map((m) => m[1])
+      .filter((h) => !h.startsWith('/') && h !== '../');
+    const budapestish = hrefs.filter((h) => /budapest|bp_|^12843|^12839|lorinc|pestszent|^128\d\d/i.test(h));
+    console.log(`  ${hrefs.length} links; sample: ${hrefs.slice(0, 12).join('  ')}`);
+    if (budapestish.length) console.log(`  BUDAPEST-ish: ${budapestish.slice(0, 12).join('  ')}`);
+    // Rain/precip signal in a CSV header, if this is a data file.
+    const head = r.body.slice(0, 400).replace(/\s+/g, ' ');
+    if (/;r;|,r,|csapad|precip|"r"/i.test(head)) console.log(`  looks like it carries precipitation: ${head.slice(0, 160)}`);
+    report.roots.push({ url, ok: true, contentType: r.contentType, len: r.len,
+      linkCount: hrefs.length, links: hrefs.slice(0, 60), budapest: budapestish.slice(0, 20),
+      head: head.slice(0, 200) });
+  }
+
+  writeDocument('omsz', report);
+  console.log('\nWrote the listing to the omsz document. Next step depends on what a Budapest');
+  console.log('station file actually contains - station id, columns, update cadence.');
+}
+
 async function probeRainScan() {
   console.log('\n########## rain gauge scan ##########');
 
@@ -4438,6 +4501,11 @@ async function main() {
 
   if (args.includes('--rain-scan')) {
     await probeRainScan();
+    return;
+  }
+
+  if (args.includes('--omsz')) {
+    await probeOmsz();
     return;
   }
 
