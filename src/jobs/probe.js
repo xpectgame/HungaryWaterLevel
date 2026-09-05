@@ -1341,6 +1341,77 @@ async function probeOmsz() {
   console.log('station file actually contains - station id, columns, update cadence.');
 }
 
+async function probeOmszStation(args = []) {
+  console.log('\n########## OMSZ station: metadata + one file end to end ##########');
+  const { fetchText, fetchBuffer } = require('../lib/http');
+  const { execFileSync } = require('node:child_process');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+
+  const arg = (n) => { const h = args.find((a) => a.startsWith(`--${n}=`)); return h ? h.slice(n.length + 3) : null; };
+  // Budapest candidates seen in the listing; overridable.
+  const stations = (arg('stations') || '13704,13711,15310,15405').split(',').map((x) => x.trim());
+
+  // 1) Station metadata, so a number becomes a place. ODP publishes a meta CSV; try the
+  // known names and print the Budapest rows.
+  const metaUrls = [
+    'https://odp.met.hu/climate/observations_hungary/daily/station_meta_auto.csv',
+    'https://odp.met.hu/climate/observations_hungary/hourly/station_meta_auto.csv',
+    'https://odp.met.hu/climate/observations_hungary/daily/station_meta.csv',
+  ];
+  let meta = null;
+  for (const u of metaUrls) {
+    try { const { body } = await fetchText(u, { timeoutMs: 30000 }); meta = { url: u, body }; break; }
+    catch (e) { console.log(`  meta ${u}: ${String(e.message).split('\n')[0]}`); }
+  }
+  const metaByStation = {};
+  if (meta) {
+    console.log(`\nstation meta: ${meta.url}`);
+    const lines = meta.body.split(/\r?\n/).filter(Boolean);
+    console.log(`  header: ${lines[0]}`);
+    for (const line of lines) {
+      const cells = line.split(';').map((c) => c.trim());
+      const id = cells[0];
+      if (stations.includes(id)) { metaByStation[id] = cells; console.log(`  ${line}`); }
+      if (/budapest/i.test(line)) console.log(`  BP? ${line}`);
+    }
+  }
+
+  // 2) One recent daily file, downloaded, unzipped, parsed - proving the whole path.
+  const baked = { generated: new Date().toISOString(), source: 'odp.met.hu OMSZ open data', stations: {} };
+  for (const id of stations) {
+    const url = `https://odp.met.hu/climate/observations_hungary/daily/recent/HABP_1D_${id}_akt.zip`;
+    console.log(`\n=== ${id}  ${url}`);
+    try {
+      const buf = await fetchBuffer(url, { timeoutMs: 40000 });
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'omsz-'));
+      const zipPath = path.join(tmp, 'f.zip');
+      fs.writeFileSync(zipPath, buf);
+      const csv = execFileSync('unzip', ['-p', zipPath], { maxBuffer: 64 * 1024 * 1024 }).toString('latin1');
+      const lines = csv.split(/\r?\n/).filter((l) => l.length);
+      // Header is the first non-comment line with column names; rows are ';'-separated.
+      const headerIdx = lines.findIndex((l) => !l.startsWith('#') && /time/i.test(l));
+      const header = lines[headerIdx].split(';').map((c) => c.trim().replace(/^#\s*/, ''));
+      const rIdx = header.findIndex((c) => /^r$/i.test(c));
+      const tIdx = header.findIndex((c) => /^time$/i.test(c));
+      console.log(`  columns: ${header.join(' | ')}`);
+      console.log(`  precipitation column 'r' at index ${rIdx}, Time at ${tIdx}`);
+      const rows = lines.slice(headerIdx + 1).map((l) => l.split(';').map((c) => c.trim()))
+        .filter((c) => c[tIdx] && /^\d{8}$/.test(c[tIdx]));
+      const recent = rows.slice(-10).map((c) => ({ day: c[tIdx], r: c[rIdx] }));
+      console.log(`  ${rows.length} daily rows; last 10:`);
+      for (const d of recent) console.log(`    ${d.day}  r=${d.r} mm`);
+      baked.stations[id] = { meta: metaByStation[id] || null, columns: header, lastRows: recent, rowCount: rows.length };
+      fs.rmSync(tmp, { recursive: true, force: true });
+    } catch (e) {
+      console.log(`  FAILED: ${String(e.message).split('\n')[0]}`);
+      baked.stations[id] = { error: String(e.message).split('\n')[0] };
+    }
+  }
+  writeDocument('omsz-station', baked);
+}
+
 async function probeRainScan() {
   console.log('\n########## rain gauge scan ##########');
 
@@ -4506,6 +4577,11 @@ async function main() {
 
   if (args.includes('--omsz')) {
     await probeOmsz();
+    return;
+  }
+
+  if (args.includes('--omsz-station')) {
+    await probeOmszStation(args);
     return;
   }
 
