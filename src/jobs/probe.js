@@ -1381,14 +1381,39 @@ async function probeRainScan() {
     }
   }
   console.log(`${surfaceLive.length} river gauges also report rainfall.`);
-  // Only the Transdanubian ones: that is the question this section exists to answer.
-  for (const row of surfaceLive.filter((r) => r.station.Lon < 19).sort((a, b) => a.station.Lon - b.station.Lon)) {
+
+  // The blind spot is the Budapest / Közép-Duna-völgyi directorate (Vizig 2), which has
+  // no met station in the catalogue at all. A river gauge on the same post CAN carry a
+  // rain gauge, so list every reporting surface gauge in and around the capital - Vizig 2
+  // outright, plus anything within a rough box around Budapest regardless of directorate.
+  const nearBudapest = (st) => Number(st.Vizig) === 2
+    || (st.Lat > 47.0 && st.Lat < 48.2 && st.Lon > 18.5 && st.Lon < 19.8);
+  const candidates = surfaceLive.filter((r) => nearBudapest(r.station))
+    .sort((a, b) => Math.hypot(a.station.Lat - 47.5, a.station.Lon - 19.05)
+                  - Math.hypot(b.station.Lat - 47.5, b.station.Lon - 19.05));
+  console.log(`\n--- surface gauges reporting rain in/around Budapest: ${candidates.length} ---`);
+  for (const row of candidates) {
     console.log(
       `  ${String(row.station.Tsz).padEnd(8)} ${String(row.station.Nev).slice(0, 26).padEnd(26)} ` +
         `vizig ${String(row.station.Vizig).padStart(2)}  ${row.station.Lat.toFixed(3)},${row.station.Lon.toFixed(3)}  ` +
         `${String(row.samples).padStart(4)} samples  35d sum ${row.sum.toFixed(1)} mm  [${row.station.MdrNev ?? ''}]`,
     );
   }
+
+  // Emit the whole thing as a document so a session that cannot reach the service can
+  // still read exactly what answered, rather than parsing a large job log by eye.
+  writeDocument('rain-scan', {
+    generated: new Date().toISOString(),
+    metGauges: live.map((r) => ({
+      tsz: r.station.Tsz, name: r.station.Nev, vizig: r.station.Vizig,
+      lat: r.station.Lat, lon: r.station.Lon, samples: r.samples, sum35d: round2(r.sum), last: r.last,
+    })),
+    surfaceRainGauges: surfaceLive.map((r) => ({
+      tsz: r.station.Tsz, name: r.station.Nev, vizig: r.station.Vizig,
+      lat: r.station.Lat, lon: r.station.Lon, samples: r.samples, sum35d: round2(r.sum),
+      nearBudapest: nearBudapest(r.station),
+    })),
+  });
 
   // How far back does the archive go? Without this there is no normal to compare to.
   const probeStation = live.sort((a, b) => b.samples - a.samples)[0];
