@@ -1342,71 +1342,73 @@ async function probeOmsz() {
 }
 
 async function probeOmszStation(args = []) {
-  console.log('\n########## OMSZ station: metadata + one file end to end ##########');
+  console.log('\n########## OMSZ Budapest stations: meta + files end to end ##########');
   const { fetchText, fetchBuffer } = require('../lib/http');
   const { execFileSync } = require('node:child_process');
   const fs = require('node:fs');
   const os = require('node:os');
   const path = require('node:path');
-
   const arg = (n) => { const h = args.find((a) => a.startsWith(`--${n}=`)); return h ? h.slice(n.length + 3) : null; };
-  // Budapest candidates seen in the listing; overridable.
-  const stations = (arg('stations') || '13704,13711,15310,15405').split(',').map((x) => x.trim());
 
-  // 1) Station metadata, so a number becomes a place. ODP publishes a meta CSV; try the
-  // known names and print the Budapest rows.
-  const metaUrls = [
-    'https://odp.met.hu/climate/observations_hungary/daily/station_meta_auto.csv',
-    'https://odp.met.hu/climate/observations_hungary/hourly/station_meta_auto.csv',
-    'https://odp.met.hu/climate/observations_hungary/daily/station_meta.csv',
-  ];
-  let meta = null;
-  for (const u of metaUrls) {
-    try { const { body } = await fetchText(u, { timeoutMs: 30000 }); meta = { url: u, body }; break; }
-    catch (e) { console.log(`  meta ${u}: ${String(e.message).split('\n')[0]}`); }
-  }
-  const metaByStation = {};
-  if (meta) {
-    console.log(`\nstation meta: ${meta.url}`);
-    const lines = meta.body.split(/\r?\n/).filter(Boolean);
-    console.log(`  header: ${lines[0]}`);
-    for (const line of lines) {
-      const cells = line.split(';').map((c) => c.trim());
-      const id = cells[0];
-      if (stations.includes(id)) { metaByStation[id] = cells; console.log(`  ${line}`); }
-      if (/budapest/i.test(line)) console.log(`  BP? ${line}`);
-    }
+  // 1) The station meta, so a number becomes a named place with coordinates.
+  const metaUrl = 'https://odp.met.hu/climate/observations_hungary/daily/station_meta_auto.csv';
+  const { body: metaCsv } = await fetchText(metaUrl, { timeoutMs: 30000 });
+  const metaLines = metaCsv.split(/\r?\n/).filter(Boolean);
+  console.log(`meta header: ${metaLines[0]}`);
+  // Columns (seen): StationNumber; StartDate; EndDate; Latitude; Longitude; Elevation; StationName; RegionName; ...
+  const col = metaLines[0].split(';').map((c) => c.trim().replace(/^#\s*/, ''));
+  const iNum = col.findIndex((c) => /stationnumber/i.test(c));
+  const iLat = col.findIndex((c) => /^lat/i.test(c));
+  const iLon = col.findIndex((c) => /^lon/i.test(c));
+  const iName = col.findIndex((c) => /stationname/i.test(c));
+  const iEnd = col.findIndex((c) => /enddate/i.test(c));
+  const iStart = col.findIndex((c) => /startdate/i.test(c));
+
+  const wanted = (arg('name') || 'budapest').toLowerCase();
+  const rows = metaLines.slice(1).map((l) => l.split(';').map((c) => c.trim()));
+  // A station appears once per operating span; keep the row that is still open (end in
+  // the future / this year), so we get the currently-reporting instrument.
+  const hits = rows.filter((c) => (c[iName] || '').toLowerCase().includes(wanted));
+  console.log(`\n${hits.length} rows named "${wanted}":`);
+  const stations = {};
+  for (const c of hits) {
+    const num = c[iNum];
+    const rec = { num, name: c[iName], lat: Number(c[iLat]), lon: Number(c[iLon]),
+      start: c[iStart], end: c[iEnd] };
+    console.log(`  ${num}  ${rec.name.padEnd(28)} ${rec.lat},${rec.lon}  ${rec.start}->${rec.end}`);
+    // Keep the most-recently-ending span per station number.
+    if (!stations[num] || c[iEnd] > stations[num].end) stations[num] = rec;
   }
 
-  // 2) One recent daily file, downloaded, unzipped, parsed - proving the whole path.
-  const baked = { generated: new Date().toISOString(), source: 'odp.met.hu OMSZ open data', stations: {} };
-  for (const id of stations) {
-    const url = `https://odp.met.hu/climate/observations_hungary/daily/recent/HABP_1D_${id}_akt.zip`;
-    console.log(`\n=== ${id}  ${url}`);
+  // 2) Download each Budapest station's recent daily file, find the precipitation column
+  //    (rau = napi csapadékösszeg), and read the last ten days.
+  const baked = { generated: new Date().toISOString(), source: 'odp.met.hu OMSZ open data',
+    licence: 'HungaroMet ODP általános felhasználási feltételek', stations: {} };
+  for (const num of Object.keys(stations)) {
+    const url = `https://odp.met.hu/climate/observations_hungary/daily/recent/HABP_1D_${num}_akt.zip`;
+    console.log(`\n=== ${num} ${stations[num].name}  ${url}`);
     try {
-      const buf = (await fetchBuffer(url, { timeoutMs: 40000 })).buffer;
+      const { buffer } = await fetchBuffer(url, { timeoutMs: 40000 });
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'omsz-'));
-      const zipPath = path.join(tmp, 'f.zip');
-      fs.writeFileSync(zipPath, buf);
-      const csv = execFileSync('unzip', ['-p', zipPath], { maxBuffer: 64 * 1024 * 1024 }).toString('latin1');
+      fs.writeFileSync(path.join(tmp, 'f.zip'), buffer);
+      const csv = execFileSync('unzip', ['-p', path.join(tmp, 'f.zip')], { maxBuffer: 64 * 1024 * 1024 }).toString('latin1');
       const lines = csv.split(/\r?\n/).filter((l) => l.length);
-      // Header is the first non-comment line with column names; rows are ';'-separated.
-      const headerIdx = lines.findIndex((l) => !l.startsWith('#') && /time/i.test(l));
-      const header = lines[headerIdx].split(';').map((c) => c.trim().replace(/^#\s*/, ''));
-      const rIdx = header.findIndex((c) => /^r$/i.test(c));
+      const hIdx = lines.findIndex((l) => /(^|;)\s*Time\s*;/i.test(l) || /StationNumber/i.test(l));
+      const header = lines[hIdx].split(';').map((c) => c.trim().replace(/^#\s*/, ''));
+      // Precipitation: 'r' on some products, 'rau' on the automatic daily. Take whichever exists.
+      const rIdx = header.findIndex((c) => /^rau$/i.test(c));
+      const rFall = rIdx >= 0 ? rIdx : header.findIndex((c) => /^r$/i.test(c));
       const tIdx = header.findIndex((c) => /^time$/i.test(c));
-      console.log(`  columns: ${header.join(' | ')}`);
-      console.log(`  precipitation column 'r' at index ${rIdx}, Time at ${tIdx}`);
-      const rows = lines.slice(headerIdx + 1).map((l) => l.split(';').map((c) => c.trim()))
-        .filter((c) => c[tIdx] && /^\d{8}$/.test(c[tIdx]));
-      const recent = rows.slice(-10).map((c) => ({ day: c[tIdx], r: c[rIdx] }));
-      console.log(`  ${rows.length} daily rows; last 10:`);
-      for (const d of recent) console.log(`    ${d.day}  r=${d.r} mm`);
-      baked.stations[id] = { meta: metaByStation[id] || null, columns: header, lastRows: recent, rowCount: rows.length };
+      const drows = lines.slice(hIdx + 1).map((l) => l.split(';').map((c) => c.trim()))
+        .filter((c) => /^\d{8}$/.test(c[tIdx] || ''));
+      const last = drows.slice(-10).map((c) => ({ day: c[tIdx], mm: c[rFall] }));
+      console.log(`  precip column '${header[rFall]}' at ${rFall}; ${drows.length} daily rows`);
+      for (const d of last) console.log(`    ${d.day}  ${d.mm} mm`);
+      baked.stations[num] = { ...stations[num], precipCol: header[rFall], rowCount: drows.length, last };
       fs.rmSync(tmp, { recursive: true, force: true });
     } catch (e) {
       console.log(`  FAILED: ${String(e.message).split('\n')[0]}`);
-      baked.stations[id] = { error: String(e.message).split('\n')[0] };
+      baked.stations[num] = { ...stations[num], error: String(e.message).split('\n')[0] };
     }
   }
   writeDocument('omsz-station', baked);
