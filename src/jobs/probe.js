@@ -1419,6 +1419,99 @@ async function probeOmszStation(args = []) {
   writeDocument('omsz-station', baked);
 }
 
+async function probeOmszBake(args = []) {
+  console.log('\n########## OMSZ Budapest: bake rain-budapest.json ##########');
+  const { fetchText, fetchBuffer } = require('../lib/http');
+  const { execFileSync } = require('node:child_process');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const arg = (n) => { const h = args.find((a) => a.startsWith(`--${n}=`)); return h ? h.slice(n.length + 3) : null; };
+
+  const station = arg('station') || '44121';   // Budapest belterület: central, record from 1997
+  const name = arg('name') || 'Budapest belterület';
+
+  // Download a daily file (recent or historical) and return rows of {day:'YYYY-MM-DD', mm}.
+  const readDaily = async (url) => {
+    const { buffer } = await fetchBuffer(url, { timeoutMs: 60000 });
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'omsz-'));
+    fs.writeFileSync(path.join(tmp, 'f.zip'), buffer);
+    const csv = execFileSync('unzip', ['-p', path.join(tmp, 'f.zip')], { maxBuffer: 128 * 1024 * 1024 }).toString('latin1');
+    fs.rmSync(tmp, { recursive: true, force: true });
+    const lines = csv.split(/\r?\n/).filter((l) => l.length);
+    const hIdx = lines.findIndex((l) => /;\s*Time\s*;/i.test(l) && /;\s*(rau|r)\s*;/i.test(l));
+    if (hIdx < 0) return [];
+    const header = lines[hIdx].split(';').map((c) => c.trim().replace(/^#\s*/, ''));
+    const rIdx = header.findIndex((c) => /^rau$/i.test(c)) >= 0
+      ? header.findIndex((c) => /^rau$/i.test(c)) : header.findIndex((c) => /^r$/i.test(c));
+    const tIdx = header.findIndex((c) => /^time$/i.test(c));
+    const out = [];
+    for (const l of lines.slice(hIdx + 1)) {
+      const c = l.split(';').map((x) => x.trim());
+      if (!/^\d{8}$/.test(c[tIdx] || '')) continue;
+      const mm = Number(c[rIdx]);
+      // -999 is the missing-value sentinel; drop it rather than let it poison a sum.
+      if (!Number.isFinite(mm) || mm <= -100) continue;
+      out.push({ day: `${c[tIdx].slice(0, 4)}-${c[tIdx].slice(4, 6)}-${c[tIdx].slice(6, 8)}`, mm });
+    }
+    return out;
+  };
+
+  // The historical file name carries a date span, so read the directory and find the one
+  // for this station rather than guessing the dates.
+  const histList = (await fetchText('https://odp.met.hu/climate/observations_hungary/daily/historical/', { timeoutMs: 30000 })).body;
+  const histName = [...histList.matchAll(/href="(HABP_1D_[^"]+_hist\.zip)"/g)].map((m) => m[1])
+    .find((f) => f.includes(`_${station}_`));
+  console.log(`historical file: ${histName || '(none found)'}`);
+
+  const recent = await readDaily(`https://odp.met.hu/climate/observations_hungary/daily/recent/HABP_1D_${station}_akt.zip`);
+  const historical = histName
+    ? await readDaily(`https://odp.met.hu/climate/observations_hungary/daily/historical/${histName}`)
+    : [];
+  console.log(`recent rows: ${recent.length}, historical rows: ${historical.length}`);
+
+  // Merge, dedup by day (recent wins), sort.
+  const byDay = new Map();
+  for (const r of historical) byDay.set(r.day, r.mm);
+  for (const r of recent) byDay.set(r.day, r.mm);
+  const all = [...byDay.entries()].map(([day, mm]) => ({ day, mm })).sort((a, b) => a.day.localeCompare(b.day));
+
+  // Monthly normal: sum each (year, month) that has most of its days, then average each
+  // calendar month across years. MIN_YEARS = 3, same gate as the OVF normals.
+  const monthYear = new Map();  // 'YYYY-MM' -> {sum, days}
+  for (const r of all) {
+    const key = r.day.slice(0, 7);
+    const e = monthYear.get(key) || { sum: 0, days: 0 };
+    e.sum += r.mm; e.days += 1; monthYear.set(key, e);
+  }
+  const perMonth = Array.from({ length: 12 }, () => []);
+  for (const [key, e] of monthYear) {
+    if (e.days < 25) continue;   // a partial month is not that month's total
+    perMonth[Number(key.slice(5, 7)) - 1].push(e.sum);
+  }
+  const mm = perMonth.map((vals) => vals.length >= 3
+    ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null);
+  const years = Math.min(...perMonth.map((v) => v.length).filter((n) => n > 0));
+
+  const doc = {
+    source: 'odp.met.hu — HungaroMet (OMSZ) nyílt adatbázis',
+    licence: 'HungaroMet ODP általános felhasználási feltételek (forrásmegjelöléssel)',
+    generated: new Date().toISOString(),
+    station: { id: station, name, lat: Number(arg('lat')) || 47.5111, lon: Number(arg('lon')) || 19.0281 },
+    normal: { mm, years, months: 12 },
+    // Keep ~130 days, enough for the 90-day window with headroom; the archive is only
+    // needed for the normal, which is already reduced to twelve numbers above.
+    daily: all.slice(-130),
+    firstDay: all.length ? all[0].day : null,
+    lastDay: all.length ? all[all.length - 1].day : null,
+    dayCount: all.length,
+  };
+  console.log(`normal mm: [${mm.join(', ')}]  years ${years}`);
+  console.log(`daily kept: ${doc.daily.length} (last ${doc.lastDay})`);
+  writeDocument('rain-budapest', doc);
+  emitDocument('rain-budapest', doc, 'src/config/rain-budapest.json');
+}
+
 async function probeRainScan() {
   console.log('\n########## rain gauge scan ##########');
 
@@ -4589,6 +4682,11 @@ async function main() {
 
   if (args.includes('--omsz-station')) {
     await probeOmszStation(args);
+    return;
+  }
+
+  if (args.includes('--omsz-bake')) {
+    await probeOmszBake(args);
     return;
   }
 
