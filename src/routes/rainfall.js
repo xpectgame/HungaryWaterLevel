@@ -1,11 +1,36 @@
 'use strict';
 
 const express = require('express');
-const { buildRainfall } = require('../domain/rainfall');
+const { buildRainfall, bandFor } = require('../domain/rainfall');
+const { budapestRainfall } = require('../domain/rain-budapest');
 const { getRainGauge } = require('../config/rain-gauges');
 const { TtlCache } = require('../lib/cache');
 const { asyncRoute } = require('../lib/async-route');
 const { withMeta } = require('./balance');
+
+/**
+ * Budapest, from the second provider, attached to the response.
+ *
+ * This is the one figure on the page that does not come from the OVF network, because
+ * that network has no gauge in the capital at all - so it is computed here, from baked
+ * HungaroMet (OMSZ) open data, and carries `source: 'OMSZ'` so nothing downstream can
+ * mistake it for the rest of the section. It is attached outside the OVF cache and even
+ * onto the 503 body: a second source has no reason to go dark when the first one does.
+ *
+ * A `band` is added with the same thresholds the OVF gauges use, so the one Budapest dot
+ * on the map is coloured on the same scale as the forty around it. Wrapped so a missing
+ * or malformed bake can only make Budapest absent, never take the rain endpoint down.
+ */
+function budapestFor(days) {
+  try {
+    const bp = budapestRainfall(days);
+    if (!bp) return null;
+    const band = bp.ratioToNormal != null ? (bandFor(bp.ratioToNormal) || {}).id || null : null;
+    return { ...bp, band };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Rainfall gets its own cache, held far longer than the shared one.
@@ -63,7 +88,7 @@ module.exports = function rainfallRoutes(ctx) {
     if (error) return res.status(400).json({ error });
 
     try {
-      return res.json(await withMeta(await load(days), ctx));
+      return res.json(await withMeta({ ...(await load(days)), budapest: budapestFor(days) }, ctx));
     } catch (err) {
       // The feature is one upstream call, so a failure is total rather than partial. It
       // still has to answer with a document the map can render as "no data" - a rain
@@ -77,6 +102,7 @@ module.exports = function rainfallRoutes(ctx) {
             reportingCount: 0,
             regions: [],
             missing: [],
+            budapest: budapestFor(days),
             unavailable: true,
             error: `csapadékadat nem érhető el: ${(err && err.message) || err}`,
           },

@@ -210,6 +210,30 @@ test('a station reading carries its stage in context', async () => {
   });
 });
 
+test('GET /api/v1/rainfall carries the Budapest figure from the second source', async () => {
+  await withServer(async ({ get }) => {
+    // The capital has no OVF rain gauge, so the endpoint attaches a Budapest figure from
+    // HungaroMet (OMSZ) baked data. This is the one place that wiring is checked end to
+    // end: the route must attach it, flag its source, and colour it on the OVF band scale.
+    const { status, body } = await get('/api/v1/rainfall?days=30');
+    assert.strictEqual(status, 200);
+    const bp = body.budapest;
+    assert.ok(bp, 'the response carries a budapest figure');
+    assert.strictEqual(bp.source, 'OMSZ');
+    assert.match(bp.station.name, /budapest/i);
+    assert.ok(bp.station.lat > 47.3 && bp.station.lat < 47.7);
+    assert.ok(Number.isFinite(bp.actualMm) && bp.actualMm >= 0);
+    // The band is added by the route (not the domain), on the same thresholds the OVF
+    // gauges use, so the one Budapest dot is coloured on the same scale as the rest.
+    if (bp.ratioToNormal != null) {
+      assert.ok(
+        ['extreme-deficit', 'severe-deficit', 'deficit', 'near-normal', 'surplus', 'extreme-surplus'].includes(bp.band),
+        `unexpected band ${bp.band}`,
+      );
+    }
+  });
+});
+
 test('a gauge outside the reference table still reports its level', async () => {
   await withServer(async ({ get }) => {
     // Tiszabecs has no entry in the catalogue the thresholds come from. The fixture

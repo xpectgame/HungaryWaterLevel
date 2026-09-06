@@ -3,9 +3,10 @@
 Magyarország felszíni vízmérlege és az erőművek hűtővíz-használata, közel valós időben,
 egyetlen REST API-ból.
 
-Két nyílt adatforrásból származtatva: **OVF** vízrajzi adatok (data.vizugy.hu) és
-**MAVIR** villamosenergia-rendszer adatok. Ez egy független, származtatott termék —
-egyik szervezet sem hitelesítette.
+Nyílt adatforrásokból származtatva: **OVF** vízrajzi adatok (data.vizugy.hu) és
+**MAVIR** villamosenergia-rendszer adatok, valamint — kizárólag a főváros csapadékához,
+ahol az OVF hálózatának nincs mérője — **HungaroMet (OMSZ)** nyílt adat (odp.met.hu). Ez
+egy független, származtatott termék — egyik szervezet sem hitelesítette.
 
 ```bash
 npm install
@@ -32,7 +33,7 @@ ki valósként. Az éles bekötéshez lásd: [Éles üzem előtt](#éles-üzem-e
 | `GET /api/v1/powerplants/:id` | Egy erőmű + hőterhelés a befogadó folyóra |
 | `GET /api/v1/water-use` | Erőművi összesítés, vízkivétel szerint rendezve |
 | `GET /api/v1/lakes` | Balaton, Velencei-tó, Fertő — vízszint a saját rekordtartományában |
-| `GET /api/v1/rainfall` | Csapadék 47 állomáson, mindegyik a **saját sokéves átlagához** mérve |
+| `GET /api/v1/rainfall` | Csapadék 47 állomáson, mindegyik a **saját sokéves átlagához** mérve — plusz **Budapest** külön forrásból (OMSZ), a `budapest` mezőben |
 | `GET /api/v1/rainfall/:id` | Egy csapadékmérő napi bontásban |
 | `GET /api/v1/talajnedvesseg` | **23 talajnedvesség-állomás** óránként — mindegyik a saját eddigi méréseihez mérve |
 | `GET /api/v1/vizhiany` | **Elrendelt vízhiány-fokozat** 85 körzetre — a hatóság saját kihirdetése |
@@ -600,7 +601,9 @@ már ott van. Csak valódi async adatbázison bukik meg.
 
 Kód: MIT.
 
-Az adatok az **OVF** (vízrajz) és a **MAVIR** (villamosenergia-rendszer) nyílt adatai.
+Az adatok az **OVF** (vízrajz) és a **MAVIR** (villamosenergia-rendszer) nyílt adatai,
+Budapest csapadéka pedig a **HungaroMet (OMSZ)** nyílt adatbázisából (odp.met.hu).
 Az OVF adatai ingyenesen felhasználhatók az OVF vagy az illetékes vízügyi igazgatóság
-megjelölésével. Ezt a hivatkozást a `/api/v1/meta/sources` végpont is visszaadja, és a
-frontend is kiírja.
+megjelölésével; az OMSZ nyílt adata a HungaroMet ODP általános felhasználási feltételei
+szerint, forrásmegjelöléssel használható. Ezeket a hivatkozásokat a `/api/v1/meta/sources`
+végpont is visszaadja, és a frontend is kiírja.

@@ -183,7 +183,9 @@ const COVERAGE = Object.freeze({
     'A csapadékmérő hálózat nem országos. A Közép-Duna-völgyi és a Közép-dunántúli ' +
     'igazgatóság területén nincs közzétett meteorológiai állomás, a Dél-dunántúlin ' +
     'pedig egyik sem jelentett. A Dunántúlon tehát a térkép nem azt mutatja, hogy ' +
-    'nem esett - hanem azt, hogy nem mérik itt.',
+    'nem esett - hanem azt, hogy nem mérik itt. Budapestet egyetlen kivételként a ' +
+    'HungaroMet (OMSZ) nyílt adata pótolja, külön jelölve; a Dunántúl többi része ' +
+    'továbbra sincs lefedve.',
 });
 
 const BY_ID = new Map(RAIN_GAUGES.map((gauge) => [gauge.id, gauge]));

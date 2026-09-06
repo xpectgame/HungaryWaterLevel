@@ -1290,6 +1290,21 @@ section.card{margin-bottom:clamp(18px,2.4vw,30px)}
   border-left:3px solid var(--flow-dim);padding-left:12px;margin-left:-15px}
 .ev.note .tag{background:var(--flow);color:#fff}
 .ev.note a{color:var(--flow)}
+/* Budapest, from the second provider (OMSZ). A single labelled card, set apart with a
+   left rule in its own deficit colour, because it is the one number in this section that
+   does not come from the OVF network and must never be read as if it did. */
+.bpcard{display:flex;gap:12px;align-items:flex-start;margin:2px 0 18px;padding:11px 13px;
+  border:1px solid var(--line);border-left:3px solid var(--bp-accent,#8a94a0);border-radius:9px;
+  background:var(--sunk)}
+.bpcard .bp-tri{flex:none;width:0;height:0;margin-top:4px;
+  border-left:7px solid transparent;border-right:7px solid transparent;
+  border-top:11px solid var(--bp-accent,#8a94a0)}
+.bpcard .bp-title{font-weight:600;color:var(--ink);font-size:14px}
+.bpcard .bp-title .bp-src{color:var(--ink-faint);font-weight:400;font-size:12px}
+.bpcard .bp-fig{margin-top:2px;font-size:14px;color:var(--ink-soft)}
+.bpcard .bp-fig b{color:var(--ink);font-variant-numeric:tabular-nums}
+.bpcard .bp-pct{color:var(--bp-accent,#8a94a0);font-weight:600}
+.bpcard .bp-note{margin-top:5px;font-size:12px;color:var(--ink-faint);line-height:1.5}
 .regions{display:grid;gap:7px;margin-top:4px}
 .reg{display:grid;grid-template-columns:minmax(120px,1fr) 2fr minmax(96px,auto);gap:12px;align-items:center;font-size:13px}
 .reg .nm{color:var(--ink-soft)}
@@ -2118,6 +2133,7 @@ footer a{color:var(--ink-soft)}
   </div>
   <p class="lead" id="rain-headline">&nbsp;</p>
   <div id="rain-fig"></div>
+  <div id="rain-budapest"></div>
   <div id="rain-regions" class="regions"></div>
   <div id="rain-gauges" class="rainlist"></div>
   <p style="margin:12px 0 0"><button type="button" class="linkish" id="rain-more"></button></p>
@@ -2456,7 +2472,8 @@ footer a{color:var(--ink-soft)}
       <strong>Ez a skála a folyókról szól, nem aszályindex.</strong> Egy aszálymutató a
       talajnedvességet, a csapadékhiányt és az évszakot is nézi. A csapadékhiány és a
       talajvízszint azóta itt is méréssel szerepel — lásd a <a href="#s-csapadek">csapadék</a>
-      és az <a href="#s-aszaly">aszály</a> szekciót, mindkettő az OVF hálózatából —, az évszakot
+      és az <a href="#s-aszaly">aszály</a> szekciót, jórészt az OVF hálózatából (Budapest csapadéka
+      külön, az OMSZ nyílt adatából) —, az évszakot
       pedig a tízéves, azonos havi összehasonlítás kezeli. Amit továbbra sem állítunk: hogy ez
       a NAK/OVF hivatalos aszályindexe (HDI) lenne. Az más módszerrel készül, és nincs
       adatvégpontja, amit be tudnánk olvasni.</p>
@@ -2565,7 +2582,10 @@ footer a{color:var(--ink-soft)}
   Adatforrás: <a href="https://data.vizugy.hu" rel="noopener">OVF / data.vizugy.hu</a> vízrajzi adatok,
   negyedóránként frissítve. A szennyvíztisztító telepek és az ország vízfolyásai a
   <a href="https://geoportal.vizugy.hu" rel="noopener">vízügyi geoportálról</a>, a
-  villamosenergia-termelés az ENTSO-E átláthatósági platformjáról. Az energiaipari hűtővíz becslés,
+  villamosenergia-termelés az ENTSO-E átláthatósági platformjáról. Budapest csapadéka —
+  amelyre az OVF hálózatának nincs mérője — a
+  <a href="https://odp.met.hu" rel="noopener">HungaroMet (OMSZ) nyílt adatbázisából</a>
+  származik, forrásmegjelöléssel. Az energiaipari hűtővíz becslés,
   a modell és a bizonytalanság a <a href="/api/v1/snapshot">/api/v1/snapshot</a> válaszban végig követhető.
   <br><br>
   A vízhozam nem közvetlenül mért érték: vízállásból származik egy vízhozamgörbén keresztül,
@@ -4174,6 +4194,7 @@ function renderRegions(regions){
 let rainDays = 30;
 let showRain = true;
 let rainGauges = [];
+let rainBudapest = null;
 
 /** Relative day count, because "8 napja" beats a date nobody subtracts from today. */
 function agoDays(n){
@@ -4314,12 +4335,69 @@ function renderRainFigure(regions){
   </div>`;
 }
 
+/* The deficit colours the drought map already uses, keyed by band, so the Budapest card
+   and its dot on the two maps wear the same colour for the same shortfall. Mirrors the
+   .mark.b-* fills in the stylesheet. */
+const RAIN_BAND_COLOR = {
+  'extreme-deficit':'#a3341f','severe-deficit':'#cf6a2e','deficit':'#dfa53c',
+  'near-normal':'#5aa86e','surplus':'#2f7fb5','extreme-surplus':'#2b4f9e'
+};
+
+/**
+ * Budapest, from OMSZ, as one labelled card.
+ *
+ * The capital has no OVF rain gauge, so this is a deliberate second source and says so in
+ * the card itself. Nothing here is a live reading: OMSZ daily observations lag about a
+ * day, so the card prints the as-of date rather than pretending to be current.
+ */
+function renderRainBudapest(bp){
+  const box = $('rain-budapest');
+  if(!box) return;
+  if(!bp || bp.actualMm==null){ box.innerHTML=''; box.className=''; box.style.removeProperty('--bp-accent'); return; }
+  box.className = 'bpcard';
+  box.style.setProperty('--bp-accent', RAIN_BAND_COLOR[bp.band] || '#8a94a0');
+  const pct = bp.ratioToNormal!=null ? fmt(bp.ratioToNormal*100,0)+'%' : null;
+  const fig = (bp.normalMm!=null && pct!=null)
+    ? `<b>${fmt(bp.actualMm,1)} mm</b> az elmúlt <b>${rainDays} napban</b> — a szokásos <b>${fmt(bp.normalMm,0)} mm</b> <span class="bp-pct">${pct}-a</span>`
+    : `<b>${fmt(bp.actualMm,1)} mm</b> az elmúlt <b>${rainDays} napban</b>`;
+  const station = (bp.station && bp.station.name) || 'Budapest';
+  const asOf = bp.asOf ? `${bp.asOf}${bp.ageDays!=null?' ('+agoDays(bp.ageDays)+')':''}` : '';
+  box.innerHTML =
+    `<div class="bp-tri" aria-hidden="true"></div>`+
+    `<div>`+
+      `<div class="bp-title">Budapest <span class="bp-src">· ${station}, OMSZ</span></div>`+
+      `<div class="bp-fig">${fig}</div>`+
+      `<div class="bp-note">Külön forrásból: az OVF hálózatának nincs csapadékmérője a fővárosban, `+
+        `ezt a hiányt a HungaroMet (OMSZ) nyílt adata pótolja.`+
+        (asOf?` Állapot: ${asOf}.`:'')+`</div>`+
+    `</div>`;
+}
+
+/** The Budapest figure shaped as a map node, so it draws on the rain and drought maps. */
+function budapestNode(bp){
+  if(!bp || !bp.station || bp.station.lat==null || bp.station.lon==null) return null;
+  return {
+    id:'omsz-budapest', name:bp.station.name||'Budapest', region:'Budapest — OMSZ',
+    lat:bp.station.lat, lon:bp.station.lon,
+    totalMm:bp.actualMm, normalMm:bp.normalMm,
+    ratioToNormal:bp.ratioToNormal, band:bp.band||null,
+    stale:false, source:'OMSZ', daysSinceRain:null, wetDays:null
+  };
+}
+
 async function loadRain(){
   try{
     const data = await api('/api/v1/rainfall?days='+rainDays,{cache:'no-store'}).then(r=>r.json());
+    // Budapest comes from a second source (OMSZ) and is attached even to the outage
+    // body, so it is rendered before the early return: the one gauge OVF cannot provide
+    // has no reason to vanish when the OVF network does.
+    rainBudapest = data.budapest || null;
+    renderRainBudapest(rainBudapest);
     if(data.unavailable){
       $('rain-headline').textContent = data.error || 'A csapadékadat most nem érhető el.';
       $('rain-regions').innerHTML=''; $('rain-gauges').innerHTML='';
+      rainMap = []; const bpOnly = budapestNode(rainBudapest); if(bpOnly) rainMap.push(bpOnly);
+      drawRainNodes(); drawDroughtMap();
       return;
     }
     $('rain-headline').textContent = (data.headline && data.headline.text) || '';
@@ -4333,7 +4411,11 @@ async function loadRain(){
     caveatsDirty();
     rainGauges = data.gauges || [];
     chainDirty();
-    rainMap = data.gauges || [];
+    // The Budapest dot rides along on the same map layer, appended so it sits on top of
+    // the OVF triangles rather than under them.
+    rainMap = (data.gauges || []).slice();
+    const bpNode = budapestNode(rainBudapest);
+    if(bpNode) rainMap.push(bpNode);
     drawRainNodes();
     // The drought map shows the same gauges and is painted when its own data lands,
     // which is usually before this - so it has to be told when the rain arrives too.
@@ -4724,8 +4806,16 @@ function drawRainNodes(){
     // Divided by the zoom like every other marker. Without it these were the one layer
     // that magnified: at zoom 5 a rain gauge covered a county and the map underneath it
     // was invisible, which is the opposite of what zooming in is for.
-    const s = 4 / zoom;
-    const node = svgEl('g',{ class:'rainnode'+(g.stale?' stale':'') });
+    // The Budapest dot is a second source (OMSZ) and larger, with a ring around it, so a
+    // reader who came looking for the capital's rain can actually find the one point that
+    // is not part of the OVF network.
+    const s = (g.source ? 5.6 : 4) / zoom;
+    const node = svgEl('g',{ class:'rainnode'+(g.stale?' stale':'')+(g.source?' omsz':'') });
+    if(g.source){
+      node.appendChild(svgEl('circle',{ cx:x.toFixed(1), cy:y.toFixed(1), r:(s*1.55).toFixed(2),
+        fill:'none', stroke:RAIN_BAND_COLOR[g.band]||'#8a94a0',
+        'stroke-width':(1.3/zoom).toFixed(2), opacity:'.9' }));
+    }
     node.appendChild(svgEl('polygon',{
       points: `${(x-s).toFixed(2)},${(y-s*0.7).toFixed(2)} `
             + `${(x+s).toFixed(2)},${(y-s*0.7).toFixed(2)} `
@@ -4736,7 +4826,7 @@ function drawRainNodes(){
       r: hitFor(x, y, s, hitRadius()).toFixed(1) }));
     bindMarker(node, () => renderRainTip(g), () => {
       $('s-csapadek').scrollIntoView({ behavior:'smooth', block:'start' });
-    }, `${g.name}, ${fmt(g.totalMm,1)} milliméter csapadék ${rainDays} nap alatt`
+    }, `${g.name}${g.source?' (OMSZ)':''}, ${fmt(g.totalMm,1)} milliméter csapadék ${rainDays} nap alatt`
        + (g.normalMm!=null?`, a szokásos ${fmt(g.normalMm,0)} helyett`:''));
     layer.appendChild(node);
   }
@@ -5182,7 +5272,13 @@ function drawDroughtMap(){
   // The rain, in the same downward triangle the main map uses, so the two agree.
   for(const g of (dmOn.rain ? rainMap : [])){
     const [x,y] = px(g.lon, g.lat);
-    const s = 4.6;
+    const s = g.source ? 6 : 4.6;
+    // The one OMSZ dot (Budapest) gets the same ring it wears on the main map, so it is
+    // as findable here as it is there.
+    if(g.source){
+      rain.appendChild(svgEl('circle',{ cx:x.toFixed(1), cy:y.toFixed(1), r:(s*1.55).toFixed(1),
+        fill:'none', stroke:RAIN_BAND_COLOR[g.band]||'#8a94a0', 'stroke-width':'1.4', opacity:'.9' }));
+    }
     rain.appendChild(svgEl('polygon',{
       points: `${(x-s).toFixed(1)},${(y-s*0.7).toFixed(1)} ${(x+s).toFixed(1)},${(y-s*0.7).toFixed(1)} `
             + `${x.toFixed(1)},${(y+s*1.05).toFixed(1)}`,
@@ -6387,7 +6483,8 @@ function renderRainTip(g){
       ? `<div class="t-sub">szokásos ${fmt(g.normalMm,0)} mm — ez annak <b>${pct}</b>-a</div>`
       : `<div class="t-sub">nincs elég archívum az összehasonlításhoz</div>`)+
     `<div class="t-sub">${g.region}${g.daysSinceRain!=null?' · utoljára '+agoDays(g.daysSinceRain)+' esett':''}`+
-    (g.stale?' · nem jelentett az elmúlt napokban':'')+`</div>`;
+    (g.stale?' · nem jelentett az elmúlt napokban':'')+`</div>`+
+    (g.source?`<div class="t-sub">forrás: ${g.source} — külön adatforrás, nem az OVF hálózata</div>`:'');
 }
 
 function renderLakeTip(l){

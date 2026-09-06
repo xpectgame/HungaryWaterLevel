@@ -211,12 +211,20 @@ paths:
         A gauge with fewer than three years of record, or in a month it cannot measure
         (an unheated gauge registers no snow), reports its rainfall with `normalMm: null`
         rather than a baseline nobody should trust.
+
+        `budapest` is the one figure not from the OVF network: the capital has no OVF rain
+        gauge, so it is supplied from HungaroMet (OMSZ) open data (station 44121, Budapest
+        belterület), baked to day resolution. It carries `source: "OMSZ"`, an `asOf` date
+        and `ageDays` because OMSZ daily observations lag reality by about a day, a `band`
+        on the same scale as the OVF gauges, and its `licence` (usable with attribution).
+        It is attached even to the 503 body, since a second source has no reason to go
+        dark when the first one does; it is `null` only if the bake is missing.
       parameters:
         - name: days
           in: query
           schema: { type: integer, enum: [7, 30, 90], default: 30 }
       responses:
-        "200": { description: Rainfall totals, regional roll-up and coverage limits }
+        "200": { description: Rainfall totals, regional roll-up, coverage limits, and the Budapest (OMSZ) figure }
         "400": { description: Unsupported window }
         "503": { description: Upstream unavailable; body is still a renderable document }
 
