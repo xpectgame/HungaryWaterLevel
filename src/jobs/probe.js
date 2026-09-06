@@ -682,7 +682,16 @@ async function probeSite(baseUrl) {
     }],
     ['rainfall', '/api/v1/rainfall?days=30', (d) => {
       const gauges = Object.keys(d.gauges || {}).length;
-      return { ok: gauges > 0, note: `${gauges} gauges` };
+      // Budapest rides on a second field from a second provider (OMSZ), and its whole
+      // reason for existing is that a Budapest reader could not see the capital. A build
+      // that dropped it would answer 200 with the 47 OVF gauges intact and look fine, so
+      // the one field that proves it shipped is checked here by name.
+      const bp = d.budapest;
+      const bpNote = bp
+        ? `; Budapest(OMSZ) ${bp.actualMm}mm vs ${bp.normalMm ?? '–'}` +
+          `${bp.ratioToNormal != null ? ` (${Math.round(bp.ratioToNormal * 100)}%)` : ''} asOf ${bp.asOf}`
+        : '; Budapest(OMSZ) MISSING - the second-source field is not in the deployment';
+      return { ok: gauges > 0 && !!bp, note: `${gauges} gauges${bpNote}` };
     }],
     // /archive, not /api/v1/archive: it is mounted outside the API version on purpose,
     // because a dated URL published today has to still resolve in ten years and /api/v1
