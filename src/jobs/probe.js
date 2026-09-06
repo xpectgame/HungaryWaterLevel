@@ -1395,7 +1395,10 @@ async function probeOmszStation(args = []) {
       const lines = csv.split(/\r?\n/).filter((l) => l.length);
       console.log(`  ${buffer.length} zip bytes, ${lines.length} csv lines; head:`);
       for (const l of lines.slice(0, 4)) console.log(`    | ${l.slice(0, 160)}`);
-      const hIdx = lines.findIndex((l) => /(^|;)\s*Time\s*;/i.test(l) || /StationNumber/i.test(l));
+      // The file opens with a ##Meta block whose own header is StationNumber;StartDate;...
+      // The DATA header is the one line carrying both Time and the precipitation column,
+      // so match on both - matching StationNumber alone landed on the meta header.
+      const hIdx = lines.findIndex((l) => /;\s*Time\s*;/i.test(l) && /;\s*(rau|r)\s*;/i.test(l));
       const header = lines[hIdx].split(';').map((c) => c.trim().replace(/^#\s*/, ''));
       // Precipitation: 'r' on some products, 'rau' on the automatic daily. Take whichever exists.
       const rIdx = header.findIndex((c) => /^rau$/i.test(c));
