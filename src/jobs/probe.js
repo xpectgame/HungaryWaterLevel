@@ -1393,6 +1393,8 @@ async function probeOmszStation(args = []) {
       fs.writeFileSync(path.join(tmp, 'f.zip'), buffer);
       const csv = execFileSync('unzip', ['-p', path.join(tmp, 'f.zip')], { maxBuffer: 64 * 1024 * 1024 }).toString('latin1');
       const lines = csv.split(/\r?\n/).filter((l) => l.length);
+      console.log(`  ${buffer.length} zip bytes, ${lines.length} csv lines; head:`);
+      for (const l of lines.slice(0, 4)) console.log(`    | ${l.slice(0, 160)}`);
       const hIdx = lines.findIndex((l) => /(^|;)\s*Time\s*;/i.test(l) || /StationNumber/i.test(l));
       const header = lines[hIdx].split(';').map((c) => c.trim().replace(/^#\s*/, ''));
       // Precipitation: 'r' on some products, 'rau' on the automatic daily. Take whichever exists.
@@ -1404,7 +1406,7 @@ async function probeOmszStation(args = []) {
       const last = drows.slice(-10).map((c) => ({ day: c[tIdx], mm: c[rFall] }));
       console.log(`  precip column '${header[rFall]}' at ${rFall}; ${drows.length} daily rows`);
       for (const d of last) console.log(`    ${d.day}  ${d.mm} mm`);
-      baked.stations[num] = { ...stations[num], precipCol: header[rFall], rowCount: drows.length, last };
+      baked.stations[num] = { ...stations[num], precipCol: header[rFall], rowCount: drows.length, last, head: lines.slice(0,3) };
       fs.rmSync(tmp, { recursive: true, force: true });
     } catch (e) {
       console.log(`  FAILED: ${String(e.message).split('\n')[0]}`);
