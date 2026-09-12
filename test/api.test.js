@@ -210,27 +210,30 @@ test('a station reading carries its stage in context', async () => {
   });
 });
 
-test('GET /api/v1/rainfall carries the Budapest figure from the second source', async () => {
+test('GET /api/v1/rainfall serves the national OMSZ network from baked data', async () => {
   await withServer(async ({ get }) => {
-    // The capital has no OVF rain gauge, so the endpoint attaches a Budapest figure from
-    // HungaroMet (OMSZ) baked data. This is the one place that wiring is checked end to
-    // end: the route must attach it, flag its source, and colour it on the OVF band scale.
+    // Rain no longer calls vizugy.hu live: it is served from baked HungaroMet (OMSZ)
+    // national data, so this endpoint cannot 503 the way the OVF fetch did and covers the
+    // whole country. Checked end to end: national coverage, the OVF response shape, and a
+    // real per-station daily series behind the detail route.
     const { status, body } = await get('/api/v1/rainfall?days=30');
     assert.strictEqual(status, 200);
-    const bp = body.budapest;
-    assert.ok(bp, 'the response carries a budapest figure');
-    assert.strictEqual(bp.source, 'OMSZ');
-    assert.match(bp.station.name, /budapest/i);
-    assert.ok(bp.station.lat > 47.3 && bp.station.lat < 47.7);
-    assert.ok(Number.isFinite(bp.actualMm) && bp.actualMm >= 0);
-    // The band is added by the route (not the domain), on the same thresholds the OVF
-    // gauges use, so the one Budapest dot is coloured on the same scale as the rest.
-    if (bp.ratioToNormal != null) {
-      assert.ok(
-        ['extreme-deficit', 'severe-deficit', 'deficit', 'near-normal', 'surplus', 'extreme-surplus'].includes(bp.band),
-        `unexpected band ${bp.band}`,
-      );
-    }
+    assert.strictEqual(body.source, 'OMSZ');
+    assert.ok(body.gauges.length >= 50, `expected a national network, got ${body.gauges.length}`);
+    // Genuinely national: the gauges span the country east-to-west, not one directorate.
+    const lons = body.gauges.map((g) => g.lon);
+    assert.ok(Math.max(...lons) - Math.min(...lons) > 4, 'gauges span the country');
+    assert.ok(body.regions.length >= 5, 'multiple regions roll up');
+    // A gauge carries a band on the standard deficit scale, and the detail route returns
+    // its daily series.
+    const withRatio = body.gauges.find((g) => g.ratioToNormal != null);
+    assert.ok(
+      ['extreme-deficit', 'severe-deficit', 'deficit', 'near-normal', 'surplus', 'extreme-surplus'].includes(withRatio.band),
+      `unexpected band ${withRatio.band}`,
+    );
+    const detail = await get(`/api/v1/rainfall/${withRatio.id}?days=30`);
+    assert.strictEqual(detail.status, 200);
+    assert.ok(Array.isArray(detail.body.daily) && detail.body.daily.length > 0, 'the detail route has a daily series');
   });
 });
 

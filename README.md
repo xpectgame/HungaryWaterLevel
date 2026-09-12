@@ -4,9 +4,9 @@ Magyarország felszíni vízmérlege és az erőművek hűtővíz-használata, k
 egyetlen REST API-ból.
 
 Nyílt adatforrásokból származtatva: **OVF** vízrajzi adatok (data.vizugy.hu) és
-**MAVIR** villamosenergia-rendszer adatok, valamint — kizárólag a főváros csapadékához,
-ahol az OVF hálózatának nincs mérője — **HungaroMet (OMSZ)** nyílt adat (odp.met.hu). Ez
-egy független, származtatott termék — egyik szervezet sem hitelesítette.
+**MAVIR** villamosenergia-rendszer adatok, az **országos csapadék** pedig a **HungaroMet
+(OMSZ)** napi csapadékmérő hálózatából (odp.met.hu). Ez egy független, származtatott
+termék — egyik szervezet sem hitelesítette.
 
 ```bash
 npm install
@@ -33,7 +33,7 @@ ki valósként. Az éles bekötéshez lásd: [Éles üzem előtt](#éles-üzem-e
 | `GET /api/v1/powerplants/:id` | Egy erőmű + hőterhelés a befogadó folyóra |
 | `GET /api/v1/water-use` | Erőművi összesítés, vízkivétel szerint rendezve |
 | `GET /api/v1/lakes` | Balaton, Velencei-tó, Fertő — vízszint a saját rekordtartományában |
-| `GET /api/v1/rainfall` | Csapadék 47 állomáson, mindegyik a **saját sokéves átlagához** mérve — plusz **Budapest** külön forrásból (OMSZ), a `budapest` mezőben |
+| `GET /api/v1/rainfall` | Csapadék az **OMSZ országos hálózatából** (~270 állomás), mindegyik a **saját sokéves átlagához** mérve |
 | `GET /api/v1/rainfall/:id` | Egy csapadékmérő napi bontásban |
 | `GET /api/v1/talajnedvesseg` | **23 talajnedvesség-állomás** óránként — mindegyik a saját eddigi méréseihez mérve |
 | `GET /api/v1/vizhiany` | **Elrendelt vízhiány-fokozat** 85 körzetre — a hatóság saját kihirdetése |
@@ -602,7 +602,7 @@ már ott van. Csak valódi async adatbázison bukik meg.
 Kód: MIT.
 
 Az adatok az **OVF** (vízrajz) és a **MAVIR** (villamosenergia-rendszer) nyílt adatai,
-Budapest csapadéka pedig a **HungaroMet (OMSZ)** nyílt adatbázisából (odp.met.hu).
+az országos csapadék pedig a **HungaroMet (OMSZ)** nyílt adatbázisából (odp.met.hu).
 Az OVF adatai ingyenesen felhasználhatók az OVF vagy az illetékes vízügyi igazgatóság
 megjelölésével; az OMSZ nyílt adata a HungaroMet ODP általános felhasználási feltételei
 szerint, forrásmegjelöléssel használható. Ezeket a hivatkozásokat a `/api/v1/meta/sources`

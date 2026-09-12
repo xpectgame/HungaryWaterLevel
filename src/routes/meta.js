@@ -73,14 +73,15 @@ module.exports = function metaRoutes(ctx) {
           id: 'omsz',
           name: 'HungaroMet (OMSZ) - meteorológiai nyílt adatbázis',
           url: 'https://odp.met.hu/',
-          provides: ['Budapest daily precipitation (mm) - station 44121, Budapest belterület'],
+          provides: ['National daily precipitation (mm) - about 270 stations, HABP_1D network'],
           scope:
-            'Budapest only. The OVF meteorological network has no gauge in the capital, so this second ' +
-            'provider closes that one hole; it is not used anywhere else on the site.',
+            'The whole rain section. This replaced the OVF meteorological network, which was not national ' +
+            '(no gauge in the capital, a sparse Transdanubia) and was fetched live, so it went dark whenever ' +
+            'vizugy.hu was unreachable. OMSZ is baked, so the map covers the country and cannot 503.',
           cadence: 'daily (baked to day resolution; observations lag reality by about a day)',
           licence: 'HungaroMet ODP általános felhasználási feltételek - free to use with source attribution.',
           attributionRequired: true,
-          endpointStatus: 'baked into src/config/rain-budapest.json by `npm run probe -- --omsz-bake`; not a live feed',
+          endpointStatus: 'baked into src/config/rain-omsz.json by `npm run probe -- --omsz-bake-all`; not a live feed',
         },
       ],
       derived: [
@@ -162,7 +163,7 @@ module.exports = function metaRoutes(ctx) {
       ],
       attribution:
         'Hydrological data: Országos Vízügyi Főigazgatóság (OVF). Electricity system data: MAVIR Zrt. ' +
-        'Budapest precipitation: HungaroMet (OMSZ) open data (odp.met.hu). ' +
+        'National precipitation: HungaroMet (OMSZ) open data (odp.met.hu). ' +
         'This API is an independent derived product and is not endorsed by any of these organisations.',
     });
   });

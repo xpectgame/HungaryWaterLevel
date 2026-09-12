@@ -1,48 +1,24 @@
 'use strict';
 
 const express = require('express');
-const { buildRainfall, bandFor } = require('../domain/rainfall');
-const { budapestRainfall } = require('../domain/rain-budapest');
-const { getRainGauge } = require('../config/rain-gauges');
+const { buildNationalRainfall } = require('../domain/rain-national');
 const { TtlCache } = require('../lib/cache');
 const { asyncRoute } = require('../lib/async-route');
 const { withMeta } = require('./balance');
 
 /**
- * Budapest, from the second provider, attached to the response.
+ * Rainfall, national, from baked HungaroMet (OMSZ) open data.
  *
- * This is the one figure on the page that does not come from the OVF network, because
- * that network has no gauge in the capital at all - so it is computed here, from baked
- * HungaroMet (OMSZ) open data, and carries `source: 'OMSZ'` so nothing downstream can
- * mistake it for the rest of the section. It is attached outside the OVF cache and even
- * onto the 503 body: a second source has no reason to go dark when the first one does.
+ * This route used to fetch 47 OVF gauges from vizugy.hu live, per request. That was wrong
+ * twice over: the OVF meteorological network is not national (nothing in the capital, a
+ * bare Dunántúl), and a live upstream call fails whenever that host is unreachable from
+ * the serverless runtime - which is exactly when the section answered "no data". The data
+ * now comes from src/config/rain-omsz.json, baked on a runner from the OMSZ national daily
+ * network, so the map covers the whole country and the endpoint cannot 503: nothing is
+ * fetched at request time.
  *
- * A `band` is added with the same thresholds the OVF gauges use, so the one Budapest dot
- * on the map is coloured on the same scale as the forty around it. Wrapped so a missing
- * or malformed bake can only make Budapest absent, never take the rain endpoint down.
- */
-function budapestFor(days) {
-  try {
-    const bp = budapestRainfall(days);
-    if (!bp) return null;
-    const band = bp.ratioToNormal != null ? (bandFor(bp.ratioToNormal) || {}).id || null : null;
-    return { ...bp, band };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Rainfall gets its own cache, held far longer than the shared one.
- *
- * Most of the network reports once a day, so half an hour cannot show anyone a number
- * meaningfully staler than the instrument itself. The call behind it is a month of
- * history for 47 gauges - the most expensive request this API makes - and paying it per
- * viewer would be indefensible.
- *
- * A separate instance rather than a different TTL on the shared cache: the shared one is
- * used by every other route at sixty seconds, and temporarily raising its TTL for the
- * duration of a request would leak that TTL onto whatever else wrote to it concurrently.
+ * The response keeps the OVF builder's shape - gauges, regions, headline, coverage, bands
+ * - so the map and the section render it unchanged.
  */
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
@@ -67,63 +43,31 @@ function parseWindow(raw) {
 
 module.exports = function rainfallRoutes(ctx) {
   const router = express.Router();
+  // Kept though the build is cheap and the config is read once and cached: it memoises the
+  // full per-window payload so a burst of viewers shares one computation.
   const rainCache = new TtlCache(CACHE_TTL_MS);
 
-  // Resolved once at mount. Fixture mode must not reach the network - the test suite
-  // runs the whole app under it, and a route that quietly dials out under a provider
-  // named "fixture" would make every test depend on an upstream being up.
-  const fetchRainfall =
-    ctx.fetchRainfall ||
-    (ctx.config.provider === 'fixture'
-      ? require('../sources/fixture').fetchRainfall
-      : require('../sources/vizugy-rain').fetchRainfall);
+  const load = (days) => rainCache.wrap(`rainfall:${days}`, () => buildNationalRainfall(days));
 
-  async function load(days) {
-    return rainCache.wrapAsync(`rainfall:${days}`, async () => buildRainfall(await fetchRainfall({ days })));
-  }
-
-  /** GET /rainfall?days=30 - how much rain fell, against how much normally does. */
+  /** GET /rainfall?days=30 - how much rain fell across the country, against how much normally does. */
   router.get('/rainfall', asyncRoute(async (req, res) => {
     const { days, error } = parseWindow(req.query.days);
     if (error) return res.status(400).json({ error });
-
-    try {
-      return res.json(await withMeta({ ...(await load(days)), budapest: budapestFor(days) }, ctx));
-    } catch (err) {
-      // The feature is one upstream call, so a failure is total rather than partial. It
-      // still has to answer with a document the map can render as "no data" - a rain
-      // layer that throws takes the whole page down with it.
-      return res.status(503).json(
-        await withMeta(
-          {
-            windowDays: days,
-            gauges: [],
-            gaugeCount: 0,
-            reportingCount: 0,
-            regions: [],
-            missing: [],
-            budapest: budapestFor(days),
-            unavailable: true,
-            error: `csapadékadat nem érhető el: ${(err && err.message) || err}`,
-          },
-          ctx,
-        ),
-      );
-    }
+    // No try/catch around an upstream call any more: the data is baked, so the only failure
+    // is a missing config, which buildNationalRainfall already returns as a renderable
+    // "unavailable" document rather than a throw.
+    return res.json(await withMeta(load(days), ctx));
   }));
 
-  /** GET /rainfall/:id - one gauge, with its daily series. */
+  /** GET /rainfall/:id - one station, with its daily series. */
   router.get('/rainfall/:id', asyncRoute(async (req, res) => {
-    const gauge = getRainGauge(req.params.id);
-    if (!gauge) return res.status(404).json({ error: `Unknown rain gauge '${req.params.id}'` });
-
     const { days, error } = parseWindow(req.query.days);
     if (error) return res.status(400).json({ error });
 
-    const built = await load(days);
-    const found = (built.gauges || []).find((g) => g.id === gauge.id);
+    const built = load(days);
+    const found = (built.gauges || []).find((g) => g.id === req.params.id);
     if (!found) {
-      return res.status(404).json({ error: `'${gauge.id}' nem jelentett az elmúlt ${days} napban` });
+      return res.status(404).json({ error: `Ismeretlen csapadékállomás: '${req.params.id}'` });
     }
     return res.json(await withMeta(found, ctx));
   }));

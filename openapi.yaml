@@ -195,38 +195,32 @@ paths:
   /rainfall:
     get:
       tags: [hydrology]
-      summary: Rainfall against each gauge's own long-term normal
+      summary: National rainfall against each station's own long-term normal
       description: |
-        47 gauges from the meteorological network (AdatFajtaKod 71). Each is compared
-        against a normal computed from that same instrument's ten-year archive, blended
-        across the calendar months the window spans.
+        The national HungaroMet (OMSZ) daily-precipitation network - about 270 stations,
+        `source: "OMSZ"`. Each is compared against a normal computed from that same
+        station's own multi-year archive (at least three years), blended across the
+        calendar months the window spans.
 
-        Two limits are carried in the payload rather than left to be inferred.
-        `coverage` says the network is not national - two water directorates publish no
-        meteorological station at all and no river gauge reports rain - so an empty
-        Transdanubia means unmeasured, not dry. `baselineNote` says the baseline is a
-        recent decade rather than a 30-year climatological normal; that decade was dry
-        in Hungary, so a deficit measured against it is understated, never overstated.
+        Served from src/config/rain-omsz.json, baked on a runner rather than fetched live.
+        This replaced a live 47-gauge OVF fetch that both under-covered the country (nothing
+        in the capital, a bare Transdanubia) and returned 503 whenever vizugy.hu was
+        unreachable from the serverless runtime. Because nothing is fetched at request time,
+        this endpoint cannot 503; the payload carries an `asOf` date and `ageDays` because
+        OMSZ daily observations lag reality by about a day.
 
-        A gauge with fewer than three years of record, or in a month it cannot measure
-        (an unheated gauge registers no snow), reports its rainfall with `normalMm: null`
-        rather than a baseline nobody should trust.
-
-        `budapest` is the one figure not from the OVF network: the capital has no OVF rain
-        gauge, so it is supplied from HungaroMet (OMSZ) open data (station 44121, Budapest
-        belterület), baked to day resolution. It carries `source: "OMSZ"`, an `asOf` date
-        and `ageDays` because OMSZ daily observations lag reality by about a day, a `band`
-        on the same scale as the OVF gauges, and its `licence` (usable with attribution).
-        It is attached even to the 503 body, since a second source has no reason to go
-        dark when the first one does; it is `null` only if the bake is missing.
+        `coverage` and `baselineNote` state the two limits in words: where there is no dot
+        there is no nearby station (not "no rain"), and the "normal" is each station's own
+        multi-year mean, not a 30-year climatological normal. A station with too short an
+        archive reports its rainfall with `normalMm: null` rather than a baseline nobody
+        should trust. `regions` rolls the stations up by county (Budapest districts merged).
       parameters:
         - name: days
           in: query
           schema: { type: integer, enum: [7, 30, 90], default: 30 }
       responses:
-        "200": { description: Rainfall totals, regional roll-up, coverage limits, and the Budapest (OMSZ) figure }
+        "200": { description: National rainfall totals, per-county roll-up, and coverage/baseline limits }
         "400": { description: Unsupported window }
-        "503": { description: Upstream unavailable; body is still a renderable document }
 
   /rainfall/{id}:
     get:

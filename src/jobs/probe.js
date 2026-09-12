@@ -681,17 +681,19 @@ async function probeSite(baseUrl) {
         `${s.deepestOnRecord} at a ten-year low, freshest ${String(h.freshestAt).slice(0, 16)}` };
     }],
     ['rainfall', '/api/v1/rainfall?days=30', (d) => {
-      const gauges = Object.keys(d.gauges || {}).length;
-      // Budapest rides on a second field from a second provider (OMSZ), and its whole
-      // reason for existing is that a Budapest reader could not see the capital. A build
-      // that dropped it would answer 200 with the 47 OVF gauges intact and look fine, so
-      // the one field that proves it shipped is checked here by name.
-      const bp = d.budapest;
-      const bpNote = bp
-        ? `; Budapest(OMSZ) ${bp.actualMm}mm vs ${bp.normalMm ?? '–'}` +
-          `${bp.ratioToNormal != null ? ` (${Math.round(bp.ratioToNormal * 100)}%)` : ''} asOf ${bp.asOf}`
-        : '; Budapest(OMSZ) MISSING - the second-source field is not in the deployment';
-      return { ok: gauges > 0 && !!bp, note: `${gauges} gauges${bpNote}` };
+      // Rain is now the national OMSZ network, served from baked data. Two things prove the
+      // build shipped it: source OMSZ, and enough gauges spread across the country that it
+      // is not the old south-east-only OVF set. A live-OVF regression would show far fewer
+      // gauges (or source undefined), and the deficit signal in the headline is worth seeing.
+      const gauges = (d.gauges || []).length;
+      const lons = (d.gauges || []).map((g) => g.lon).filter((x) => Number.isFinite(x));
+      const span = lons.length ? Math.max(...lons) - Math.min(...lons) : 0;
+      const national = d.source === 'OMSZ' && gauges >= 100 && span > 4;
+      return {
+        ok: national,
+        note: `${gauges} stations, source ${d.source}, ${d.regions ? d.regions.length : 0} regions, asOf ${d.asOf}` +
+          (national ? '' : ' - NOT the national OMSZ set'),
+      };
     }],
     // /archive, not /api/v1/archive: it is mounted outside the API version on purpose,
     // because a dated URL published today has to still resolve in ten years and /api/v1
