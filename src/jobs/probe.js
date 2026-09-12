@@ -1601,7 +1601,8 @@ async function probeOmszBakeAll(args = []) {
   const iLon = col.findIndex((c) => /^lon/i.test(c));
   const iName = col.findIndex((c) => /stationname/i.test(c));
   const iEnd = col.findIndex((c) => /enddate/i.test(c));
-  const iRegion = col.findIndex((c) => /regionname/i.test(c));
+  // The column is spelled "RegioName" in the CSV (one n), so match loosely.
+  const iRegion = col.findIndex((c) => /regi.*name/i.test(c));
   console.log(`meta columns: ${col.join(' | ')}`);
 
   // Keep the most-recently-ending span per station number.
