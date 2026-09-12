@@ -1521,6 +1521,207 @@ async function probeOmszBake(args = []) {
   emitDocument('rain-budapest', doc, 'src/config/rain-budapest.json');
 }
 
+/**
+ * Bake the WHOLE country's rain, not one city, from HungaroMet (OMSZ) open data.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS REPLACES THE LIVE OVF RAIN
+ * ---------------------------------------------------------------------------
+ * The rain section used to fetch 47 OVF gauges live, per request. Two things were wrong
+ * with that: the OVF meteorological network is not national (nothing in the capital, a
+ * bare Dunántúl), and a live call to vizugy.hu fails whenever that host is unreachable
+ * from the serverless runtime - which is exactly when the section went dark with "no
+ * data". OMSZ publishes a national daily-precipitation network as open data, so baking it
+ * on the runner and serving it static answers both: full national coverage, and a figure
+ * that cannot 503 because nothing is fetched at request time.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT IT PRODUCES
+ * ---------------------------------------------------------------------------
+ * src/config/rain-omsz.json: every currently-reporting station with a precipitation file,
+ * each with its last ~95 daily values (for the 7/30/90 windows and the detail chart) and a
+ * twelve-month normal from its own multi-year archive (MIN_YEARS 3, the same gate the OVF
+ * normals used). A station whose historical archive cannot be read still ships with its
+ * rainfall and a null normal, exactly as the OVF gauges did - a missing baseline never
+ * removes a measurement from the map.
+ *
+ * `--limit=N` bakes only the first N stations, for a fast pipeline check before the full
+ * run. `--recent-only` skips the historical downloads (no normals) for an even faster one.
+ */
+async function probeOmszBakeAll(args = []) {
+  console.log('\n########## OMSZ: bake rain-omsz.json (whole country) ##########');
+  const { fetchText, fetchBuffer } = require('../lib/http');
+  const { execFileSync } = require('node:child_process');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const arg = (n) => { const h = args.find((a) => a.startsWith(`--${n}=`)); return h ? h.slice(n.length + 3) : null; };
+  const limit = Number(arg('limit')) || 0;
+  const recentOnly = args.includes('--recent-only');
+
+  const DAILY_KEEP = 95;      // enough for the 90-day window with headroom
+  const MIN_YEARS = 3;        // same gate as the OVF normals
+  const KEEP_MONTH_DAYS = 25; // a partial month is not that month's total
+
+  // Parse one daily file (recent or historical) into rows of {day:'YYYY-MM-DD', mm}.
+  const readDaily = async (url) => {
+    const { buffer } = await fetchBuffer(url, { timeoutMs: 60000 });
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'omsz-'));
+    fs.writeFileSync(path.join(tmp, 'f.zip'), buffer);
+    const csv = execFileSync('unzip', ['-p', path.join(tmp, 'f.zip')], { maxBuffer: 256 * 1024 * 1024 }).toString('latin1');
+    fs.rmSync(tmp, { recursive: true, force: true });
+    const lines = csv.split(/\r?\n/).filter((l) => l.length);
+    // The file opens with a ##Meta block; the DATA header is the one line carrying BOTH
+    // Time and the precipitation column (rau on the automatic daily, r on some products).
+    const hIdx = lines.findIndex((l) => /;\s*Time\s*;/i.test(l) && /;\s*(rau|r)\s*;/i.test(l));
+    if (hIdx < 0) return [];
+    const header = lines[hIdx].split(';').map((c) => c.trim().replace(/^#\s*/, ''));
+    const rIdx = header.findIndex((c) => /^rau$/i.test(c)) >= 0
+      ? header.findIndex((c) => /^rau$/i.test(c)) : header.findIndex((c) => /^r$/i.test(c));
+    const tIdx = header.findIndex((c) => /^time$/i.test(c));
+    if (rIdx < 0 || tIdx < 0) return [];
+    const out = [];
+    for (const l of lines.slice(hIdx + 1)) {
+      const c = l.split(';').map((x) => x.trim());
+      if (!/^\d{8}$/.test(c[tIdx] || '')) continue;
+      const mm = Number(c[rIdx]);
+      if (!Number.isFinite(mm) || mm <= -100) continue; // -999 = missing; drop it
+      out.push({ day: `${c[tIdx].slice(0, 4)}-${c[tIdx].slice(4, 6)}-${c[tIdx].slice(6, 8)}`, mm });
+    }
+    return out;
+  };
+
+  // 1) Station meta: number -> named place with coordinates and region.
+  const metaUrl = 'https://odp.met.hu/climate/observations_hungary/daily/station_meta_auto.csv';
+  const { body: metaCsv } = await fetchText(metaUrl, { timeoutMs: 30000 });
+  const metaLines = metaCsv.split(/\r?\n/).filter(Boolean);
+  const col = metaLines[0].split(';').map((c) => c.trim().replace(/^#\s*/, ''));
+  const iNum = col.findIndex((c) => /stationnumber/i.test(c));
+  const iLat = col.findIndex((c) => /^lat/i.test(c));
+  const iLon = col.findIndex((c) => /^lon/i.test(c));
+  const iName = col.findIndex((c) => /stationname/i.test(c));
+  const iEnd = col.findIndex((c) => /enddate/i.test(c));
+  const iRegion = col.findIndex((c) => /regionname/i.test(c));
+  console.log(`meta columns: ${col.join(' | ')}`);
+
+  // Keep the most-recently-ending span per station number.
+  const stations = {};
+  for (const line of metaLines.slice(1)) {
+    const c = line.split(';').map((x) => x.trim());
+    const num = c[iNum];
+    if (!num) continue;
+    if (!stations[num] || (c[iEnd] || '') > (stations[num].end || '')) {
+      stations[num] = {
+        num, name: c[iName], lat: Number(c[iLat]), lon: Number(c[iLon]),
+        region: iRegion >= 0 ? c[iRegion] : null, end: c[iEnd] || '',
+      };
+    }
+  }
+  // Currently reporting: an EndDate in the last ~60 days (the meta marks open spans with a
+  // far-future or very recent end). Keep only those inside Hungary's bounding box, so a
+  // stray coordinate cannot put a dot in the sea.
+  const cutoff = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10).replace(/-/g, '');
+  let list = Object.values(stations).filter((s) =>
+    Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
+    s.lat > 45.6 && s.lat < 48.7 && s.lon > 16.0 && s.lon < 23.0 &&
+    (s.end.replace(/-/g, '') >= cutoff || s.end === '' || /9999/.test(s.end)));
+  list.sort((a, b) => a.num.localeCompare(b.num));
+  if (limit) list = list.slice(0, limit);
+  console.log(`meta rows: ${metaLines.length - 1}; unique stations: ${Object.keys(stations).length}; ` +
+    `currently-reporting in-country: ${list.length}${limit ? ` (limited to ${limit})` : ''}`);
+
+  // 2) The historical directory listing once, so each station's archive file is found by
+  //    name rather than by guessing its date span.
+  let histFiles = [];
+  if (!recentOnly) {
+    try {
+      const listing = (await fetchText('https://odp.met.hu/climate/observations_hungary/daily/historical/', { timeoutMs: 30000 })).body;
+      histFiles = [...listing.matchAll(/href="(HABP_1D_[^"]+_hist\.zip)"/g)].map((m) => m[1]);
+      console.log(`historical files listed: ${histFiles.length}`);
+    } catch (e) {
+      console.log(`historical listing failed (${String(e.message).split('\n')[0]}); baking recent-only`);
+    }
+  }
+
+  // 3) Per station: recent for the window, historical for the normal. Polite pacing; every
+  //    failure is contained so one bad station cannot lose the whole country.
+  const out = [];
+  let okRecent = 0; let okNormal = 0; let failed = 0;
+  for (const s of list) {
+    try {
+      const recent = await readDaily(
+        `https://odp.met.hu/climate/observations_hungary/daily/recent/HABP_1D_${s.num}_akt.zip`);
+      if (!recent.length) { failed += 1; continue; } // no current data -> not on the map
+      okRecent += 1;
+
+      const byDay = new Map();
+      let years = 0; let normalMm = null;
+      const histName = histFiles.find((f) => f.includes(`_${s.num}_`));
+      if (histName) {
+        try {
+          const historical = await readDaily(
+            `https://odp.met.hu/climate/observations_hungary/daily/historical/${histName}`);
+          for (const r of historical) byDay.set(r.day, r.mm);
+          // 12-month normal from the archive: sum each (year, month) with most of its days,
+          // then average each calendar month across years (>= MIN_YEARS).
+          const monthYear = new Map();
+          for (const [day, dmm] of byDay) {
+            const key = day.slice(0, 7);
+            const e = monthYear.get(key) || { sum: 0, days: 0 };
+            e.sum += dmm; e.days += 1; monthYear.set(key, e);
+          }
+          const perMonth = Array.from({ length: 12 }, () => []);
+          for (const [key, e] of monthYear) {
+            if (e.days < KEEP_MONTH_DAYS) continue;
+            perMonth[Number(key.slice(5, 7)) - 1].push(e.sum);
+          }
+          const mm = perMonth.map((v) => v.length >= MIN_YEARS
+            ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : null);
+          const yrs = perMonth.map((v) => v.length).filter((n) => n > 0);
+          // A normal is only published if every month cleared the year gate; a station with
+          // a few months missing would otherwise show a ratio in some windows and not others.
+          if (mm.every((x) => x !== null) && yrs.length === 12) {
+            normalMm = mm; years = Math.min(...yrs); okNormal += 1;
+          }
+        } catch (e) {
+          console.log(`  ${s.num} historical failed: ${String(e.message).split('\n')[0]}`);
+        }
+      }
+
+      for (const r of recent) byDay.set(r.day, r.mm);
+      const daily = [...byDay.entries()].map(([day, mm]) => ({ day, mm }))
+        .sort((a, b) => a.day.localeCompare(b.day)).slice(-DAILY_KEEP);
+
+      out.push({
+        id: `omsz-${s.num}`, station: s.num, name: s.name,
+        lat: round4(s.lat), lon: round4(s.lon), region: s.region || 'Egyéb',
+        normal: normalMm ? { mm: normalMm, years, months: 12 } : null,
+        daily,
+      });
+    } catch (e) {
+      failed += 1;
+      console.log(`  ${s.num} ${s.name}: ${String(e.message).split('\n')[0]}`);
+    }
+    await sleep(120); // polite pacing to someone else's open-data server
+  }
+
+  const allDays = out.flatMap((s) => s.daily.map((d) => d.day));
+  const asOf = allDays.length ? allDays.sort().slice(-1)[0] : null;
+  const doc = {
+    source: 'odp.met.hu — HungaroMet (OMSZ) nyílt adatbázis',
+    licence: 'HungaroMet ODP általános felhasználási feltételek (forrásmegjelöléssel)',
+    generated: new Date().toISOString(),
+    network: 'HungaroMet napi csapadékmérő hálózat (HABP_1D)',
+    asOf,
+    stationCount: out.length,
+    withNormal: okNormal,
+    stations: out,
+  };
+  console.log(`\nbaked ${out.length} stations (recent ok ${okRecent}, with normal ${okNormal}, failed/empty ${failed}); asOf ${asOf}`);
+  writeDocument('rain-omsz', doc);
+  emitDocument('rain-omsz', doc, 'src/config/rain-omsz.json');
+}
+
 async function probeRainScan() {
   console.log('\n########## rain gauge scan ##########');
 
@@ -4691,6 +4892,11 @@ async function main() {
 
   if (args.includes('--omsz-station')) {
     await probeOmszStation(args);
+    return;
+  }
+
+  if (args.includes('--omsz-bake-all')) {
+    await probeOmszBakeAll(args);
     return;
   }
 
