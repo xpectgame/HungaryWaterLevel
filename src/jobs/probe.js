@@ -1524,6 +1524,48 @@ async function probeOmszBake(args = []) {
 }
 
 /**
+ * Reach vizugy from the runner, and bake what it returns for the four live sections.
+ *
+ * The live site's groundwater, drought, soil-moisture and vízhiány endpoints all 503,
+ * because each fetches vizugy.hu at request time and that call is failing from the
+ * serverless runtime - whether the host is refusing it or the fetch simply outruns the
+ * function's timeout. This does two things at once from a runner, which has neither
+ * constraint: it proves whether vizugy is reachable at all (printing how long each fetch
+ * takes - a slow-but-fine fetch is the timeout story, a failure is the outage story), and
+ * it bakes each source's raw response so the sections can be served from it while the live
+ * call is down. Every fetch is contained: one dead source cannot lose the other three.
+ */
+async function probeVizugyBake() {
+  console.log('\n########## vizugy: reachability + bake (wells, shallow, soil, vízhiány) ##########');
+  const wells = require('../sources/vizugy-wells');
+  const vizhiany = require('../sources/vizhiany');
+  const jobs = [
+    ['wells', 'groundwater', () => wells.fetchWells({})],
+    ['shallow-wells', 'drought', () => wells.fetchShallowWells({})],
+    ['soil-moisture', 'talajnedvesseg', () => wells.fetchSoilMoisture({})],
+    ['vizhiany', 'vizhiany', () => vizhiany.fetchVizhiany({})],
+  ];
+  const summary = [];
+  for (const [name, section, fn] of jobs) {
+    const t0 = Date.now();
+    try {
+      const raw = await fn();
+      const secs = ((Date.now() - t0) / 1000).toFixed(1);
+      const bytes = JSON.stringify(raw).length;
+      console.log(`  ${name.padEnd(14)} OK    ${secs.padStart(5)}s  ${(bytes / 1024).toFixed(0).padStart(5)} KB  (${section})`);
+      writeDocument(`vizugy-${name}`, { bakedAt: new Date().toISOString(), section, raw });
+      summary.push(`${name} ok ${secs}s ${(bytes / 1024).toFixed(0)}KB`);
+    } catch (e) {
+      const secs = ((Date.now() - t0) / 1000).toFixed(1);
+      console.log(`  ${name.padEnd(14)} FAIL  ${secs.padStart(5)}s  ${String(e.message).split('\n')[0]}`);
+      summary.push(`${name} FAILED ${secs}s`);
+    }
+  }
+  console.log(`\nsummary: ${summary.join(' | ')}`);
+  console.log('A slow OK is the serverless-timeout story (bake fixes it). A FAIL is vizugy itself.');
+}
+
+/**
  * Bake the WHOLE country's rain, not one city, from HungaroMet (OMSZ) open data.
  *
  * ---------------------------------------------------------------------------
@@ -4895,6 +4937,11 @@ async function main() {
 
   if (args.includes('--omsz-station')) {
     await probeOmszStation(args);
+    return;
+  }
+
+  if (args.includes('--vizugy-bake')) {
+    await probeVizugyBake();
     return;
   }
 
