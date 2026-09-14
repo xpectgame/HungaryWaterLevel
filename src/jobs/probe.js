@@ -697,7 +697,9 @@ async function probeSite(baseUrl) {
       const freshest = (d.gauges || [])
         .flatMap((g) => (g.daily || []).map((x) => ({ day: x.day, mm: x.mm, name: g.name })))
         .sort((a, b) => a.day.localeCompare(b.day)).slice(-1)[0];
-      const age = freshest ? Math.round((Date.now() - Date.parse(`${freshest.day}T00:00:00Z`)) / 86400000) : null;
+      const age = freshest
+        ? Math.round((Math.floor(Date.now() / 86400000) * 86400000 - Date.parse(`${freshest.day}T00:00:00Z`)) / 86400000)
+        : null;
       return {
         ok: national && !synthetic,
         note: `${gauges} stations, source ${d.source}, synthetic=${synthetic}, ` +

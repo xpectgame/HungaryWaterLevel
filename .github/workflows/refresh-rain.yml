@@ -1,0 +1,78 @@
+name: Refresh rain (OMSZ)
+
+# Re-bakes the national OMSZ rainfall snapshot every day and commits it, so the Csapadék
+# section stays about a day fresh instead of freezing at whatever the last bake captured.
+#
+# WHY A SCHEDULED JOB AND NOT A LIVE FETCH
+# The rain data is baked, not fetched per request, because OMSZ daily observations arrive
+# as zipped CSVs and the serverless runtime should not unzip a second provider on every
+# view. The cost of baking is that the snapshot goes stale unless something re-bakes it -
+# this is that something.
+#
+# WHY IT LIVES HERE
+# This file ships in the deployed repository, so its commit to `main` is what the host
+# redeploys - no cross-repo push and no extra secret. The commit only ever touches
+# src/config/rain-omsz.json.
+
+on:
+  schedule:
+    # 05:00 UTC daily - after OMSZ has finalised the previous day's observations. Cron on
+    # GitHub is best-effort and can lag under load; a missed day is caught the next run.
+    - cron: '0 5 * * *'
+  workflow_dispatch: {}
+
+# The job commits the refreshed snapshot back to the branch it ran on.
+permissions:
+  contents: write
+
+# Never let two refreshes race each other onto the same branch.
+concurrency:
+  group: refresh-rain
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The runner reaches odp.met.hu directly (a Hungarian government open-data host with a
+      # valid certificate), which is why this works where the live vizugy fetch does not.
+      - name: Bake the national OMSZ rain
+        env:
+          PROBE_OUT_DIR: probe-out
+        run: npm run probe -- --omsz-bake-all
+
+      - name: Promote only a sane national set, and commit only on change
+        run: |
+          set -e
+          test -f probe-out/rain-omsz.json
+          # Refuse a thin or empty bake: a daily job must never replace a good national
+          # snapshot with a handful of stations because odp.met.hu had a bad morning. The
+          # full network is ~270; 150 is a floor well below that but far above a fluke.
+          node -e "const d=require('./probe-out/rain-omsz.json');const n=(d.stations||[]).length;if(n<150)throw new Error('refusing a thin bake: '+n+' stations');if(!d.asOf)throw new Error('bake has no asOf');console.log(n+' stations, asOf '+d.asOf);"
+          cp probe-out/rain-omsz.json src/config/rain-omsz.json
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/config/rain-omsz.json
+          if git diff --cached --quiet; then
+            echo "no change since the last bake - nothing to deploy"
+            exit 0
+          fi
+          git commit -m "Refresh OMSZ rain ($(date -u +%Y-%m-%d))"
+          # Push with a small retry in case the branch moved under the bake.
+          for attempt in 1 2 3; do
+            if git push; then echo "pushed on attempt $attempt"; exit 0; fi
+            echo "push rejected, rebasing (attempt $attempt)"
+            git pull --rebase origin "$(git rev-parse --abbrev-ref HEAD)" || { git rebase --abort; exit 1; }
+            sleep $((attempt * 3))
+          done
+          echo "could not push after retries"; exit 1

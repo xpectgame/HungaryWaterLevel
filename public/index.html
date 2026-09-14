@@ -1305,6 +1305,11 @@ section.card{margin-bottom:clamp(18px,2.4vw,30px)}
 .bpcard .bp-fig b{color:var(--ink);font-variant-numeric:tabular-nums}
 .bpcard .bp-pct{color:var(--bp-accent,#8a94a0);font-weight:600}
 .bpcard .bp-note{margin-top:5px;font-size:12px;color:var(--ink-faint);line-height:1.5}
+/* The freshness line under the rain headline: the section is a baked daily snapshot, so a
+   reader deserves to see which day it is "as of" rather than assuming it runs to today. */
+.rain-asof{margin:2px 0 0;font-size:12px;color:var(--ink-faint)}
+.rain-asof b{color:var(--ink-soft);font-weight:600;font-variant-numeric:tabular-nums}
+.rain-asof.stale b{color:#cf6a2e}
 .regions{display:grid;gap:7px;margin-top:4px}
 .reg{display:grid;grid-template-columns:minmax(120px,1fr) 2fr minmax(96px,auto);gap:12px;align-items:center;font-size:13px}
 .reg .nm{color:var(--ink-soft)}
@@ -2132,6 +2137,7 @@ footer a{color:var(--ink-soft)}
     </div>
   </div>
   <p class="lead" id="rain-headline">&nbsp;</p>
+  <p class="rain-asof" id="rain-asof" hidden></p>
   <div id="rain-fig"></div>
   <div id="rain-budapest"></div>
   <div id="rain-regions" class="regions"></div>
@@ -4392,6 +4398,17 @@ async function loadRain(){
     // has no reason to vanish when the OVF network does.
     rainBudapest = data.budapest || null;
     renderRainBudapest(rainBudapest);
+    // The freshness line: rain is a baked daily snapshot, so show which day it runs to
+    // rather than let "az elmúlt 30 nap" be read as ending today. Hidden when there is no
+    // as-of (an outage document), orange once it slips more than a couple of days behind.
+    (function(){
+      const el = $('rain-asof'); if(!el) return;
+      if(!data.asOf){ el.hidden = true; return; }
+      el.hidden = false;
+      el.classList.toggle('stale', data.ageDays!=null && data.ageDays > 2);
+      el.innerHTML = 'Forrás: OMSZ országos csapadékmérő hálózat · állapot: <b>'+data.asOf+'</b>'
+        + (data.ageDays!=null ? ' ('+agoDays(data.ageDays)+')' : '');
+    })();
     if(data.unavailable){
       $('rain-headline').textContent = data.error || 'A csapadékadat most nem érhető el.';
       $('rain-regions').innerHTML=''; $('rain-gauges').innerHTML='';

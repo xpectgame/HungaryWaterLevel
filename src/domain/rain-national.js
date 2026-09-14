@@ -178,9 +178,11 @@ function buildNationalRainfall(days = 30, { document, now = Date.now() } = {}) {
     from: `${fromKey}T00:00:00Z`,
     to: `${toKey}T00:00:00Z`,
     asOf: asOfKey,
-    // Days behind: OMSZ daily lags reality by about a day, and the whole network shares one
-    // freshest day, so the section can honestly say "as of yesterday".
-    ageDays: Math.max(0, Math.round((now - (Date.parse(`${asOfKey}T00:00:00Z`) + 86400000)) / 86400000)) + 1,
+    // Days behind, as a calendar-day count: the difference between today's UTC date and
+    // the freshest day in the data. asOf = yesterday reads as 1 ("tegnap"), not 2. OMSZ
+    // daily lags reality by about a day, so 1 is the healthy steady state.
+    ageDays: Math.max(0, Math.round(
+      (Math.floor(now / 86400000) * 86400000 - Date.parse(`${asOfKey}T00:00:00Z`)) / 86400000)),
     fetchedAt: doc.generated || new Date(now).toISOString(),
     headline: headline(gauges, days),
     gaugeCount: gauges.length,
