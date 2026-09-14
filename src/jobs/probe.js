@@ -689,10 +689,20 @@ async function probeSite(baseUrl) {
       const lons = (d.gauges || []).map((g) => g.lon).filter((x) => Number.isFinite(x));
       const span = lons.length ? Math.max(...lons) - Math.min(...lons) : 0;
       const national = d.source === 'OMSZ' && gauges >= 100 && span > 4;
+      // Are the numbers REAL, and how fresh? synthetic=true would mean fixture data leaked
+      // to production; a real measured value with its date proves it is not. The freshest
+      // day across all stations is the true "as of", and its age says how stale the baked
+      // snapshot has become since the last bake.
+      const synthetic = !!(d._meta && d._meta.synthetic);
+      const freshest = (d.gauges || [])
+        .flatMap((g) => (g.daily || []).map((x) => ({ day: x.day, mm: x.mm, name: g.name })))
+        .sort((a, b) => a.day.localeCompare(b.day)).slice(-1)[0];
+      const age = freshest ? Math.round((Date.now() - Date.parse(`${freshest.day}T00:00:00Z`)) / 86400000) : null;
       return {
-        ok: national,
-        note: `${gauges} stations, source ${d.source}, ${d.regions ? d.regions.length : 0} regions, asOf ${d.asOf}` +
-          (national ? '' : ' - NOT the national OMSZ set'),
+        ok: national && !synthetic,
+        note: `${gauges} stations, source ${d.source}, synthetic=${synthetic}, ` +
+          `freshest day ${freshest ? freshest.day : '?'} (${age}d old), sample ${freshest ? `${freshest.mm}mm @ ${freshest.name}` : '?'}` +
+          (national ? '' : ' - NOT the national OMSZ set') + (synthetic ? ' - SYNTHETIC!' : ''),
       };
     }],
     // /archive, not /api/v1/archive: it is mounted outside the API version on purpose,
