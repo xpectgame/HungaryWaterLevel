@@ -579,6 +579,33 @@ function buildDroughtYears({ month, reference, station, document, daily, now = n
   // The newest day the archive holds, so the page can name it when the table is short of
   // the calendar - "the archive ends on 17 August" rather than leaving a reader to guess.
   body.archiveThrough = archiveLastDay(dailyDoc, now);
+
+  // The most recent month of THIS year that is already a whole column, when the month
+  // asked for is not - which the running month never is until it ends. Without it, on the
+  // 1st of October the section's only figures were about 2025, while September 2026 sat
+  // in the archive, complete, below 2022 on 27 of 28 gauges, and nowhere on the page.
+  // Whole month against whole month, so it is the same comparison as the table.
+  if (!body.years.includes(body.currentYear)) {
+    for (let pm = body.month - 1; pm >= 0; pm -= 1) {
+      const prev = compareYears({ month: pm, reference, document, now });
+      if (!prev.available || !prev.years.includes(prev.currentYear)) continue;
+      // Only gauges that HAVE this year's month count, in the denominator as well: a gauge
+      // missing the month cannot be below the reference, and counting it would understate.
+      const withThisYear = prev.stations.filter((s) => s.comparable && s.latest && s.latest.year === prev.currentYear);
+      const below = withThisYear.filter((s) => s.latest.value < s.referenceValue);
+      body.lastComplete = {
+        month: pm,
+        monthHu: prev.monthHu,
+        monthAdjHu: prev.monthAdjHu,
+        year: prev.currentYear,
+        reference: prev.reference,
+        comparable: withThisYear.length,
+        belowReference: below.length,
+        belowReferenceIds: below.map((s) => s.id),
+      };
+      break;
+    }
+  }
   return body;
 }
 

@@ -5999,6 +5999,18 @@ function renderDroughtYears(d){
       `</span></div>`;
   }
 
+  // This year's latest COMPLETE month, when the running one is not complete yet. Second,
+  // after "now" and before last year's same month: in early October the running window is
+  // a day or two long, and without this card the section answered "is it worse than
+  // 2022?" with 2025 while September 2026 sat complete in the archive.
+  const lc = d.lastComplete;
+  if(lc && lc.comparable > 0){
+    cards +=
+      `<div class="dy-fact${lc.belowReference ? ' hot' : ''}"><b>${lc.belowReference} / ${lc.comparable}</b>` +
+      `<span>ennyi mércén volt kisebb a <b>${lc.year}. ${esc(lc.monthAdjHu)}</b> medián vízhozam, ` +
+      `mint ${lc.reference}-ben — ez az idei legutóbbi lezárt hónap</span></div>`;
+  }
+
   cards +=
     `<div class="dy-fact${below ? ' hot' : ''}"><b>${below} / ${d.summary.comparable}</b>` +
     // "az utolsó teljes", not just the year: in mid-2026 a bare "2025" reads as stale

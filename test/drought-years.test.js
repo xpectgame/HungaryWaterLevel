@@ -415,6 +415,34 @@ test("the archive's last day ignores the previous New Year's Eve filed under thi
   assert.equal(archiveLastDay(daily, ON(9, 1)), `${THIS_YEAR}-08-17`);
 });
 
+test("early in a month, this year's latest complete month is surfaced beside it", () => {
+  // 1 October: October is a day old, so the table's figures are about last year. September
+  // of THIS year is complete, and it is the finding - it must not be invisible.
+  const SEP = 8;
+  const sep = (v) => month(SEP, v);
+  const doc = {
+    'duna-budapest': { 2022: sep(1000), [THIS_YEAR]: sep(700) },   // below 2022
+    'tisza-szolnok': { 2022: sep(100), [THIS_YEAR]: sep(150) },     // not below
+    'feher-koros-gyula': { 2022: sep(0.8), 2025: sep(0.5) },        // no September this year
+  };
+  const b = buildDroughtYears({ document: doc, daily: {}, now: ON(9, 1) });
+  assert.equal(b.month, 9, 'the default is still the running month');
+  assert.ok(b.lastComplete, 'September of this year is surfaced');
+  assert.equal(b.lastComplete.month, SEP);
+  assert.equal(b.lastComplete.year, THIS_YEAR);
+  assert.equal(b.lastComplete.belowReference, 1);
+  // The gauge with no September this year is left out of the denominator, not counted as
+  // "not below" - it was not measured, it was not wetter.
+  assert.equal(b.lastComplete.comparable, 2);
+  assert.deepEqual(b.lastComplete.belowReferenceIds, ['duna-budapest']);
+});
+
+test('no extra card when the month asked for already has this year in it', () => {
+  const doc = { 'duna-budapest': { 2022: month(0, 100), [THIS_YEAR]: month(0, 40) } };
+  const b = buildDroughtYears({ month: 0, document: doc, daily: {}, now: ON(5, 15) });
+  assert.equal(b.lastComplete, undefined);
+});
+
 test('the payload names the archive’s last day for the page', () => {
   const daily = { 'tisza-szolnok': { 2022: augDays(17, 100), [THIS_YEAR]: augDays(17, 60) } };
   const b = buildDroughtYears({ month: AUG, document: FIXTURE, daily, now: AUG_18 });
