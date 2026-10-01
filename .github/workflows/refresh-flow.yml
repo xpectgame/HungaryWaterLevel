@@ -1,0 +1,89 @@
+name: Refresh discharge archive (OVF)
+
+# Keeps the discharge archive behind "Rosszabb, mint 2022?" current, so it can never again
+# end on whatever day someone last ran the bake by hand - which is how the section spent
+# September 2026 without August, without September, and without its running-month card.
+#
+#   daily   --flow-refresh   the last ~40 days, one request per gauge, merged into
+#                            src/config/flow-daily.json and flow-yearly.json
+#   monthly --flow-history   the full ten-year re-bake (~300 requests, ~30 min), which also
+#                            refreshes the percentile envelopes in flow-history.json
+#
+# Ships in the deployed repo, so its commit to `main` is what the host redeploys - no
+# cross-repo push, no secret. scripts/promote-flow.js refuses a thin or stale bake and
+# fails the run instead, so a bad morning at vizugy.hu shows up as a red run rather than
+# as a quietly emptied section.
+
+on:
+  schedule:
+    # Daily refresh. GitHub runs cron late under load; a missed day is covered by the
+    # 40-day window on the next run.
+    - cron: '20 5 * * *'
+    # Monthly full re-bake, on the 2nd so the month just closed is complete in it.
+    - cron: '40 2 2 * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'refresh = recent window only; full = the whole ten-year bake'
+        type: choice
+        options: [refresh, full]
+        default: refresh
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-flow
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    # 60, not 10: the monthly full bake is ~300 sequential requests to someone else's
+    # public service, and cutting it off three-quarters through throws the work away.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Which mode goes through the environment, not ${{ }} interpolation into the script:
+      # the repository's rule for anything that came from an event.
+      - name: Bake
+        env:
+          PROBE_OUT_DIR: probe-out
+          SCHEDULE: ${{ github.event.schedule }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$SCHEDULE" = "40 2 2 * *" ] || [ "$MODE" = "full" ]; then
+            npm run probe -- --flow-history
+          else
+            npm run probe -- --flow-refresh
+          fi
+
+      - name: Promote only a sane, current bake - and commit only on change
+        run: |
+          set -e
+          node scripts/promote-flow.js probe-out src/config
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/config/flow-daily.json src/config/flow-yearly.json src/config/flow-history.json
+          if git diff --cached --quiet; then
+            echo "no change since the last refresh - nothing to deploy"
+            exit 0
+          fi
+          git commit -m "Refresh discharge archive ($(date -u +%Y-%m-%d))"
+          # The rain refresh commits to the same branch; the files never overlap, so a
+          # rebase always applies.
+          for attempt in 1 2 3; do
+            if git push; then echo "pushed on attempt $attempt"; exit 0; fi
+            echo "push rejected, rebasing (attempt $attempt)"
+            git pull --rebase origin "$(git rev-parse --abbrev-ref HEAD)" || { git rebase --abort; exit 1; }
+            sleep $((attempt * 3))
+          done
+          echo "could not push after retries"; exit 1

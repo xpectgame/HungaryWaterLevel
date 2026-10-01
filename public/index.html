@@ -5993,6 +5993,9 @@ function renderDroughtYears(d){
       `<span>ennyi mércén folyik <b>most</b> kevesebb víz, mint ${run.reference} ugyanezen ` +
       `napjaiban — ${esc(run.monthHu)} 1–${run.throughDay}., ${run.year}` +
       (rec ? `. Ebből <b>${rec} mércén ez a legszárazabb ilyen időszak</b> az egész archívumban.` : '.') +
+      // When the archive ends before yesterday, the window ends with it - say so, so
+      // "1-15" in the third week of the month does not read as an arbitrary choice.
+      (run.lagDays > 1 ? ` <i>(Az archívum egyelőre ${run.throughDay}-ig ér, ${run.lagDays} nappal lemaradva.)</i>` : '') +
       `</span></div>`;
   }
 
@@ -6052,6 +6055,13 @@ function renderDroughtYears(d){
         `mondani lehet, az a fenti, pirossal keretezett sáv (azonos napszakasz minden évben). `;
     } else if(d.currentYearMissingReason === 'year-not-baked'){
       missing = `<b>${d.currentYear} még nincs az archívumban</b> — a következő sütés hozza be. `;
+    } else if(d.currentYearMissingReason === 'archive-behind'){
+      // The month HAS happened; the archive has not caught up. Saying "not complete yet"
+      // here would be a false statement about the river, so name the archive's end instead.
+      missing = `<b>${d.currentYear} ${esc(d.monthHu)} azért hiányzik az oszlopok közül</b>, mert ` +
+        `az archívum még nem frissült` +
+        (d.archiveThrough ? ` — az utolsó benne lévő nap ${esc(d.archiveThrough)}` : '') +
+        `. A hónap megvolt, csak az adatsor nem ért el idáig. `;
     }
 
     // The legend stays in the flow - a reader cannot use the table without knowing what

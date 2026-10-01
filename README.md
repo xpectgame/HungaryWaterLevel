@@ -580,6 +580,28 @@ kifejezetten **hibát dob**, ha memóriás tárolóval hívják meg, mert olyank
 instance memóriájába írna, amelyik utána egyetlen kérést sem szolgál ki. A 200-as válasz
 és a semmittevés a legrosszabb kombináció.
 
+#### A bebakkolt adatok automatikus frissítése
+
+Két adatforrás nem kéréskor jön, hanem előre sütött dokumentumból — és egy sütés
+elavul, ha senki nem futtatja újra. 2026 őszén pontosan ez történt: a csapadék négy
+napig állt, a „Rosszabb, mint 2022?" archívuma hat hétig (augusztus 17-én ért véget). Ezért
+mindkettőt ütemezett GitHub Actions munka frissíti, a **telepített** repóban:
+
+| Workflow | Mit frissít | Mikor |
+|---|---|---|
+| `refresh-rain.yml` | `src/config/rain-omsz.json` (OMSZ, országos csapadék) | naponta |
+| `refresh-flow.yml` | `flow-daily.json`, `flow-yearly.json` (utolsó ~40 nap, mércénként 1 kérés) | naponta |
+| `refresh-flow.yml` | ugyanez + `flow-history.json` (teljes tízéves sütés) | havonta, 2-án |
+
+Mindkettő megtagadja a vékony vagy elavult sütés élesítését (`scripts/promote-flow.js`,
+illetve a csapadéknál az állomásszám-küszöb), és ilyenkor **piros** futással jelez — nem
+üríti ki csendben a szekciót. A telepítés-ellenőrző (`npm run probe -- --site=URL`) külön
+riaszt, ha az archívum két napnál jobban lemaradt.
+
+**Deploy ennek tudatában:** mivel ezek a munkák a telepített repó `main` ágára commitolnak,
+egy új verziót **rájuk** kell tenni (fast-forward), nem force-pusholni föléjük — a force
+push visszagörgetné a frissítéseiket a legutóbbi kézi sütés állapotára.
+
 ### Lokálisan
 
 ```bash

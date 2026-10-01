@@ -598,7 +598,11 @@ async function probeSite(baseUrl) {
   if (meta.lastPollErrors) {
     console.log(`  poll errors   ${meta.lastPollErrors.count}` +
       (meta.lastPollErrors.count ? `   ${meta.lastPollErrors.first
-        .map((e) => String(e && e.station || e).slice(0, 40)).join(' | ')}` : ''));
+        // The poller records { stationId, error }; reading `.station` printed
+        // "[object Object]" for every one of them, which told nobody which gauge failed.
+        .map((e) => (e && typeof e === 'object'
+          ? `${e.stationId || e.station || '?'}: ${String(e.error || '').slice(0, 50)}`
+          : String(e).slice(0, 60))).join(' | ')}` : ''));
   }
 
   if (meta.lastPollAt) {
@@ -765,14 +769,23 @@ async function probeSite(baseUrl) {
     // while the "how does it look right now" block simply never appeared.
     ['aszalyevek/most', '/api/v1/aszalyevek', (d) => {
       const r = d.running;
+      // On the 1st of a month there is no complete day of it yet, and the section says so.
+      // That is the right answer, not a broken deployment - flagging it red every month
+      // trains whoever reads this check to ignore it.
+      if (r && !r.available && /még nincs teljes nap/.test(r.reason || '')) {
+        return { ok: true, note: `first day of the month - no complete day yet (expected); archive through ${d.archiveThrough}` };
+      }
       if (!r || !r.available) {
-        return { ok: false, note: `no running window: ${(r && r.reason) || 'absent'} - is flow-daily.json deployed?` };
+        return { ok: false, note: `no running window: ${(r && r.reason) || 'absent'} (archive through ${d.archiveThrough})` };
       }
       const s = r.summary || {};
       const rec = (s.lowestByYear || [])[0] || {};
-      return { ok: s.comparable > 0,
+      // A window more than a couple of days short of yesterday means the daily archive
+      // refresh has stopped - the failure that froze this section for six weeks in 2026.
+      return { ok: s.comparable > 0 && !(r.lagDays > 2),
         note: `${r.monthHu} 1-${r.throughDay}: ${s.belowReference}/${s.comparable} below ${r.reference}`
-          + `, record year ${rec.year} on ${rec.count}` };
+          + `, record year ${rec.year} on ${rec.count}`
+          + (r.lagDays > 2 ? ` - ARCHIVE ${r.lagDays} DAYS BEHIND (is refresh-flow running?)` : '') };
     }],
   ];
 
@@ -2650,6 +2663,95 @@ async function probeFlowHistory(args = []) {
   console.log('  this is what lets the running month be compared against the SAME days of');
   console.log('  earlier years - the monthly documents above have thrown the days away.');
   emitDocument('flow-daily', daily, 'src/config/flow-daily.json');
+}
+
+/**
+ * Bring the discharge archive up to date without re-baking ten years of it.
+ *
+ * The full bake above is ~300 full-year requests and was run by hand, so the archive ended
+ * wherever the last run did - 17 August 2026 - and "Rosszabb, mint 2022?" sat without
+ * August, September or its running-month card for six weeks. This fetches only the recent
+ * window, ONE request per gauge, and folds it into the baked flow-daily / flow-yearly
+ * documents (see src/domain/flow-refresh.js). Meant for a daily scheduled job; the full
+ * bake stays the monthly job that refreshes the ten-year percentile envelopes.
+ *
+ * --days=N widens the window (default 40: enough to close any month that was still open
+ * at the last refresh, and to ride out a few missed runs).
+ */
+async function probeFlowRefresh(args = []) {
+  console.log('\n########## discharge archive: recent-window refresh ##########');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { mappedStations, EXTERNAL_IDS } = require('../sources/vizugy');
+  const { mergeFlowWindow } = require('../domain/flow-refresh');
+  const arg = (name) => {
+    const hit = args.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : null;
+  };
+
+  const configPath = (name) => path.join(__dirname, '..', 'config', name);
+  const daily = JSON.parse(fs.readFileSync(configPath('flow-daily.json'), 'utf8'));
+  const yearly = JSON.parse(fs.readFileSync(configPath('flow-yearly.json'), 'utf8'));
+
+  const DAYS = Number(arg('days')) || 40;
+  const now = new Date();
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - DAYS));
+  const fromDay = from.toISOString().slice(0, 10);
+  const to = new Date(now.getTime() + 60 * 60 * 1000);
+  const stations = mappedStations();
+  console.log(`${stations.length} stations, ${fromDay} .. today (${stations.length} requests)\n`);
+
+  const fresh = {};
+  let failed = 0;
+  for (const station of stations) {
+    try {
+      const rows = await askSeries(
+        [{
+          ItemId: 0,
+          Torzsszam: Number(EXTERNAL_IDS[station.id]),
+          AdatFajtaKod: 87,
+          AdatTipusKod: 100,
+          StartTime: from.toISOString(),
+          EndTime: to.toISOString(),
+        }],
+        { timeoutMs: 120000 },
+      );
+      // Daily means by UTC date, exactly as the full bake builds them.
+      const byDay = new Map();
+      for (const item of usable(Array.isArray(rows) ? rows[0] : null)) {
+        const q = Number(item.Adat);
+        if (!Number.isFinite(q) || q < 0) continue;
+        const day = item.UTCTime.slice(0, 10);
+        // The upstream reads the window in local time, so it hands back an hour before
+        // the start - a sliver of the previous day that would be stored as a whole one.
+        if (day < fromDay) continue;
+        const bucket = byDay.get(day) || { sum: 0, n: 0 };
+        bucket.sum += q;
+        bucket.n += 1;
+        byDay.set(day, bucket);
+      }
+      if (!byDay.size) {
+        failed += 1;
+        console.log(`  ${station.id.padEnd(24)} no samples in the window`);
+        continue;
+      }
+      fresh[station.id] = Object.fromEntries([...byDay].map(([day, b]) => [day, b.sum / b.n]));
+      const days = [...byDay.keys()].sort();
+      console.log(`  ${station.id.padEnd(24)} ${String(days.length).padStart(3)} days  ${days[0]} .. ${days[days.length - 1]}`);
+    } catch (err) {
+      failed += 1;
+      console.log(`  ${station.id.padEnd(24)} FAILED ${String(err.message).split('\n')[0]}`);
+    }
+    await sleep(150); // someone else's public service
+  }
+
+  const merged = mergeFlowWindow({ daily, yearly, fresh });
+  const published = merged.touched.filter((t) => merged.yearly[t.station][t.year][t.month] !== null);
+  console.log(`\nrefreshed ${Object.keys(fresh).length} of ${stations.length} stations (${failed} failed); ` +
+    `${merged.touched.length} station-months recomputed, ${published.length} of them with ` +
+    `enough days to publish as a month`);
+  writeDocument('flow-daily', merged.daily);
+  writeDocument('flow-yearly', merged.yearly);
 }
 
 /**
@@ -4989,6 +5091,11 @@ async function main() {
 
   if (args.includes('--flow-history')) {
     await probeFlowHistory(args);
+    return;
+  }
+
+  if (args.includes('--flow-refresh')) {
+    await probeFlowRefresh(args);
     return;
   }
 

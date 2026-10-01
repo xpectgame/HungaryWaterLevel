@@ -5,6 +5,7 @@ const assert = require('node:assert');
 
 const {
   compareYears, compareWindow, stationAcrossMonths, monthSeries, buildDroughtYears,
+  archiveLastDay,
 } = require('../src/domain/drought-years');
 
 /* Two gauges, four years, August in index 7. Small enough to reason about by hand. */
@@ -172,6 +173,24 @@ function augDays(n, value) {
 
 const THIS_YEAR = new Date().getUTCFullYear();
 
+/**
+ * A pinned clock, midday UTC on the given day of THIS_YEAR.
+ *
+ * The window and the missing-column reason both depend on what day it is, and these
+ * tests used to read the real clock - so one of them failed on the 1st of every month,
+ * and others encoded "August is not over yet", which was only true in August.
+ */
+const ON = (monthIndex, day) => new Date(Date.UTC(THIS_YEAR, monthIndex, day, 12));
+const AUG_18 = ON(AUG, 18);
+
+/** Days 1..n of a month (0-11) for one year, all at the same discharge. */
+function monthDays(monthIndex, n, value) {
+  const mm = String(monthIndex + 1).padStart(2, '0');
+  const days = {};
+  for (let d = 1; d <= n; d += 1) days[`${mm}-${String(d).padStart(2, '0')}`] = value;
+  return days;
+}
+
 test('the running month is compared against the SAME days of other years', () => {
   // Seventeen days is not August, and the monthly table is right to say nothing about
   // it. Seventeen days against seventeen days is a different and answerable question.
@@ -181,7 +200,7 @@ test('the running month is compared against the SAME days of other years', () =>
       [THIS_YEAR]: augDays(17, 60),
     },
   };
-  const w = compareWindow({ month: 7, throughDay: 17, document: daily });
+  const w = compareWindow({ month: 7, throughDay: 17, document: daily, now: AUG_18 });
   assert.equal(w.available, true);
   assert.equal(w.windowDays, 17);
   assert.equal(w.throughDay, 17);
@@ -203,7 +222,7 @@ test('a year missing most of the window does not compete', () => {
       [THIS_YEAR]: augDays(17, 60),
     },
   };
-  const w = compareWindow({ month: 7, throughDay: 17, document: daily });
+  const w = compareWindow({ month: 7, throughDay: 17, document: daily, now: AUG_18 });
   const s = w.stations[0];
   assert.equal(s.values['2019'], null, 'four days must not produce a value');
   assert.equal(s.daysCounted['2019'], 4, 'but the count is still reported');
@@ -212,7 +231,7 @@ test('a year missing most of the window does not compete', () => {
 
 test('the window carries its own basis, distinct from the monthly table', () => {
   const daily = { 'tisza-szolnok': { 2022: augDays(17, 100), [THIS_YEAR]: augDays(17, 60) } };
-  const w = compareWindow({ month: 7, throughDay: 17, document: daily });
+  const w = compareWindow({ month: 7, throughDay: 17, document: daily, now: AUG_18 });
   assert.equal(w.basis, 'aligned-window');
   assert.match(w.basisNote, /augusztus 1–17/);
   assert.match(w.basisNote, /nem a teljes hónap/);
@@ -224,19 +243,19 @@ test('the window is a median, the same statistic as the table above', () => {
   // them that is not valid.
   const days = { '08-01': 1, '08-02': 2, '08-03': 3, '08-04': 4, '08-05': 100 };
   const daily = { 'tisza-szolnok': { 2022: days, [THIS_YEAR]: days } };
-  const w = compareWindow({ month: 7, throughDay: 5, document: daily });
+  const w = compareWindow({ month: 7, throughDay: 5, document: daily, now: AUG_18 });
   assert.equal(w.stations[0].referenceValue, 3, 'median of 1,2,3,4,100 is 3 - a mean would be 22');
 });
 
 test('with no daily archive it says so rather than returning an empty comparison', () => {
-  const w = compareWindow({ month: 7, throughDay: 17, document: {} });
+  const w = compareWindow({ month: 7, throughDay: 17, document: {}, now: AUG_18 });
   assert.equal(w.available, false);
   assert.match(w.reason, /napi felbontású/);
 });
 
 test('the first of the month has no complete day yet, and says so', () => {
   const daily = { 'tisza-szolnok': { 2022: augDays(31, 100) } };
-  const w = compareWindow({ month: 7, throughDay: 0, document: daily });
+  const w = compareWindow({ month: 7, throughDay: 0, document: daily, now: AUG_18 });
   assert.equal(w.available, false);
 });
 
@@ -244,7 +263,8 @@ test('the payload attaches the window under its own key, never in the year colum
   // A consumer that could not tell them apart would put seventeen days in the August
   // column beside whole months.
   const daily = { 'tisza-szolnok': { 2022: augDays(17, 100), [THIS_YEAR]: augDays(17, 60) } };
-  const b = buildDroughtYears({ month: AUG, document: FIXTURE, daily });
+  // Pinned to the 18th: on the real clock this test failed on the 1st of every month.
+  const b = buildDroughtYears({ month: AUG, document: FIXTURE, daily, now: AUG_18 });
   assert.ok(b.running, 'no running-month block');
   assert.equal(b.running.basis, 'aligned-window');
   assert.equal(b.basis, 'monthly-median');
@@ -268,7 +288,7 @@ test('a ratio is withheld where either side sits on the archive resolution floor
       [THIS_YEAR]: augDays(17, 700),
     },
   };
-  const w = compareWindow({ month: 7, throughDay: 17, document: daily });
+  const w = compareWindow({ month: 7, throughDay: 17, document: daily, now: AUG_18 });
   const koros = w.stations.find((s) => s.id === 'feher-koros-gyula');
   const duna = w.stations.find((s) => s.id === 'duna-budapest');
 
@@ -287,7 +307,7 @@ test('a drop entirely inside the floor is not counted as a drop', () => {
   const daily = {
     'tiny-gauge': { 2022: augDays(17, 0.05), [THIS_YEAR]: augDays(17, 0) },
   };
-  const w = compareWindow({ month: 7, throughDay: 17, document: daily });
+  const w = compareWindow({ month: 7, throughDay: 17, document: daily, now: AUG_18 });
   assert.equal(w.summary.belowReference, 0, '0.05 to 0 is noise, not a finding');
 });
 
@@ -303,7 +323,8 @@ test('the archive range is reported separately from this month column list', () 
       [THIS_YEAR]: [10, 10, 10, 10, 10, 10, 10, null, null, null, null, null],
     },
   };
-  const b = compareYears({ month: AUG, document: doc });
+  // On the 18th of August, when August genuinely is not over.
+  const b = compareYears({ month: AUG, document: doc, now: AUG_18 });
   assert.deepEqual(b.years, [2022, 2025], 'no August column for the running year');
   assert.ok(b.archiveYears.includes(THIS_YEAR), 'but the archive does reach it');
   assert.equal(b.currentYearInArchive, true);
@@ -316,9 +337,88 @@ test('a year genuinely absent from the archive is distinguished from an unfinish
   // Two very different situations that look identical in the table: "the bake has not
   // run" and "the month is not over". Only one of them is anybody's fault.
   const doc = { 'duna-budapest': { 2022: month(AUG, 1249), 2025: month(AUG, 1629) } };
-  const b = compareYears({ month: AUG, document: doc });
+  const b = compareYears({ month: AUG, document: doc, now: AUG_18 });
   assert.equal(b.currentYearInArchive, false);
   assert.equal(b.currentYearMissingReason, 'year-not-baked');
+});
+
+test('a month that is over but missing from the archive is the archive lagging, not the month', () => {
+  // The September 2026 bug: the archive was baked on 17 August and never again, and the
+  // page went on telling readers August "had not ended yet" well into October.
+  const doc = {
+    'duna-budapest': {
+      2022: month(AUG, 1249),
+      2025: month(AUG, 1629),
+      [THIS_YEAR]: [10, 10, 10, 10, 10, 10, 10, null, null, null, null, null],
+    },
+  };
+  const b = compareYears({ month: AUG, document: doc, now: ON(9, 1) });
+  assert.equal(b.currentYearMissingReason, 'archive-behind');
+});
+
+/* --- the window follows the data, not the calendar --------------------------- */
+
+test('a month that is over is compared in full, whatever day it is today', () => {
+  // The window used to end at "yesterday's day-of-month" for ANY month: in mid-October
+  // the August window was 1-14 August, and on the 1st of a month it was empty.
+  const daily = {
+    'tisza-szolnok': { 2022: monthDays(AUG, 31, 100), [THIS_YEAR]: monthDays(AUG, 31, 60) },
+  };
+  const w = compareWindow({ month: AUG, document: daily, now: ON(9, 1) });
+  assert.equal(w.available, true);
+  assert.equal(w.throughDay, 31);
+  assert.equal(w.windowDays, 31);
+  assert.equal(w.lagDays, 0);
+});
+
+test('the window stops at the last day the archive holds, and says how far behind it is', () => {
+  // 20 October, archive through the 15th: compare 1-15 October in every year, rather
+  // than 1-19 with this year missing four days and failing coverage on every gauge.
+  const OCT = 9;
+  const daily = {
+    'tisza-szolnok': { 2022: monthDays(OCT, 31, 100), [THIS_YEAR]: monthDays(OCT, 15, 60) },
+  };
+  const w = compareWindow({ month: OCT, document: daily, now: ON(OCT, 20) });
+  assert.equal(w.available, true);
+  assert.equal(w.throughDay, 15);
+  assert.equal(w.calendarThroughDay, 19);
+  assert.equal(w.lagDays, 4);
+  assert.equal(w.summary.comparable, 1);
+});
+
+test('an archive that has not reached the month says so and names its last day', () => {
+  // Exactly the state of the live site in September 2026: archive ends 17 August, the
+  // running month is September. It used to come back available with "0 of 0".
+  const SEP = 8;
+  const daily = {
+    'tisza-szolnok': { 2022: monthDays(SEP, 30, 100), [THIS_YEAR]: monthDays(AUG, 17, 60) },
+  };
+  const w = compareWindow({ month: SEP, document: daily, now: ON(SEP, 14) });
+  assert.equal(w.available, false);
+  assert.match(w.reason, new RegExp(`${THIS_YEAR}\\. szeptemberig`));
+  assert.match(w.reason, new RegExp(`${THIS_YEAR}-08-17`));
+});
+
+test('a window with nothing comparable is unavailable, never "0 of 0"', () => {
+  // This year has the days but the reference year does not: no gauge can be compared.
+  const daily = { 'tisza-szolnok': { 2021: augDays(17, 100), [THIS_YEAR]: augDays(17, 60) } };
+  const w = compareWindow({ month: AUG, throughDay: 17, document: daily, now: AUG_18 });
+  assert.equal(w.available, false);
+  assert.match(w.reason, /nincs olyan mérce/);
+});
+
+test("the archive's last day ignores the previous New Year's Eve filed under this year", () => {
+  // The upstream reads the request window in local time, so every year's bucket opens
+  // with a "12-31" that is really the previous year's. Taken at face value it dated the
+  // archive to the end of THIS year.
+  const daily = { 'tisza-szolnok': { [THIS_YEAR]: { '12-31': 5, '08-16': 3, '08-17': 3 } } };
+  assert.equal(archiveLastDay(daily, ON(9, 1)), `${THIS_YEAR}-08-17`);
+});
+
+test('the payload names the archive’s last day for the page', () => {
+  const daily = { 'tisza-szolnok': { 2022: augDays(17, 100), [THIS_YEAR]: augDays(17, 60) } };
+  const b = buildDroughtYears({ month: AUG, document: FIXTURE, daily, now: AUG_18 });
+  assert.equal(b.archiveThrough, `${THIS_YEAR}-08-17`);
 });
 
 test('a complete month in the current year does get its column', () => {

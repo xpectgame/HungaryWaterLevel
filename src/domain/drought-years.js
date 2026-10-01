@@ -67,6 +67,54 @@ const MONTHS_ADJ_HU = Object.freeze([
 const REFERENCE_YEAR = 2022;
 
 /**
+ * The bake publishes a calendar month once this many of its days are in the archive.
+ *
+ * Mirrors MIN_DAYS_IN_MONTH in the flow-history bake. It is repeated here because the
+ * domain has to tell apart two situations that look identical in the table - "this month
+ * has not mostly happened yet" and "it has, and the archive simply has not caught up" -
+ * and only the calendar can say which one it is.
+ */
+const ARCHIVE_MIN_DAYS = 20;
+
+/**
+ * How many days of month `m` (in `now`'s year) are over, counting through yesterday.
+ *
+ * A past month is over in full, a future one has not started, and the running one is
+ * over up to yesterday - today is usually still partial at whatever hour this runs.
+ */
+function elapsedDays(m, now) {
+  const y = now.getUTCFullYear();
+  const current = now.getUTCMonth();
+  if (m < current) return new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  if (m > current) return 0;
+  return now.getUTCDate() - 1;
+}
+
+/**
+ * The newest day the day-resolved archive actually holds, as YYYY-MM-DD.
+ *
+ * Dates after `now` are ignored. Each year in the bake can carry a "12-31" key that is
+ * really the previous New Year's Eve - the upstream reads the request window in local
+ * time - and taken at face value it would date the archive to the end of this year.
+ */
+function archiveLastDay(daily, now = new Date()) {
+  if (!daily) return null;
+  const today = now.toISOString().slice(0, 10);
+  let last = null;
+  for (const byYear of Object.values(daily)) {
+    for (const [year, days] of Object.entries(byYear || {})) {
+      for (const [md, v] of Object.entries(days || {})) {
+        if (!Number.isFinite(v)) continue;
+        const iso = `${year}-${md}`;
+        if (iso > today) continue;
+        if (!last || iso > last) last = iso;
+      }
+    }
+  }
+  return last;
+}
+
+/**
  * One gauge's value for a given month, across every year in the archive.
  *
  * Returns null where the month was not covered - a gap in the record is not a zero and
@@ -87,13 +135,13 @@ function monthSeries(byYear, month) {
  * @param month     0-11. Defaults to the current month.
  * @param reference the year to compare against; 2022 unless told otherwise.
  */
-function compareYears({ month, reference = REFERENCE_YEAR, document } = {}) {
+function compareYears({ month, reference = REFERENCE_YEAR, document, now = new Date() } = {}) {
   const yearly = document !== undefined ? document : loadYearly();
   if (!yearly || !Object.keys(yearly).length) {
     return { available: false, reason: 'A vízhozam-archívum nincs betöltve.' };
   }
 
-  const m = Number.isInteger(month) ? month : new Date().getUTCMonth();
+  const m = Number.isInteger(month) ? month : now.getUTCMonth();
   const stations = [];
   const yearSet = new Set();
 
@@ -173,7 +221,7 @@ function compareYears({ month, reference = REFERENCE_YEAR, document } = {}) {
   // ending at 2025.
   // ---------------------------------------------------------------------------
   const archiveYearSet = new Set();
-  const currentYear = new Date().getUTCFullYear();
+  const currentYear = now.getUTCFullYear();
   let currentYearMonths = 0;
   for (const byYear of Object.values(yearly)) {
     for (const [year, series] of Object.entries(byYear)) {
@@ -204,8 +252,15 @@ function compareYears({ month, reference = REFERENCE_YEAR, document } = {}) {
     currentYearMonthsComplete: currentYearMonths,
     // The reason there is no column for the current year, in a field rather than in
     // prose a consumer would have to reconstruct.
+    //
+    // 'archive-behind' is checked first, against the calendar: once a month has had
+    // enough days to be published, its absence is the archive lagging, not the month
+    // being unfinished. Without it the page told readers all through September 2026 that
+    // August "had not ended yet" - true when the archive was baked on the 17th, false for
+    // the six weeks after, while nothing re-baked it.
     currentYearMissingReason: years.includes(currentYear) ? null
-      : (archiveYears.includes(currentYear) ? 'month-not-complete' : 'year-not-baked'),
+      : elapsedDays(m, now) >= ARCHIVE_MIN_DAYS ? 'archive-behind'
+        : (archiveYears.includes(currentYear) ? 'month-not-complete' : 'year-not-baked'),
     stations,
     summary: {
       stations: stations.length,
@@ -336,7 +391,7 @@ const MIN_WINDOW_COVERAGE = 0.8;
  */
 const RESOLUTION_FLOOR = 0.1;
 
-function compareWindow({ month, throughDay, reference = REFERENCE_YEAR, document } = {}) {
+function compareWindow({ month, throughDay, reference = REFERENCE_YEAR, document, now = new Date() } = {}) {
   const daily = document !== undefined ? document : loadDaily();
   if (!daily || !Object.keys(daily).length) {
     return {
@@ -345,14 +400,49 @@ function compareWindow({ month, throughDay, reference = REFERENCE_YEAR, document
     };
   }
 
-  const now = new Date();
+  const year = now.getUTCFullYear();
   const m = Number.isInteger(month) ? month : now.getUTCMonth();
-  // Through yesterday by default: today is usually partial at whatever hour this runs,
-  // and a half-day would drag the window's last value down for this year alone.
-  const through = Number.isInteger(throughDay) ? throughDay : now.getUTCDate() - 1;
-  if (through < 1) {
+  if (m > now.getUTCMonth()) {
+    return { available: false, reason: 'Ez a hónap még nem kezdődött el.' };
+  }
+
+  // The calendar end of the window. For the running month that is yesterday - today is
+  // usually partial at whatever hour this runs, and a half-day would drag the window's
+  // last value down for this year alone. For a month that is already over it is the
+  // whole month: it used to be "yesterday's day-of-month" whatever month was asked for,
+  // so in mid-October the August window was an arbitrary 1-14 August, and on the 1st of
+  // every month it was empty.
+  const calendarThrough = Number.isInteger(throughDay) ? throughDay : elapsedDays(m, now);
+  if (calendarThrough < 1) {
     return { available: false, reason: 'A hónapból még nincs teljes nap.' };
   }
+
+  // ...and never past the last day the archive actually holds for this year. The archive
+  // is a bake, and a bake lags. A window that runs beyond it compares this year's EMPTY
+  // days against full ones in every other year, every gauge drops out on coverage, and
+  // the section answered "0 of 0" for the whole of September 2026 while the archive
+  // still ended on 17 August.
+  const mm = String(m + 1).padStart(2, '0');
+  const today = now.toISOString().slice(0, 10);
+  let dataThrough = 0;
+  for (const byYear of Object.values(daily)) {
+    const days = byYear && byYear[String(year)];
+    if (!days) continue;
+    for (const [md, v] of Object.entries(days)) {
+      if (!md.startsWith(`${mm}-`) || !Number.isFinite(v) || `${year}-${md}` > today) continue;
+      dataThrough = Math.max(dataThrough, Number(md.slice(3)));
+    }
+  }
+  if (dataThrough < 1) {
+    const last = archiveLastDay(daily, now);
+    return {
+      available: false,
+      reason: `A napi archívum még nem ér el ${year}. ${MONTHS_HU[m]}ig`
+        + (last ? ` (utolsó napja: ${last}).` : '.'),
+      archiveThrough: last,
+    };
+  }
+  const through = Math.min(calendarThrough, dataThrough);
 
   const keys = [];
   for (let d = 1; d <= through; d += 1) {
@@ -381,7 +471,7 @@ function compareWindow({ month, throughDay, reference = REFERENCE_YEAR, document
     const present = Object.entries(values)
       .filter(([, v]) => Number.isFinite(v))
       .map(([year, v]) => ({ year: Number(year), value: v }));
-    const thisYear = present.find((p) => p.year === now.getUTCFullYear()) || null;
+    const thisYear = present.find((p) => p.year === year) || null;
 
     // Either side sitting on the archive's resolution floor makes the RATIO unusable,
     // not the comparison. See RESOLUTION_FLOOR.
@@ -426,13 +516,27 @@ function compareWindow({ month, throughDay, reference = REFERENCE_YEAR, document
   // is less water, floor or no floor.
   const below = comparable.filter((s) => s.referenceValue - s.thisYear.value >= RESOLUTION_FLOOR);
 
+  // Nothing comparable is not a result. "0 of 0 gauges" published as available read, in
+  // the deployment check, as "record year undefined on undefined" - and as a silently
+  // missing card on the page. Say why instead.
+  if (!comparable.length) {
+    return {
+      available: false,
+      reason: `${MONTHS_HU[m]} 1–${through}.: nincs olyan mérce, ahol idén és ${reference}-ben is elég nap volna az összevetéshez.`,
+    };
+  }
+
   return {
     available: true,
     month: m,
     monthHu: MONTHS_HU[m],
     monthAdjHu: MONTHS_ADJ_HU[m],
-    year: now.getUTCFullYear(),
+    year,
     throughDay: through,
+    // How far the window had to stop short of the calendar because the archive ends
+    // earlier. 0 when the archive is current; a page can say so when it is not.
+    calendarThroughDay: calendarThrough,
+    lagDays: calendarThrough - through,
     windowDays: keys.length,
     reference,
     years: [...yearSet].sort((a, b) => a - b),
@@ -457,8 +561,8 @@ function median(sorted) {
 }
 
 /** The payload for the endpoint and the section. */
-function buildDroughtYears({ month, reference, station, document, daily } = {}) {
-  const body = compareYears({ month, reference, document });
+function buildDroughtYears({ month, reference, station, document, daily, now = new Date() } = {}) {
+  const body = compareYears({ month, reference, document, now });
   if (!body.available) return body;
   if (station) {
     const detail = stationAcrossMonths(station, { reference, document });
@@ -469,8 +573,12 @@ function buildDroughtYears({ month, reference, station, document, daily } = {}) 
   // its own `basis`, never merged into the year columns above: those are whole months
   // and this is seventeen days, and a consumer that could not tell them apart would put
   // a partial figure in the August column.
-  const window = compareWindow({ month, reference, document: daily });
+  const dailyDoc = daily !== undefined ? daily : loadDaily();
+  const window = compareWindow({ month, reference, document: dailyDoc, now });
   body.running = window.available ? window : { available: false, reason: window.reason };
+  // The newest day the archive holds, so the page can name it when the table is short of
+  // the calendar - "the archive ends on 17 August" rather than leaving a reader to guess.
+  body.archiveThrough = archiveLastDay(dailyDoc, now);
   return body;
 }
 
@@ -481,5 +589,6 @@ function round(v, digits) {
 
 module.exports = {
   buildDroughtYears, compareYears, compareWindow, stationAcrossMonths, monthSeries,
-  REFERENCE_YEAR, MONTHS_HU, MONTHS_ADJ_HU, MIN_WINDOW_COVERAGE, RESOLUTION_FLOOR,
+  archiveLastDay, elapsedDays,
+  REFERENCE_YEAR, MONTHS_HU, MONTHS_ADJ_HU, MIN_WINDOW_COVERAGE, RESOLUTION_FLOOR, ARCHIVE_MIN_DAYS,
 };
